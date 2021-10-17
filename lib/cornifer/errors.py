@@ -13,9 +13,34 @@
     GNU General Public License for more details.
 """
 
+class Register_Already_Closed_error(RuntimeError):
+    def __init__(self):
+        super().__init__("This register is already closed.")
+
+class Register_Already_Open_Error(RuntimeError):
+    def __init__(self):
+        super().__init__("This register is already opened.")
+
+class Register_Not_Open_Error(RuntimeError):
+    def __init__(self, method_name):
+        super().__init__(
+            f"Please open this register via `with register.open():` before calling the method " +
+            f"`register.{method_name}`."
+        )
+
+class Data_Not_Dumped_Error(RuntimeError):pass
+
+class Data_Not_Loaded_Error(RuntimeError):pass
+
 class Data_Not_Found_Error(RuntimeError):pass
 
-class Database_Error(RuntimeError):pass
+class Sequence_Description_Keyword_Argument_Error(RuntimeError):pass
+
+class LevelDB_Error(Data_Not_Dumped_Error):
+    def __init__(self, db_file, msg):
+        super().__init__(
+            f"The levelDB database {str(db_file)} has been corrupted. " + msg
+        )
 
 class Sub_Register_Cycle_Error(RuntimeError):
     def __init__(self, parent, child):

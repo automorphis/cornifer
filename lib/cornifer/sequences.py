@@ -19,19 +19,49 @@ from abc import ABC
 
 import numpy as np
 
+from cornifer.errors import Sequence_Description_JSON_Error, Sequence_Description_Keyword_Argument_Error
 from cornifer.utilities import check_has_method, replace_lists_with_tuples, replace_tuples_with_lists, \
     justify_slice
 
 class Sequence_Description(ABC):
 
     def __init__(self, **kwargs):
+        if "_json" in kwargs.keys():
+            raise Sequence_Description_Keyword_Argument_Error(
+                "The keyword-argument key \"_json\" is reserved. Please choose a different key."
+            )
         for key,val in kwargs.items():
-            if not check_has_method(val, "__hash__"):
-                raise TypeError(
+            try:
+                hash(val)
+            except (TypeError, AttributeError):
+                raise Sequence_Description_Keyword_Argument_Error(
                     f"All keyword arguments must be hashable types. The keyword argument given by \"{key}\" "+
-                    f"is not a hashable type. The type of that argument is `{type(val)}`."
+                    f"not a hashable type. The type of that argument is `{str(type(val))}`."
                 )
 
+        self._json = None
+        self._json = self.to_json()
+
+        try:
+            self._json.encode("ASCII")
+        except UnicodeEncodeError:
+            raise Sequence_Description_Keyword_Argument_Error(
+                "`descr.to_json()` returns invalid JSON because it contains a non-ASCII character.\nPlease " +
+                "use different keyword-arguments that do not contain non-ASCII characters when you construct"+
+                "`Sequence_Description`, or override `to_json` so that it does not return a string that " +
+                "contains non-ASCII characters." +
+                f"`descr.to_json()` returns:\n{self._json}"
+            )
+
+        if "\0\0" in self._json:
+            raise Sequence_Description_JSON_Error(
+                "`descr.to_json()` returns invalid JSON because it contains the double-null "+
+                "substring \"\\0\\0\". This substring is reserved because it is used as a separator.\n"+
+                "Please use different keyword-arguments that do not contain \"\\0\\0\" when you construct "+
+                "`Sequence_Description`, or override `to_json` so that it does not return a string that "+
+                "contains \"\\0\\0\".\n" +
+                f"`descr.to_json()` returns:\n{self._json}"
+            )
         self.__dict__.update(kwargs)
 
     @classmethod
@@ -45,15 +75,19 @@ class Sequence_Description(ABC):
         return cls(**replace_lists_with_tuples(json_obj))
 
     def to_json(self):
-        kwargs = replace_tuples_with_lists(self.__dict__)
-        try:
-            return json.dumps(kwargs)
-        except json.JSONDecodeError:
-            raise ValueError(
-                "One of the keyword arguments used to construct this instance is not valid JSON. Please "
-                "reconstruct this instance using valid JSON, or override the classmethod "
-                f"`{type(self)}.from_json` and the instancemethod `{type(self)}.to_json`."
-            )
+        if self._json is None:
+            kwargs = replace_tuples_with_lists(self.__dict__)
+            del kwargs["_json"]
+            try:
+                return json.dumps(kwargs)
+            except json.JSONDecodeError:
+                raise ValueError(
+                    "One of the keyword arguments used to construct this instance is not valid JSON. Please "
+                    "reconstruct this instance using valid JSON, or override the classmethod "
+                    f"`{type(self)}.from_json` and the instancemethod `{type(self)}.to_json`."
+                )
+        else:
+            return self._json
 
     def __hash__(self):
         return sum(hash((key,val)) for key,val in self.__dict__.items())

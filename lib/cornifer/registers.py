@@ -15,18 +15,25 @@
 
 import inspect
 import json
+from contextlib import contextmanager
 from itertools import chain
 from pathlib import Path
 from abc import ABC, abstractmethod
 
-from cornifer.errors import Sub_Register_Cycle_Error, Database_Error, Data_Not_Found_Error
+import plyvel
+
+from cornifer.errors import Sub_Register_Cycle_Error, Data_Not_Found_Error, LevelDB_Error, \
+    Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error
 from cornifer.sequences import Sequence_Description
-from cornifer.utilities import intervals_overlap, random_unique_filename, safe_overwrite_file, open_leveldb, \
-    leveldb_has_key
+from cornifer.utilities import intervals_overlap, random_unique_filename, open_leveldb, leveldb_has_key
 
 _REGISTER_LEVELDB_NAME = "register"
+_KEY_SEP = b"\x00\x00"
 
 class Register(ABC):
+
+    #################################
+    #        ERROR MESSAGES         #
 
     ___GETITEM___ERROR_MSG = (
 """
@@ -45,10 +52,15 @@ cannot do the following:
 """
     )
 
-    #################################
-    #        INITIALIZATION         #
+    _ADD_DISK_SEQ_ERROR_MSG = (
+        "The `add_disk_seq` failed. The `seq` has not been dumped to disk, nor has it been linked with this "+
+        "regiser."
+    )
 
-    def __init__(self, saves_directory, msg = ""):
+    #################################
+    #     PUBLIC INITIALIZATION     #
+
+    def __init__(self, saves_directory, msg):
         self.saves_directory = Path(saves_directory)
 
         if not self.saves_directory.is_file():
@@ -57,7 +69,7 @@ cannot do the following:
                 f"`{type(self)}({str(self.saves_directory)})`."
             )
 
-        if not isinstance(msg, str):
+        if msg is not None and not isinstance(msg, str):
             raise TypeError(f"The `msg` argument must be a `str`. Passed type of `msg`: `{str(type(msg))}`.")
 
         self._msg = msg
@@ -65,33 +77,16 @@ cannot do the following:
         self._local_dir = None
         self._register_file = None
 
-        self._register_bytes = None
+        self._local_dir_bytes = None
+        self._sub_register_bytes = None
         self._register_cls_bytes = type(self).__name__.encode()
         self._str_bytes = str(self).encode()
 
         self._ram_seqs = {}
-        self._disk_seqs = {}
-        self._sub_registers = []
+        self._db = None
 
-        self._loaded = False
         self._created = False
-
-    _constructors = {}
-
-    @staticmethod
-    def _from_name(name, saves_directory):
-        if name == "Register":
-            raise ValueError(
-                "`Register` is an abstract class, meaning that `Register` itself cannot be instantiated, " +
-                "only its concrete subclasses."
-            )
-        try:
-            return Register._constructors[name](saves_directory)
-        except KeyError:
-            raise ValueError(
-                f"`Register` is not aware of a subclass called \"{name}\". Please add the subclass to " +
-                f"`Register` via `Register.add_subclass({name})`."
-            )
+        self._opened = False
 
     @staticmethod
     def add_subclass(subclass):
@@ -102,88 +97,118 @@ cannot do the following:
         Register._constructors[subclass.__name__] = subclass
 
     #################################
+    #     PROTEC INITIALIZATION     #
+
+    _constructors = {}
+
+    @staticmethod
+    def _from_name(name, local_dir):
+        if name == "Register":
+            raise ValueError(
+                "`Register` is an abstract class, meaning that `Register` itself cannot be instantiated, " +
+                "only its concrete subclasses."
+            )
+        try:
+            register = Register._constructors[name](local_dir.parent)
+        except KeyError:
+            raise ValueError(
+                f"`Register` is not aware of a subclass called \"{name}\". Please add the subclass to " +
+                f"`Register` via `Register.add_subclass({name})`."
+            )
+        register._set_local_dir(local_dir)
+        return Register._instances.get(register, register)
+
+    _instances = {}
+
+    #################################
     #    PUBLIC REGISTER METHODS    #
 
     def __eq__(self, other):
-        return self._local_dir == other._local_dir
+        return self._local_dir.resolve() == other._local_dir.resolve()
 
     def __hash__(self):
-        raise TypeError("`Register` is not a hashable type.")
+        return hash(str(self._local_dir.resolve()))
 
     def __str__(self):
-        return self._msg
+        if self._msg is not None:
+            return self._msg
+        else:
+            self._check_open_raise("__str__")
+            self._msg = self._db.get(b"str")
+            return self._msg.encode("ASCII")
 
     def set_msg(self, msg):
+        self._check_open_raise("set_msg")
         self._msg = msg
         self._str_bytes = str(self).encode()
-        if self._created:
-            with open_leveldb(self._register_file) as db:
-                db.put(b"str", self._str_bytes)
+        self._db.put(b"str", self._str_bytes)
+
+    @contextmanager
+    def open(self):
+        if not self._created:
+            self._set_local_dir(random_unique_filename(self.saves_directory))
+            Path.mkdir(self._local_dir)
+            self._db = plyvel.DB(self._register_file, True)
+            self._opened = True
+            with self._db.write_batch(transaction = True) as wb:
+                wb.put(b"cls", self._register_cls_bytes)
+                wb.put(b"str", self._str_bytes)
+            Register._instances[self] = self
+            yiel = self
+        else:
+            yiel = self._open_created()
+        try:
+            yield yiel
+        finally:
+            yiel._close_created()
 
     #################################
     #    PROTEC REGISTER METHODS    #
 
-    def _load(self, recursively = False):
+    def _open_created(self):
+        ret = Register._instances.get(self, self)
+        if ret._opened:
+            raise Register_Already_Open_Error()
+        ret._opened = True
+        ret._db = plyvel.DB(ret._register_file)
+        return ret
 
+    def _close_created(self):
+        self._opened = False
+        self._db.close()
+
+    @contextmanager
+    def _recursive_open(self):
         if not self._created:
-            return
+            yield None
+        else:
+            try:
+                self._open_created()
+                need_close = True
+            except Register_Already_Open_Error:
+                need_close = False
+            try:
+                yield None
+            finally:
+                if need_close:
+                    self._close_created()
 
-        if self._loaded:
-            if recursively:
-                for sub_register in self._sub_registers:
-                    sub_register._load(True)
-            return
-
-        if not self.saves_directory.is_dir():
-            raise FileNotFoundError(f"The path `{self.saves_directory}` must be an existing directory.")
-
-        if not self._local_dir.is_dir():
-            raise FileNotFoundError(
-                f"The directory `{self.saves_directory}` must contain the subdirectory " +
-                f"`{self._local_dir.name}`."
-            )
-
-        if not self._disk_seqs_file.is_file() or not self._sub_registers_file.is_file():
-            raise FileNotFoundError(
-                f"The directory `{self._register_dir}` must contain three files named " +
-                f"`{_SEQS_FILE_NAME}` and `{_SUB_REGISTERS_FILE_NAME}` and " +
-                f"`{_CLS_FILE_NAME}`."
-            )
-
-        for descr, start_n, length, filename in self._iter_seqs_file():
-            self._disk_seqs[(descr, start_n, length)] = filename
-
-        for cls_str, filename in self._iter_leveldb_sub_registers():
-            register = Register._from_name(cls_str, filename)
-            self.add_sub_register(register)
-
-        self._loaded = True
-        self._created = True
-
-        if recursively:
-            for sub_register in self._sub_registers:
-                sub_register._load(True)
-
-    def _create(self):
-        if not self._created:
-            self._created = True
-            self._set_local_dir(random_unique_filename(self.saves_directory))
-            Path.mkdir(self._local_dir)
-            with open_leveldb(self._register_file, True) as db:
-                with db.write_batch(transaction = True) as wb:
-                    wb.put(b"cls", self._register_bytes)
-                    wb.put(b"str", self._str_bytes)
+    def _check_open_raise(self, method_name):
+        if not self._opened:
+            raise Register_Not_Open_Error(method_name)
 
     def _set_local_dir(self, filename):
+        self._created = True
         self._local_dir = filename
+        self._local_dir_bytes = self._local_dir.encode()
         self._register_file = self._local_dir / _REGISTER_LEVELDB_NAME
-        self._register_bytes = (self._local_dir + "-sub").encode()
+        self._sub_register_bytes = b"sub-" + self._local_dir_bytes
 
     #################################
     #     PUBLIC DESCR METHODS      #
 
     def get_descrs(self, recursively = False):
-        self._load()
+        self._check_open_raise("get_descrs")
         descrs = set(descr for descr,_ in self._disk_seqs.keys())
         if recursively:
             for sub_register in self._sub_registers:
@@ -197,115 +222,130 @@ cannot do the following:
     #  PUBLIC SUB-REGISTER METHODS  #
 
     def add_sub_register(self, register):
-        self._create()
-        self._load()
-        if register not in self._sub_registers:
-            if register._check_no_cycles(self):
-                self._sub_registers.append(register)
-                register._create()
-                with open_leveldb(self._register_file) as db:
-                    db.put(register._register_bytes, register._register_cls_bytes)
-            else:
-                raise Sub_Register_Cycle_Error(self, register)
+
+        self._check_open_raise("add_sub_register")
+
+        if register._check_no_cycles(self):
+
+        else:
+            raise Sub_Register_Cycle_Error(self, register)
 
     def remove_sub_register(self, register):
 
-        with open_leveldb(self._register_file) as db:
-            changed = leveldb_has_key(db, self._register_bytes)
-            db.remove(self._register_bytes)
+        if self._created:
+            with open_leveldb(self._register_file) as db:
+                changed = leveldb_has_key(db, self._sub_register_bytes)
+                if changed:
+                    db.remove(self._sub_register_bytes)
 
-        if changed:
-            self._load()
-            self._sub_registers.remove(register)
+            if changed and self._loaded:
+                self._sub_registers.remove(register)
 
     #################################
     #  PROTEC SUB-REGISTER METHODS  #
 
     def _check_no_cycles(self, original):
-        self._load()
-        if any(original == sub_register for sub_register in self._sub_registers):
+
+        if not self._created:
             return False
-        if all(sub_register._check_no_cycles(original) for sub_register in self._sub_registers):
-            return True
+
+        with self._recursive_open():
+            if any(original == sub_register for sub_register in self._iter_sub_registers()):
+                return False
+            if all(sub_register._check_no_cycles(original) for sub_register in self._iter_sub_registers()):
+                return True
+
+    def _iter_sub_registers(self):
+        it = self._db.iterator(prefix = b"sub-")
+        for key, val in it:
+            cls_name = self._db.get(key).encode("ASCII")
+            filename = key[4:].encode("ASCII")
+            register = Register._from_name(cls_name, filename)
+            yield register
+        it.close()
 
     #################################
     #    PUBLIC DISK SEQ METHODS    #
 
     @classmethod
     @abstractmethod
-    def dump_disk_seq(cls, seq, filename):
-        """Dump a `Sequence` to disk.
+    def dump_disk_data(cls, data, filename):
+        """Dump data to the disk.
 
         This method should not change any properties of any `Register`, which is why it is a classmethod and
-        not an instancemethod. It merely takes the data wrapped by `seq` and dumps it to the disk.
+        not an instancemethod. It merely takes `data` and dumps it to disk.
 
         Most use-cases prefer the instancemethod `add_disk_seq`.
 
-        :param seq: (type `Sequence`)
-        :param filename: (type `pathlib.Path`) The filename of the dumped sequence. You may edit this filename
-        if necessary (such as by adding a suffix), but you must return the edited filename.
-        :return: (type `pathlib.Path) The actual filename of the sequence on the disk.
+        :param data: (any type) The raw data to dump.
+        :param filename: (type `pathlib.Path`) The filename to dump to. You may edit this filename if
+        necessary (such as by adding a suffix), but you must return the edited filename.
+        :raises Data_Not_Dumped_Error: If the dump fails for any reason.
+        :return: (type `pathlib.Path) The actual filename of the data on the disk.
         """
 
     @classmethod
     @abstractmethod
-    def load_disk_seq(cls, filename):
+    def load_disk_data(cls, filename):
         """Load raw data from the disk.
 
         This method should not change any properties of any `Register`, which is why it is a classmethod and
-        not an instancemethod. It merely loads the data saved on the disk and returns it.
+        not an instancemethod. It merely loads the raw data saved on the disk and returns it.
 
         Most use-cases prefer the method `get_seq` (which also returns RAM sequences).
 
         :param filename: (type `pathlib.Path`) Where to load the sequence from. You may need to edit this
         filename if necessary, such as by adding a suffix. You do not need to return the edited filename.
+        :raises Data_Not_Found_Error: If the data could not be loaded because it doesn't exist.
+        :raises Data_Not_Loaded_Error: If the data exists but couldn't be loaded for any reason.
         :return: (any type) The data loaded from the disk.
         """
 
     def add_disk_seq(self, seq):
-        """TODO
+        """Dump a sequence to disk and link it with this `Register`.
 
-        :param seq:
-        :return:
+        :param seq: (type `Sequence`)
         """
 
-        descr = seq.get_descr()
-        start_n = seq.start_n
-        length = len(seq)
+        self._check_open_raise("add_disk_seq")
 
-        self._create()
-        self._load()
-        if (descr, start_n, length) not in self._disk_seqs.keys():
+        key = Register._get_disk_data_key(seq.get_descr(), seq.get_start_n(), len(seq))
+        if not leveldb_has_key(self._db, key):
 
             filename = random_unique_filename(self._local_dir)
-            filename = type(self).dump_disk_seq(seq, filename)
+            try:
+                filename = type(self).dump_disk_data(seq, filename)
+            except Data_Not_Dumped_Error:
+                raise Data_Not_Dumped_Error(Register._ADD_DISK_SEQ_ERROR_MSG)
+
             filename_bytes = filename.encode()
-
-            with open_leveldb(self._register_file) as db:
-                with db.write_batch(transaction = True) as wb:
-                    wb.put(filename_bytes + b"-descr", descr.to_json.encode())
-                    wb.put(filename_bytes + b"-start_n", str(start_n).encode())
-                    wb.put(filename_bytes + b"-length", str(length).encode())
-
-            #TODO delete data if leveldb write fails
-
-            self._disk_seqs[(descr, start_n, length)] = filename
+            try:
+                self._db.put(key, filename_bytes)
+            except plyvel.Error:
+                Path.unlink(filename, missing_ok=True)
+                raise LevelDB_Error(
+                    self._register_file,
+                    Register._ADD_DISK_SEQ_ERROR_MSG
+                )
 
     def remove_disk_seq(self, descr, start_n, length):
-        new_content = ""
-        changed = False
-        for _descr, _start_n, _length, _filename in self._iter_seqs_file():
-            if not(descr == _descr and start_n == _start_n and _length == length):
-                new_content += _descr.to_json() + "\n" + str(_start_n) + "\n" + str(_length) + "\n" + str(_filename) + "\n"
-            else:
-                changed = True
-        if changed:
-            safe_overwrite_file(self._disk_seqs_file, new_content)
-            self._load()
-            del self._disk_seqs[(descr, start_n, length)]
+
+        self._check_open_raise("remove_disk_seq")
+        key = Register._get_disk_data_key(descr, start_n, length)
+        if leveldb_has_key(self._db, key):
+            self._db.remove(key)
 
     #################################
     #    PROTEC DISK SEQ METHODS    #
+
+    @staticmethod
+    def _get_disk_data_key(descr, start_n, length):
+        return (
+            descr.to_json.encode("ASCII") + _KEY_SEP +
+            str(start_n). encode("ASCII") + _KEY_SEP +
+            str(length).  encode("ASCII")
+
+        )
 
     #################################
     #    PUBLIC RAM SEQ METHODS     #
@@ -339,7 +379,7 @@ cannot do the following:
         self._load()
         for (_descr,_start_n,_length), _filename in self._disk_seqs.items():
             if _descr == descr and _start_n <= n < _start_n + _length:
-                return type(self).load_disk_seq(_filename)
+                return type(self).load_disk_data(_filename)
 
         if recursively:
             for _sub_register in self._sub_registers:
@@ -421,11 +461,11 @@ cannot do the following:
 class Pickle_Register(Register):
 
     @classmethod
-    def dump_disk_seq(cls, seq, filename):
+    def dump_disk_data(cls, data, filename):
         pass
 
     @classmethod
-    def load_disk_seq(cls, filename):
+    def load_disk_data(cls, filename):
         pass
 
 Register.add_subclass(Pickle_Register)
@@ -433,11 +473,11 @@ Register.add_subclass(Pickle_Register)
 class NumPy_Register(Register):
 
     @classmethod
-    def dump_disk_seq(cls, seq, filename):
+    def dump_disk_data(cls, data, filename):
         pass
 
     @classmethod
-    def load_disk_seq(cls, filename):
+    def load_disk_data(cls, filename):
         pass
 
 Register.add_subclass(NumPy_Register)
