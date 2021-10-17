@@ -1,5 +1,5 @@
 """
-    Cornifer, an intuitive data manager for empirical mathematics
+    Cornifer, an intuitive data manager for empirical and computational mathematics.
     Copyright (C) 2021 Michael P. Lane
 
     This program is free software: you can redistribute it and/or modify
