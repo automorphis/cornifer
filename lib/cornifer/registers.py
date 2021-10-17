@@ -28,7 +28,6 @@ from cornifer.sequences import Sequence_Description
 from cornifer.utilities import intervals_overlap, random_unique_filename, open_leveldb, leveldb_has_key
 
 _REGISTER_LEVELDB_NAME = "register"
-_KEY_SEP = b"\x00\x00"
 
 class Register(ABC):
 
@@ -58,6 +57,16 @@ cannot do the following:
     )
 
     #################################
+    #         LEVELDB KEYS          #
+
+    _KEY_SEP =            b"\x00\x00"
+    _START_N_PREFIX_KEY = b"start_n_prefix"
+    _CLS_KEY =            b"cls"
+    _MSG_KEY =            b"msg"
+    _SUB_KEY_PREFIX =     b"sub" + _KEY_SEP
+    _SEQ_KEY_PREFIX =     b"seq" + _KEY_SEP
+
+    #################################
     #     PUBLIC INITIALIZATION     #
 
     def __init__(self, saves_directory, msg):
@@ -80,7 +89,9 @@ cannot do the following:
         self._local_dir_bytes = None
         self._sub_register_bytes = None
         self._register_cls_bytes = type(self).__name__.encode()
-        self._str_bytes = str(self).encode()
+        self._msg_bytes = str(self).encode()
+        self._start_n_prefix = 1
+        self._start_n_prefix_bytes = str(1).encode("ASCII")
 
         self._ram_seqs = {}
         self._db = None
@@ -134,14 +145,21 @@ cannot do the following:
             return self._msg
         else:
             self._check_open_raise("__str__")
-            self._msg = self._db.get(b"str")
+            self._msg = self._db.get(Register._MSG_KEY)
             return self._msg.encode("ASCII")
 
     def set_msg(self, msg):
         self._check_open_raise("set_msg")
         self._msg = msg
-        self._str_bytes = str(self).encode()
-        self._db.put(b"str", self._str_bytes)
+        self._msg_bytes = self._msg.encode()
+        self._db.put(Register._MSG_KEY, self._msg_bytes)
+
+    def set_start_n_prefix(self, prefix):
+
+        self._check_open_raise("set_start_n_prefix")
+        self._start_n_prefix = prefix
+        self._start_n_prefix_bytes = str(prefix).encode("ASCII")
+        self._db.put(Register._START_N_PREFIX_KEY, self._start_n_prefix_bytes)
 
     @contextmanager
     def open(self):
@@ -151,8 +169,9 @@ cannot do the following:
             self._db = plyvel.DB(self._register_file, True)
             self._opened = True
             with self._db.write_batch(transaction = True) as wb:
-                wb.put(b"cls", self._register_cls_bytes)
-                wb.put(b"str", self._str_bytes)
+                wb.put(Register._CLS_KEY, self._register_cls_bytes)
+                wb.put(Register._MSG_KEY, self._msg_bytes)
+                wb.put(Register._START_N_PREFIX_KEY, self._start_n_prefix_bytes)
             Register._instances[self] = self
             yiel = self
         else:
@@ -183,7 +202,7 @@ cannot do the following:
             yield None
         else:
             try:
-                self._open_created()
+                opened = self._open_created()
                 need_close = True
             except Register_Already_Open_Error:
                 need_close = False
@@ -191,7 +210,7 @@ cannot do the following:
                 yield None
             finally:
                 if need_close:
-                    self._close_created()
+                    opened._close_created()
 
     def _check_open_raise(self, method_name):
         if not self._opened:
@@ -202,7 +221,9 @@ cannot do the following:
         self._local_dir = filename
         self._local_dir_bytes = self._local_dir.encode()
         self._register_file = self._local_dir / _REGISTER_LEVELDB_NAME
-        self._sub_register_bytes = b"sub-" + self._local_dir_bytes
+        self._sub_register_bytes = (
+            Register._SUB_KEY_PREFIX + self._local_dir_bytes
+        )
 
     #################################
     #     PUBLIC DESCR METHODS      #
@@ -225,21 +246,20 @@ cannot do the following:
 
         self._check_open_raise("add_sub_register")
 
-        if register._check_no_cycles(self):
-
-        else:
-            raise Sub_Register_Cycle_Error(self, register)
+        key = register._get_sub_register_key()
+        if not leveldb_has_key(self._db, key):
+            if register._check_no_cycles(self):
+                self._db.put(key, register._register_cls_bytes)
+            else:
+                raise Sub_Register_Cycle_Error(self, register)
 
     def remove_sub_register(self, register):
 
-        if self._created:
-            with open_leveldb(self._register_file) as db:
-                changed = leveldb_has_key(db, self._sub_register_bytes)
-                if changed:
-                    db.remove(self._sub_register_bytes)
+        self._check_open_raise("remove_sub_register")
 
-            if changed and self._loaded:
-                self._sub_registers.remove(register)
+        key = register._get_sub_register_key()
+        if not leveldb_has_key(self._db, key):
+            self._db.remove(key)
 
     #################################
     #  PROTEC SUB-REGISTER METHODS  #
@@ -256,13 +276,17 @@ cannot do the following:
                 return True
 
     def _iter_sub_registers(self):
-        it = self._db.iterator(prefix = b"sub-")
+        length = len(Register._SUB_KEY_PREFIX)
+        it = self._db.iterator(prefix = Register._SUB_KEY_PREFIX)
         for key, val in it:
             cls_name = self._db.get(key).encode("ASCII")
-            filename = key[4:].encode("ASCII")
+            filename = key[length:].encode("ASCII")
             register = Register._from_name(cls_name, filename)
             yield register
         it.close()
+
+    def _get_sub_register_key(self):
+        return Register._SUB_KEY_PREFIX + self._local_dir_bytes
 
     #################################
     #    PUBLIC DISK SEQ METHODS    #
@@ -309,7 +333,7 @@ cannot do the following:
 
         self._check_open_raise("add_disk_seq")
 
-        key = Register._get_disk_data_key(seq.get_descr(), seq.get_start_n(), len(seq))
+        key = self._get_disk_data_key(seq.get_descr(), seq.get_start_n(), len(seq))
         if not leveldb_has_key(self._db, key):
 
             filename = random_unique_filename(self._local_dir)
@@ -331,20 +355,18 @@ cannot do the following:
     def remove_disk_seq(self, descr, start_n, length):
 
         self._check_open_raise("remove_disk_seq")
-        key = Register._get_disk_data_key(descr, start_n, length)
+        key = self._get_disk_data_key(descr, start_n, length)
         if leveldb_has_key(self._db, key):
             self._db.remove(key)
 
     #################################
     #    PROTEC DISK SEQ METHODS    #
 
-    @staticmethod
-    def _get_disk_data_key(descr, start_n, length):
+    def _get_disk_data_key(self, descr, start_n, length):
         return (
-            descr.to_json.encode("ASCII") + _KEY_SEP +
-            str(start_n). encode("ASCII") + _KEY_SEP +
-            str(length).  encode("ASCII")
-
+            descr.to_json().                     encode("ASCII") + Register._KEY_SEP +
+            str(start_n % self._start_n_prefix). encode("ASCII") + Register._KEY_SEP +
+            str(length).                         encode("ASCII")
         )
 
     #################################

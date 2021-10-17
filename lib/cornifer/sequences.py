@@ -110,7 +110,7 @@ class Sequence_Description(ABC):
 
 class Sequence:
 
-    def __init__(self, descr, start_n, data):
+    def __init__(self, data, descr, start_n):
 
         self._custom_dtype = False
 
@@ -184,9 +184,9 @@ class Sequence:
             item = justify_slice(item, start_n, start_n + length - 1, length)
 
             if not self._check_and_warn_custom_get_ndarray("__getitem__"):
-                return Sequence(descr, start_n, self._data_ndarray[item])
+                return Sequence(self._data_ndarray[item], descr, start_n)
             else:
-                return Sequence(descr, start_n, self._data[item])
+                return Sequence(self._data[item], descr, start_n)
 
         else:
             if item not in self:
