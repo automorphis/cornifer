@@ -26,13 +26,17 @@ from cornifer.utilities import check_has_method, replace_lists_with_tuples, repl
 class Sequence_Description(ABC):
 
     def __init__(self, **kwargs):
-        if "_json" in kwargs.keys():
+
+        if "_json" in kwargs.keys() or "_hash" in kwargs.keys():
             raise Sequence_Description_Keyword_Argument_Error(
-                "The keyword-argument key \"_json\" is reserved. Please choose a different key."
+                "The keyword-argument keys \"_json\" and \"_hash\" are reserved. Please choose a different " +
+                "key."
             )
+
+        self._hash = 0
         for key,val in kwargs.items():
             try:
-                hash(val)
+                self._hash += hash(val)
             except (TypeError, AttributeError):
                 raise Sequence_Description_Keyword_Argument_Error(
                     f"All keyword arguments must be hashable types. The keyword argument given by \"{key}\" "+
@@ -78,6 +82,7 @@ class Sequence_Description(ABC):
         if self._json is None:
             kwargs = replace_tuples_with_lists(self.__dict__)
             del kwargs["_json"]
+            del kwargs["_hash"]
             try:
                 return json.dumps(kwargs)
             except json.JSONDecodeError:
@@ -90,15 +95,10 @@ class Sequence_Description(ABC):
             return self._json
 
     def __hash__(self):
-        return sum(hash((key,val)) for key,val in self.__dict__.items())
+        return self._hash
 
     def __eq__(self, other):
-        if len(self.__dict__) != len(other.__dict__):
-            return False
-        for key, val in self.__dict__.items():
-            if key not in other.__dict__ or other.__dict__[key] != val:
-                return False
-        return True
+        return self.to_json() == other.to_json()
 
     def __copy__(self):
         descr = Sequence_Description()
@@ -160,6 +160,9 @@ class Sequence:
 
     def get_start_n(self):
         return self._start_n
+
+    def set_start_n(self, start_n):
+        self._start_n = start_n
 
     def get_descr(self):
         return self._descr

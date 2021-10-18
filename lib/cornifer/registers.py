@@ -14,7 +14,6 @@
 """
 
 import inspect
-import json
 from contextlib import contextmanager
 from itertools import chain
 from pathlib import Path
@@ -24,10 +23,21 @@ import plyvel
 
 from cornifer.errors import Sub_Register_Cycle_Error, Data_Not_Found_Error, LevelDB_Error, \
     Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error
-from cornifer.sequences import Sequence_Description
-from cornifer.utilities import intervals_overlap, random_unique_filename, open_leveldb, leveldb_has_key
+from cornifer.sequences import Sequence_Description, Sequence
+from cornifer.utilities import intervals_overlap, random_unique_filename, leveldb_has_key
+
+#################################
+#         LEVELDB KEYS          #
 
 _REGISTER_LEVELDB_NAME = "register"
+_KEY_SEP = b"\x00\x00"
+_KEY_SEP_LEN = len(_KEY_SEP)
+_START_N_PREFIX_KEY = b"start_n_prefix"
+_CLS_KEY = b"cls"
+_MSG_KEY = b"msg"
+_SUB_KEY_PREFIX = b"sub" + _KEY_SEP
+_SEQ_KEY_PREFIX = b"seq" + _KEY_SEP
+_SUB_KEY_PREFIX_LEN = len(_SUB_KEY_PREFIX)
 
 class Register(ABC):
 
@@ -53,18 +63,8 @@ cannot do the following:
 
     _ADD_DISK_SEQ_ERROR_MSG = (
         "The `add_disk_seq` failed. The `seq` has not been dumped to disk, nor has it been linked with this "+
-        "regiser."
+        "register."
     )
-
-    #################################
-    #         LEVELDB KEYS          #
-
-    _KEY_SEP =            b"\x00\x00"
-    _START_N_PREFIX_KEY = b"start_n_prefix"
-    _CLS_KEY =            b"cls"
-    _MSG_KEY =            b"msg"
-    _SUB_KEY_PREFIX =     b"sub" + _KEY_SEP
-    _SEQ_KEY_PREFIX =     b"seq" + _KEY_SEP
 
     #################################
     #     PUBLIC INITIALIZATION     #
@@ -112,8 +112,11 @@ cannot do the following:
 
     _constructors = {}
 
+    _instances = {}
+
     @staticmethod
     def _from_name(name, local_dir):
+
         if name == "Register":
             raise ValueError(
                 "`Register` is an abstract class, meaning that `Register` itself cannot be instantiated, " +
@@ -127,9 +130,19 @@ cannot do the following:
                 f"`Register` via `Register.add_subclass({name})`."
             )
         register._set_local_dir(local_dir)
-        return Register._instances.get(register, register)
+        return Register._get_instance(register)
 
-    _instances = {}
+    @staticmethod
+    def _add_instance(register):
+        Register._instances[register] = register
+
+    @staticmethod
+    def _get_instance(register):
+        try:
+            return Register._instances[register]
+        except KeyError:
+            Register._add_instance(register)
+            return register
 
     #################################
     #    PUBLIC REGISTER METHODS    #
@@ -140,26 +153,26 @@ cannot do the following:
     def __hash__(self):
         return hash(str(self._local_dir.resolve()))
 
-    def __str__(self):
+    def __str__(self): # TODO rewrite
         if self._msg is not None:
             return self._msg
         else:
             self._check_open_raise("__str__")
-            self._msg = self._db.get(Register._MSG_KEY)
+            self._msg = self._db.get(_MSG_KEY)
             return self._msg.encode("ASCII")
 
     def set_msg(self, msg):
         self._check_open_raise("set_msg")
         self._msg = msg
         self._msg_bytes = self._msg.encode()
-        self._db.put(Register._MSG_KEY, self._msg_bytes)
+        self._db.put(_MSG_KEY, self._msg_bytes)
 
     def set_start_n_prefix(self, prefix):
 
         self._check_open_raise("set_start_n_prefix")
         self._start_n_prefix = prefix
         self._start_n_prefix_bytes = str(prefix).encode("ASCII")
-        self._db.put(Register._START_N_PREFIX_KEY, self._start_n_prefix_bytes)
+        self._db.put(_START_N_PREFIX_KEY, self._start_n_prefix_bytes)
 
     @contextmanager
     def open(self):
@@ -169,10 +182,10 @@ cannot do the following:
             self._db = plyvel.DB(self._register_file, True)
             self._opened = True
             with self._db.write_batch(transaction = True) as wb:
-                wb.put(Register._CLS_KEY, self._register_cls_bytes)
-                wb.put(Register._MSG_KEY, self._msg_bytes)
-                wb.put(Register._START_N_PREFIX_KEY, self._start_n_prefix_bytes)
-            Register._instances[self] = self
+                wb.put(_CLS_KEY, self._register_cls_bytes)
+                wb.put(_MSG_KEY, self._msg_bytes)
+                wb.put(_START_N_PREFIX_KEY, self._start_n_prefix_bytes)
+            Register._add_instance(self)
             yiel = self
         else:
             yiel = self._open_created()
@@ -185,7 +198,7 @@ cannot do the following:
     #    PROTEC REGISTER METHODS    #
 
     def _open_created(self):
-        ret = Register._instances.get(self, self)
+        ret = Register._get_instance(self)
         if ret._opened:
             raise Register_Already_Open_Error()
         ret._opened = True
@@ -205,9 +218,10 @@ cannot do the following:
                 opened = self._open_created()
                 need_close = True
             except Register_Already_Open_Error:
+                opened = self
                 need_close = False
             try:
-                yield None
+                yield opened
             finally:
                 if need_close:
                     opened._close_created()
@@ -222,19 +236,28 @@ cannot do the following:
         self._local_dir_bytes = self._local_dir.encode()
         self._register_file = self._local_dir / _REGISTER_LEVELDB_NAME
         self._sub_register_bytes = (
-            Register._SUB_KEY_PREFIX + self._local_dir_bytes
+            _SUB_KEY_PREFIX + self._local_dir_bytes
         )
 
     #################################
     #     PUBLIC DESCR METHODS      #
 
     def get_descrs(self, recursively = False):
+
+        ret = set()
+        for descr, _, _ in self._iter_all_ram_seq_metadatas():
+            ret.add(descr)
+
         self._check_open_raise("get_descrs")
-        descrs = set(descr for descr,_ in self._disk_seqs.keys())
+        for descr, _, _, _ in self._iter_all_disk_seq_metadatas():
+            ret.add(descr)
+
         if recursively:
-            for sub_register in self._sub_registers:
-                descrs.update(sub_register.get_descrs(True))
-        return descrs
+            for sub_register in self._iter_sub_registers():
+                with sub_register._recursive_open() as sub_register:
+                    ret.update(sub_register.get_descrs())
+
+        return ret
 
     #################################
     #     PROTEC DESCR METHODS      #
@@ -269,24 +292,34 @@ cannot do the following:
         if not self._created:
             return False
 
-        with self._recursive_open():
-            if any(original == sub_register for sub_register in self._iter_sub_registers()):
+        with self._recursive_open() as register:
+
+            if any(
+                original == sub_register
+                for sub_register in register._iter_sub_registers()
+            ):
                 return False
-            if all(sub_register._check_no_cycles(original) for sub_register in self._iter_sub_registers()):
+
+            if all(
+                sub_register._check_no_cycles(original)
+                for sub_register in register._iter_sub_registers()
+            ):
                 return True
 
     def _iter_sub_registers(self):
-        length = len(Register._SUB_KEY_PREFIX)
-        it = self._db.iterator(prefix = Register._SUB_KEY_PREFIX)
-        for key, val in it:
-            cls_name = self._db.get(key).encode("ASCII")
-            filename = key[length:].encode("ASCII")
-            register = Register._from_name(cls_name, filename)
-            yield register
-        it.close()
+        length = len(_SUB_KEY_PREFIX)
+        it = self._db.iterator(prefix = _SUB_KEY_PREFIX)
+        try:
+            for key, val in it:
+                cls_name = self._db.get(key).encode("ASCII")
+                filename = key[length:].encode("ASCII")
+                register = Register._from_name(cls_name, filename)
+                yield register
+        finally:
+            it.close()
 
     def _get_sub_register_key(self):
-        return Register._SUB_KEY_PREFIX + self._local_dir_bytes
+        return _SUB_KEY_PREFIX + self._local_dir_bytes
 
     #################################
     #    PUBLIC DISK SEQ METHODS    #
@@ -355,6 +388,7 @@ cannot do the following:
     def remove_disk_seq(self, descr, start_n, length):
 
         self._check_open_raise("remove_disk_seq")
+
         key = self._get_disk_data_key(descr, start_n, length)
         if leveldb_has_key(self._db, key):
             self._db.remove(key)
@@ -364,9 +398,49 @@ cannot do the following:
 
     def _get_disk_data_key(self, descr, start_n, length):
         return (
-            descr.to_json().                     encode("ASCII") + Register._KEY_SEP +
-            str(start_n % self._start_n_prefix). encode("ASCII") + Register._KEY_SEP +
+            _SUB_KEY_PREFIX                             +
+            descr.to_json().                     encode("ASCII") + _KEY_SEP +
+            str(start_n % self._start_n_prefix). encode("ASCII") + _KEY_SEP +
             str(length).                         encode("ASCII")
+        )
+
+    def _iter_disk_seq_metadatas_from_descr(self, descr):
+        descr_bytes = descr.to_json().encode("ASCII")
+        prefix = _SUB_KEY_PREFIX + descr_bytes + _KEY_SEP
+        it = self._db.iterator(prefix = prefix)
+        try:
+            for key,val in it:
+                yield self._convert_disk_seq_key(key, descr_bytes) + (val,)
+        finally:
+            it.close()
+
+    def _iter_all_disk_seq_metadatas(self):
+        it = self._db.iterator(prefix = _SUB_KEY_PREFIX)
+        try:
+            for key,val in it:
+                yield self._convert_disk_seq_key(key) + (val,)
+        finally:
+            it.close()
+
+    def _convert_disk_seq_key(self, key, omit_descr_bytes = None):
+
+        if omit_descr_bytes is not None:
+            start_index = _SUB_KEY_PREFIX_LEN + len(omit_descr_bytes) + _KEY_SEP_LEN
+        else:
+            start_index = _SUB_KEY_PREFIX_LEN
+
+        key_split = key[start_index:].split(_KEY_SEP)
+
+        if omit_descr_bytes is not None:
+            start_n_bytes, length_bytes = key_split
+            descr_bytes = omit_descr_bytes
+        else:
+            descr_bytes, start_n_bytes, length_bytes = key_split
+
+        return (
+            descr_bytes.decode("ASCII"),
+            self._start_n_prefix + int(start_n_bytes.decode("ASCII")),
+            int(length_bytes.decode("ASCII"))
         )
 
     #################################
@@ -389,28 +463,57 @@ cannot do the following:
     #################################
     #    PROTEC RAM SEQ METHODS     #
 
+    def _iter_all_ram_seq_metadatas(self):
+        for (descr, start_n), seq in self._ram_seqs.items():
+            yield descr, start_n, len(seq)
+
     #################################
     # PUBLIC RAM & DISK SEQ METHODS #
 
-    def get_seq(self, descr, n, recursively = True):
+    def get_seq(self, descr, n, recursively = False):
 
         for _ram_seq in self._ram_seqs:
             if _ram_seq.get_descr() == descr and n in _ram_seq:
                 return _ram_seq
 
-
+        self._check_open_raise("get_seq")
+        for descr, start_n, length, filename in self._iter_disk_seq_metadatas_from_descr(descr):
+            if start_n <= n < start_n + length:
+                data = type(self).load_disk_data(filename)
+                return Sequence(data, descr, start_n)
 
         if recursively:
-            for _sub_register
-                try:
-                    return _sub_register.get_seq(descr, n, True)
-                except Data_Not_Found_Error:
-                    pass
+            for sub_register in self._iter_sub_registers():
+                with sub_register._recursive_open() as sub_register:
+                    try:
+                        return sub_register.get_seq(descr, n, True)
+                    except Data_Not_Found_Error:
+                        pass
 
         raise Data_Not_Found_Error
 
+    def get_all_seqs(self, descr, recursively = False):
+
+        for (_descr, _), _ram_seq in self._ram_seqs.items():
+            if _descr == descr:
+                yield _ram_seq
+
+        self._check_open_raise("get_all_seqs")
+        for (_descr, _start_n, _, filename) in self._iter_all_disk_seq_metadatas():
+            if _descr == descr:
+                data = type(self).load_disk_data(filename)
+                yield Sequence(data, _descr, _start_n)
+
+        if recursively:
+            for sub_register in self._iter_sub_registers():
+                with sub_register._recursive_open() as sub_register:
+                    for seq in sub_register.get_all_seqs():
+                        yield seq
+
     def __getitem__(self, descr_and_n_and_recursively):
         short = descr_and_n_and_recursively
+
+        # check that the general shape and type of `descr_and_n_and_recursively` is correct
         if (
             isinstance(short, tuple) or
             not(2 <= len(short) <= 3) or
@@ -420,6 +523,7 @@ cannot do the following:
         ):
             raise TypeError(Register.___GETITEM___ERROR_MSG)
 
+        # check that slices do not have negative indices
         if (
             isinstance(short[1], slice) and (
                 (short.start is not None and short.start < 0) or
@@ -428,14 +532,18 @@ cannot do the following:
         ):
             raise ValueError(Register.___GETITEM___ERROR_MSG)
 
+        # unpack
         if len(short) == 2:
             descr, n = descr_and_n_and_recursively
             recursively = False
         else:
             descr, n, recursively = descr_and_n_and_recursively
 
+        # return iterator if given slice
         if isinstance(n, slice):
             return _Seq_Iter(self, descr, n, recursively)
+
+        # otherwise return a single element
         else:
             return self.get_seq(descr, n, recursively)[n]
 
@@ -446,7 +554,7 @@ cannot do the following:
             intervals_sorted = sorted(
                 [
                     (start_n, length)
-                    for _descr, start_n, length in self._get_ram_and_disk_metadatas(recursively)
+                    for _descr, start_n, length in self._iter_ram_and_disk_metadatas(recursively)
                     if descr == _descr
                 ],
                 key = lambda t: t[0]
@@ -468,14 +576,16 @@ cannot do the following:
     #################################
     # PROTEC RAM & DISK SEQ METHODS #
 
-    def _get_ram_and_disk_metadatas(self, recursively = False):
-        self._load()
-        metadatas = set()
+    def _iter_ram_and_disk_metadatas(self, recursively = False):
+
+        for metadata in chain(self._iter_all_ram_seq_metadatas(), self._iter_all_disk_seq_metadatas()):
+            yield metadata
+
         if recursively:
-            for register in self._sub_registers:
-                metadatas.update(register._get_ram_and_disk_metadatas(True))
-        metadatas.update(chain(self._ram_seqs.keys(), self._disk_seqs.keys()))
-        return metadatas
+            for sub_register in self._iter_sub_registers():
+                with sub_register._recursive_open() as sub_register:
+                    for metadata in sub_register._iter_ram_and_disk_metadatas():
+                        yield metadata
 
 class Pickle_Register(Register):
 
@@ -500,6 +610,18 @@ class NumPy_Register(Register):
         pass
 
 Register.add_subclass(NumPy_Register)
+
+class RAM_Only_Register(Register):
+
+    @classmethod
+    def dump_disk_data(cls, data, filename):
+        pass
+
+    @classmethod
+    def load_disk_data(cls, filename):
+        pass
+
+Register.add_subclass(RAM_Only_Register)
 
 class _Seq_Iter:
 

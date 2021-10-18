@@ -30,16 +30,5 @@ with register.open() as register:
         if (total % length == 0 and total > 0) or n == max_n:
 
             register.add_disk_seq(seq)
-
-            primes = []
-            seq = Sequence(primes, descr, total + 1)
-            register.add_ram_seq(seq)
-
-descr = Sequence_Description(msg = "primes")
-register = cornify(descr)
-
-with register.open() as register:
-
-    for p in register[descr, :]:
-        print(p)
-
+            seq.set_start_n(total+1)
+            primes.clear()
