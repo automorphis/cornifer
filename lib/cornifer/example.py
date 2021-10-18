@@ -23,17 +23,23 @@ with register.open() as register:
 
     for n in range(2, max_n+1):
 
+        if is_prime(n):
+            total += 1
+            primes.append(n)
+
         if (total % length == 0 and total > 0) or n == max_n:
 
             register.add_disk_seq(seq)
 
             primes = []
-            seq = Sequence(primes, descr, 1)
+            seq = Sequence(primes, descr, total + 1)
             register.add_ram_seq(seq)
 
-        if is_prime(n):
-            total += 1
-            primes.append(n)
+descr = Sequence_Description(msg = "primes")
+register = cornify(descr)
 
+with register.open() as register:
 
+    for p in register[descr, :]:
+        print(p)
 

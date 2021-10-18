@@ -398,13 +398,10 @@ cannot do the following:
             if _ram_seq.get_descr() == descr and n in _ram_seq:
                 return _ram_seq
 
-        self._load()
-        for (_descr,_start_n,_length), _filename in self._disk_seqs.items():
-            if _descr == descr and _start_n <= n < _start_n + _length:
-                return type(self).load_disk_data(_filename)
+
 
         if recursively:
-            for _sub_register in self._sub_registers:
+            for _sub_register
                 try:
                     return _sub_register.get_seq(descr, n, True)
                 except Data_Not_Found_Error:
