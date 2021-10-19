@@ -14,21 +14,23 @@ def is_prime(n):pass
 
 descr = Sequence_Description(msg = "primes")
 
+lst = []
+seq = Sequence(lst, descr, 1)
+register.add_ram_sequence(seq)
+
+total = 0
+
 with register.open() as register:
 
-    total = 0
-    primes = []
-    seq = Sequence(primes, descr, 1)
-    register.add_ram_seq(seq)
 
     for n in range(2, max_n+1):
 
         if is_prime(n):
             total += 1
-            primes.append(n)
+            lst.append(n)
 
         if (total % length == 0 and total > 0) or n == max_n:
 
-            register.add_disk_seq(seq)
+            register.add_disk_sequence(seq)
             seq.set_start_n(total+1)
-            primes.clear()
+            lst.clear()

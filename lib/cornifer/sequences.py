@@ -19,7 +19,7 @@ from abc import ABC
 
 import numpy as np
 
-from cornifer.errors import Sequence_Description_JSON_Error, Sequence_Description_Keyword_Argument_Error
+from cornifer.errors import Sequence_Description_Keyword_Argument_Error
 from cornifer.utilities import check_has_method, replace_lists_with_tuples, replace_tuples_with_lists, \
     justify_slice
 

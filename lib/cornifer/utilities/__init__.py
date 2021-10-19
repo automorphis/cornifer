@@ -38,7 +38,8 @@ def log_raise_error(error, verbose, suppress_errors):
     if not suppress_errors:
         raise error
 
-def random_unique_filename(directory, suffix ="", length = 20, alphabet = BASE56, num_attempts = 10):
+def random_unique_filename(directory, suffix ="", length = 10, alphabet = BASE56, num_attempts = 10):
+    directory = Path(directory)
     for _ in range(num_attempts):
         filename =  directory / "".join(random.choices(alphabet, k=length))
         if suffix:
@@ -50,18 +51,18 @@ def random_unique_filename(directory, suffix ="", length = 20, alphabet = BASE56
 def check_has_method(instance, method_name):
     return hasattr(instance.__class__, method_name) and callable(getattr(instance.__class__, method_name))
 
-def safe_overwrite_file(filename, new_content):
-    tempfile = random_unique_filename(filename.parent)
-    try:
-        with tempfile.open("w") as fh:
-            fh.write(new_content)
-        Path.unlink(filename)
-        Path.rename(tempfile, filename)
-    except OSError:
-        raise OSError(
-            "An error occured somewhere while updating data. A copy of the data can be found in either the "
-            f"file `{str(filename)}` or the file `{str(tempfile)}`."
-        )
+# def safe_overwrite_file(filename, new_content):
+#     tempfile = random_unique_filename(filename.parent)
+#     try:
+#         with tempfile.open("w") as fh:
+#             fh.write(new_content)
+#         Path.unlink(filename)
+#         Path.rename(tempfile, filename)
+#     except OSError:
+#         raise OSError(
+#             "An error occured somewhere while updating data. A copy of the data can be found in either the "
+#             f"file `{str(filename)}` or the file `{str(tempfile)}`."
+#         )
 
 def replace_lists_with_tuples(json_obj):
     if isinstance(json_obj, dict):
@@ -102,13 +103,13 @@ def _justify_slice_start_stop(num, min_index, max_index, length):
         num = max_index + 1
     return num - min_index
 
-@contextmanager
-def open_leveldb(filename, create_if_missing = False):
-    db = plyvel.DB(filename, create_if_missing=create_if_missing)
-    try:
-        yield db
-    finally:
-        db.close()
+# @contextmanager
+# def open_leveldb(filename, create_if_missing = False):
+#     db = plyvel.DB(filename, create_if_missing=create_if_missing)
+#     try:
+#         yield db
+#     finally:
+#         db.close()
 
 def leveldb_has_key(db, key):
     return db.get(key,default = None) is not None
