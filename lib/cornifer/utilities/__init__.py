@@ -26,9 +26,17 @@ BYTES_PER_GB = 1024**3
 BASE56 = "23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
 
 def intervals_overlap(int1,int2):
+    """Check if the half-open interval [int1[0], int1[0] + int1[1]) has a non-empty intersection with
+    [int2[0], int2[0] + int2[1])"""
+
+    if int1[1] == 0 or int2[1] == 0:
+        return False
+    if int1[1] < 0 or int2[1] < 0:
+        raise ValueError
+
     a1,l1 = int1
     a2,l2 = int2
-    return a1 <= a2 < a1 + l1 or a1 <= a2 + l2 < a1 + l1 or a2 <= a1 < a2 + l2 or a2 <= a1 + l1 < a2 + l2
+    return a1 <= a2 < a1 + l1 or a1 < a2 + l2 <= a1 + l1 or a2 <= a1 < a2 + l2 or a2 < a1 + l1 <= a2 + l2
 
 def log_raise_error(error, verbose, suppress_errors):
     if verbose:
@@ -64,13 +72,13 @@ def check_has_method(instance, method_name):
 #             f"file `{str(filename)}` or the file `{str(tempfile)}`."
 #         )
 
-def replace_lists_with_tuples(json_obj):
-    if isinstance(json_obj, dict):
-        return {key: replace_lists_with_tuples(val) for key,val in json_obj.items()}
-    elif isinstance(json_obj, list):
-        return tuple([replace_lists_with_tuples(x) for x in json_obj])
+def replace_lists_with_tuples(obj):
+    if isinstance(obj, dict):
+        return {key: replace_lists_with_tuples(val) for key,val in obj.items()}
+    elif isinstance(obj, list) or isinstance(obj, tuple):
+        return tuple([replace_lists_with_tuples(x) for x in obj])
     else:
-        return json_obj
+        return obj
 
 def replace_tuples_with_lists(pre_json_obj):
     if isinstance(pre_json_obj, dict):
