@@ -80,36 +80,50 @@ def replace_lists_with_tuples(obj):
     else:
         return obj
 
-def replace_tuples_with_lists(pre_json_obj):
-    if isinstance(pre_json_obj, dict):
-        return {key: replace_lists_with_tuples(val) for key,val in pre_json_obj.items()}
-    elif isinstance(pre_json_obj, tuple):
-        return [replace_lists_with_tuples(x) for x in pre_json_obj]
+def replace_tuples_with_lists(obj):
+    if isinstance(obj, dict):
+        return {key: replace_tuples_with_lists(val) for key,val in obj.items()}
+    elif isinstance(obj, tuple) or isinstance(obj, list):
+        return [replace_tuples_with_lists(x) for x in obj]
     else:
-        return pre_json_obj
+        return obj
 
-def justify_slice(slc, min_index, max_index, length):
+def justify_slice(slc, min_index, max_index):
+    """If a slice has negative or `None` indices, then this function will return a new slice with equivalent,
+    non-`None`, positive indices.
+
+    :param slc: (type `slice`) The `slice` to justify.
+    :param min_index: (type non-negative `int`) The minimum index of the justified slice.
+    :param max_index: (type non-negative `int`) The maximum index of the justified slice.
+    :return: The justified `slice`.
+    """
+
+    if max_index < min_index:
+        raise ValueError("max_index < min_index")
+    if max_index < 0:
+        raise ValueError("max_index < 0")
+    if min_index < 0:
+        raise ValueError("min_index < 0")
+
     start = slc.start   if slc.start    else min_index
     stop =  slc.stop    if slc.stop     else max_index
     step =  slc.step    if slc.step     else 1
 
-    start = _justify_slice_start_stop(start, min_index, max_index, length)
-    stop =  _justify_slice_start_stop(stop,  min_index, max_index, length)
+    start = _justify_slice_start_stop(start, min_index, max_index)
+    stop =  _justify_slice_start_stop(stop, min_index, max_index)
 
     return slice(start, stop, step)
 
-def _justify_slice_start_stop(num, min_index, max_index, length):
+def _justify_slice_start_stop(num, min_index, max_index):
+    mod = max_index - min_index + 1
     if num < 0:
-        num += length
-        if num < min_index:
-            num = min_index
-        elif num > max_index:
-            num = max_index + 1
-    elif num < min_index:
-        num = min_index
+        num += mod + min_index
+    if num < min_index:
+        return 0
     elif num > max_index:
-        num = max_index + 1
-    return num - min_index
+        return mod
+    else:
+        return num - min_index
 
 # @contextmanager
 # def open_leveldb(filename, create_if_missing = False):

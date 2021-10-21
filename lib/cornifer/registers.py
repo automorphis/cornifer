@@ -62,7 +62,7 @@ cannot do the following:
     )
 
     _ADD_DISK_SEQ_ERROR_MSG = (
-        "The `add_disk_seq` failed. The `seq` has not been dumped to disk, nor has it been linked with this "+
+        "The `add_disk_sequence` failed. The `seq` has not been dumped to disk, nor has it been linked with this "+
         "register."
     )
 
@@ -401,9 +401,11 @@ cannot do the following:
         )
 
     def _iter_disk_sequence_metadatas_from_description(self, descr):
+
         descr_bytes = descr.to_json().encode("ASCII")
         prefix = _SUB_KEY_PREFIX + descr_bytes + _KEY_SEP
         it = self._db.iterator(prefix = prefix)
+
         try:
             for key,val in it:
                 yield self._convert_disk_sequence_key(key, descr_bytes) + (val,)
@@ -462,6 +464,11 @@ cannot do the following:
     def _iter_all_ram_sequence_metadatas(self):
         for (descr, start_n), seq in self._ram_seqs.items():
             yield descr, start_n, len(seq)
+
+    def _iter_ram_sequence_metadatas_from_description(self, descr):
+        for (_descr, _start_n), _seq in self._ram_seqs.items():
+            if _descr == descr:
+                yield _descr, _start_n, len(_seq)
 
     #################################
     # PUBLIC RAM & DISK SEQ METHODS #
@@ -537,42 +544,38 @@ cannot do the following:
 
         # return iterator if given slice
         if isinstance(n, slice):
-            return _Seq_Iter(self, descr, n, recursively)
+            return _Element_Iter(self, descr, n, recursively)
 
         # otherwise return a single element
         else:
             return self.get_sequence(descr, n, recursively)[n]
 
-    def list_sequences_calculated(self, recursively = False):
+    def list_sequences_calculated(self, descr, recursively = False):
 
-        ret = {}
-        for descr in self.get_all_descriptions(recursively):
-            intervals_sorted = sorted(
-                [
-                    (start_n, length)
-                    for _descr, start_n, length in self._iter_ram_and_disk_sequence_metadatas(recursively)
-                    if descr == _descr
-                ],
-                key = lambda t: t[0]
-            )
-            intervals_reduced = []
-            for int1 in intervals_sorted:
-                for i, int2 in enumerate(intervals_reduced):
-                    if intervals_overlap(int1,int2):
-                        a1, l1 = int1
-                        a2, l2 = int2
-                        if a2 + l2 < a1 + l1:
-                            intervals_reduced[i] = (a2, a1 + l1 - a2)
-                            break
-                else:
-                    intervals_reduced.append(int1)
-            ret[descr] = intervals_reduced
-        return ret
+        intervals_sorted = sorted(
+            [
+                (start_n, length)
+                for _, start_n, length, _ in self._iter_ram_and_disk_sequence_metadatas_from_description(descr,recursively)
+            ],
+            key = lambda t: t[0]
+        )
+        intervals_reduced = []
+        for int1 in intervals_sorted:
+            for i, int2 in enumerate(intervals_reduced):
+                if intervals_overlap(int1,int2):
+                    a1, l1 = int1
+                    a2, l2 = int2
+                    if a2 + l2 < a1 + l1:
+                        intervals_reduced[i] = (a2, a1 + l1 - a2)
+                        break
+            else:
+                intervals_reduced.append(int1)
+        return intervals_reduced
 
     #################################
     # PROTEC RAM & DISK SEQ METHODS #
 
-    def _iter_ram_and_disk_sequence_metadatas(self, recursively = False):
+    def _iter_all_ram_and_disk_sequence_metadatas(self, recursively = False):
 
         for metadata in chain(self._iter_all_ram_sequence_metadatas(), self._iter_all_disk_seq_metadatas()):
             yield metadata
@@ -581,6 +584,20 @@ cannot do the following:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open() as subreg:
                     for metadata in subreg._iter_ram_and_disk_sequence_metadatas():
+                        yield metadata
+                        
+    def _iter_ram_and_disk_sequence_metadatas_from_description(self, descr, recursively = False):
+
+        for metadata in chain(
+            self._iter_ram_sequence_metadatas_from_description(descr),
+            self._iter_disk_sequence_metadatas_from_description(descr)
+        ):
+            yield metadata
+
+        if recursively:
+            for subreg in self._iter_subregisters():
+                with subreg._recursive_open() as subreg:
+                    for metadata in subreg._iter_ram_sequence_metadatas_from_description(descr, True):
                         yield metadata
 
 class Pickle_Register(Register):
@@ -631,7 +648,19 @@ class Plaintext_Register(Register):
 
 Register.add_subclass(Plaintext_Register)
 
-class _Seq_Iter:
+class HDF5_Register(Register):
+
+    @classmethod
+    def dump_disk_data(cls, data, filename):
+        pass
+
+    @classmethod
+    def load_disk_data(cls, filename):
+        pass
+
+Register.add_subclass(HDF5_Register)
+
+class _Register_Iter:
 
     def __init__(self, reg, descr, slc, recursively = False):
         self.reg = reg
@@ -640,19 +669,40 @@ class _Seq_Iter:
             slc.start if slc.start else 0,
             slc.stop,
             slc.step  if slc.step  else 1
-         )
-        self.recursively = recursively
-        self.curr_n = self.slc.start
+        )
         self.curr_seq = None
+        self.recursively = recursively
+        self.intervals = chain(
+            range(
+                max(t[0], self.slc.start),
+                min(t[0] + t[1], self.slc.stop) if self.slc.stop else t[0] + t[1]
+            )
+            for t in self.reg.list_intervals_calculated(self.descr,self.recursively)
+            if (
+                (self.slc.stop and intervals_overlap(t, (self.slc.start, self.slc.stop - self.slc.start))) or
+                (not self.slc.stop and self.slc.start <= t[1] + t[0])
+            )
+        )
 
     def __iter__(self):
         return self
+
+class _Element_Iter(_Register_Iter):
+
+    def __next__(self):
+
+        curr_n = next(self.intervals) # raises StopIteration
+        if not self.curr_seq or self.curr_n not in self.curr_seq:
+            self.curr_seq = self.reg.get_sequence(self.descr, self.curr_n, self.recursively)
+        ret = self.curr_seq[self.curr_n]
+        self.curr_n += self.slc.step
+        return self.curr_n, ret
+
+class _Sequence_Iter(_Register_Iter):
 
     def __next__(self):
         if self.slc.stop is not None and self.curr_n >= self.slc.stop:
             raise StopIteration
         if not self.curr_seq or self.curr_n not in self.curr_seq:
-            self.curr_seq = self.reg.get_sequence(self.descr, self.curr_n, self.recursively)
+            ret = self.reg.get_sequence(self.descr, self.curr_n, self.recursively)
         ret = self.curr_seq[self.curr_n]
-        self.curr_n += self.slc.step
-        return ret
