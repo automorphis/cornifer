@@ -1,6 +1,5 @@
 import shutil
 import time
-from itertools import product
 from pathlib import Path
 from unittest import TestCase
 

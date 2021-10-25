@@ -48,16 +48,16 @@ class Sequence_Description:
         self._json = None
         self._json = self.to_json()
 
-        try:
-            self._json.encode("ASCII")
-        except UnicodeEncodeError:
-            raise Sequence_Description_Keyword_Argument_Error(
-                "`descr.to_json()` returns invalid JSON because it contains a non-ASCII character.\nPlease " +
-                "use different keyword-arguments that do not contain non-ASCII characters when you construct"+
-                "`Sequence_Description`, or override `to_json` so that it does not return a string that " +
-                "contains non-ASCII characters." +
-                f"`descr.to_json()` returns:\n{self._json}"
-            )
+        # try:
+        self._json.encode("ASCII")
+        # except UnicodeEncodeError:
+        #     raise Sequence_Description_Keyword_Argument_Error(
+        #         "`descr.to_json()` returns invalid JSON because it contains a non-ASCII character.\nPlease " +
+        #         "use different keyword-arguments that do not contain non-ASCII characters when you construct"+
+        #         "`Sequence_Description`, or override `to_json` so that it does not return a string that " +
+        #         "contains non-ASCII characters." +
+        #         f"`descr.to_json()` returns:\n{self._json}"
+        #     )
 
         if "\0\0" in self._json:
             raise Sequence_Description_Keyword_Argument_Error(
@@ -87,12 +87,17 @@ class Sequence_Description:
             del kwargs["_hash"]
             kwargs = order_json_obj(kwargs)
             try:
-                return json.dumps(kwargs)
-            except json.JSONDecodeError:
+                return json.dumps(kwargs,
+                    ensure_ascii = True,
+                    allow_nan = True,
+                    indent = None,
+                    separators = (',', ':')
+                )
+            except (TypeError, ValueError):
                 raise Sequence_Description_Keyword_Argument_Error(
                     "One of the keyword arguments used to construct this instance cannot be encoded into " +
-                    "JSON. Please reconstruct this instance using valid JSON, or override the classmethod " +
-                    f"`{self.__class__.__name__}.from_json` and the instancemethod " +
+                    "JSON. Please reconstruct this instance using different arguments, or override the " +
+                    f"classmethod `{self.__class__.__name__}.from_json` and the instancemethod " +
                     f"`{self.__class__.__name__}.to_json`."
                 )
         else:

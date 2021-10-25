@@ -25,7 +25,7 @@ import numpy as np
 import plyvel
 
 from cornifer.errors import Sub_Register_Cycle_Error, Data_Not_Found_Error, LevelDB_Error, \
-    Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error
+    Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error, Register_Not_Created_Error
 from cornifer.sequences import Sequence_Description, Block
 from cornifer.utilities import intervals_overlap, random_unique_filename, leveldb_has_key, \
     leveldb_prefix_iterator
@@ -94,10 +94,10 @@ cannot do the following:
     def __init__(self, saves_directory, msg):
         self.saves_directory = Path(saves_directory)
 
-        if not self.saves_directory.is_file():
+        if not self.saves_directory.is_dir():
             raise FileNotFoundError(
                 f"You must create the file `{str(self.saves_directory)}` before calling "+
-                f"`{self.__class__.__name__}({str(self.saves_directory)})`."
+                f"`{self.__class__.__name__}(\"{str(self.saves_directory)}\", \"{msg}\")`."
             )
 
         elif not isinstance(msg, str):
@@ -119,6 +119,7 @@ cannot do the following:
 
         self._start_n_magn = 0
         self._start_n_magn_bytes = b"0"
+        self._start_n_mod = 1
         self._start_n_res_len = Register._START_N_RES_LEN_DEFAULT
         self._start_n_res_len_bytes = str(self._start_n_res_len).encode("ASCII")
 
@@ -151,13 +152,13 @@ cannot do the following:
                 "`Register` is an abstract class, meaning that `Register` itself cannot be instantiated, " +
                 "only its concrete subclasses."
             )
-        try:
-            reg = Register._constructors[name](local_dir.parent)
-        except KeyError:
+        con = Register._constructors.get(name, None)
+        if con is None:
             raise ValueError(
                 f"`Register` is not aware of a subclass called \"{name}\". Please add the subclass to " +
                 f"`Register` via `Register.add_subclass({name})`."
             )
+        reg = con(local_dir.parent)
         reg._set_local_dir(local_dir)
         return Register._get_instance(reg)
 
@@ -177,13 +178,22 @@ cannot do the following:
     #    PUBLIC REGISTER METHODS    #
 
     def __eq__(self, other):
-        return self._local_dir.resolve() == other._local_dir.resolve()
+        if not self._created:
+            raise Register_Not_Created_Error("__eq__")
+        else:
+            return self._local_dir.resolve() == other._local_dir.resolve()
 
     def __hash__(self):
-        return hash(str(self._local_dir.resolve()))
+        if not self._created:
+            raise Register_Not_Created_Error("__hash__")
+        else:
+            return hash(str(self._local_dir.resolve())) + hash(type(self))
 
     def __str__(self):
         return self._msg
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({str(self.saves_directory)}, \"{self._msg}\")"
 
     def set_message(self, msg):
         self._check_open_raise("set_msg")
@@ -237,6 +247,7 @@ cannot do the following:
 
             self._start_n_magn = magnitude
             self._start_n_magn_bytes = str(magnitude).encode("ASCII")
+            self._start_n_mod = 10**magnitude
             try:
                 self._db.put(_START_N_MAGN_KEY, self._start_n_magn_bytes)
             except plyvel.Error:
@@ -298,8 +309,9 @@ cannot do the following:
     @contextmanager
     def open(self):
         if not self._created:
-            self._set_local_dir(random_unique_filename(self.saves_directory))
-            Path.mkdir(self._local_dir)
+            local_dir = random_unique_filename(self.saves_directory)
+            local_dir.mkdir()
+            self._set_local_dir(local_dir)
             self._db = plyvel.DB(self._reg_file, True)
             self._opened = True
             with self._db.write_batch(transaction = True) as wb:
@@ -334,7 +346,7 @@ cannot do the following:
     @contextmanager
     def _recursive_open(self):
         if not self._created:
-            yield None
+            raise Register_Not_Created_Error("_recursive_open")
         else:
             try:
                 opened = self._open_created()
@@ -354,12 +366,18 @@ cannot do the following:
         if not self._local_dir.is_dir():
             raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
 
-    def _set_local_dir(self, filename):
-        if not filename.is_dir():
+    def _set_local_dir(self, local_dir):
+        if not local_dir.parent.resolve() == self.saves_directory.resolve():
+            raise ValueError(
+                "The `local_dir` argument must be a sub-directory of `reg.saves_directory`.\n" +
+                f"`local_dir.parent`    : {str(local_dir.parent)}\n"
+                f"`reg.saves_directory` : {str(self.saves_directory)}"
+            )
+        if not local_dir.is_dir():
             raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
         self._created = True
-        self._local_dir = filename
-        self._local_dir_bytes = self._local_dir.encode()
+        self._local_dir = local_dir
+        self._local_dir_bytes = str(self._local_dir).encode("ASCII")
         self._reg_file = self._local_dir / _REGISTER_LEVELDB_NAME
         self._subreg_bytes = (
             _SUB_KEY_PREFIX + self._local_dir_bytes
@@ -625,7 +643,7 @@ cannot do the following:
 
     @staticmethod
     def _split_disk_block_key(key):
-        return key[:_BLK_KEY_PREFIX_LEN].split(_KEY_SEP)
+        return tuple(key[_BLK_KEY_PREFIX_LEN:].split(_KEY_SEP))
 
     @staticmethod
     def _join_disk_block_metadata(descr_json, start_n_bytes, length_bytes):
@@ -642,7 +660,11 @@ cannot do the following:
         if descr is None:
             descr_json = self._get_descr_by_id(descr_id)
             descr = Sequence_Description.from_json(descr_json.decode("ASCII"))
-        return descr, int(start_n_bytes.decode("ASCII")), int(length_bytes.decode("ASCII"))
+        return (
+            descr,
+            int(start_n_bytes.decode("ASCII")) + self._start_n_mod,
+            int(length_bytes.decode("ASCII"))
+        )
 
     #################################
     #    PUBLIC RAM BLK METHODS     #
@@ -665,7 +687,7 @@ cannot do the following:
 
         for _, start_n, length in self._iter_ram_block_metadatas(descr):
             if start_n <= n < start_n + length:
-                return self.get_ram_block_by_metadata(descr, start_n, length)
+                return self._ram_blks[(descr, start_n)]
 
         if recursively:
             for subreg in self._iter_subregisters():
@@ -677,23 +699,14 @@ cannot do the following:
 
         raise Data_Not_Found_Error
 
-    def get_ram_block_by_metadata(self, descr, start_n, length, recursively = False):
-        try:
-            return self._ram_blks[(descr, start_n, length)]
-        except KeyError:
-            if recursively:
-                for subreg in self._iter_subregisters():
-                    with subreg._recursive_open() as subreg:
-                        try:
-                            return subreg.get_ram_block_by_metadata(descr, start_n, length, True)
-                        except Data_Not_Found_Error:
-                            pass
-                raise Data_Not_Found_Error
-            else:
-                raise Data_Not_Found_Error
-
-    def get_all_ram_blocks(self, descr):
-        return self._ram_blks.values()
+    def get_all_ram_blocks(self, recursively = False):
+        for blk in self._ram_blks.values():
+            yield blk
+        if recursively:
+            for subreg in self._iter_subregisters():
+                with subreg._recursive_open() as subreg:
+                    for blk in subreg.get_all_ram_blocks(True):
+                        yield blk
 
     #################################
     #    PROTEC RAM BLK METHODS     #
@@ -746,7 +759,7 @@ cannot do the following:
                     break
             else:
                 raise Data_Not_Found_Error()
-            return self.get_disk_block(descr,start_n, length, recursively)[n]
+            return self.get_disk_block_by_metadata(descr, start_n, length, recursively)[n]
 
     def list_sequences_calculated(self, descr, recursively = False):
 

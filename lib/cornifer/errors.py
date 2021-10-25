@@ -24,8 +24,15 @@ class Register_Already_Open_Error(RuntimeError):
 class Register_Not_Open_Error(RuntimeError):
     def __init__(self, method_name):
         super().__init__(
-            f"Please open this register via `with register.open():` before calling the method " +
-            f"`register.{method_name}`."
+            f"You must open this register via `with reg.open() as reg:` before calling the method " +
+            f"`reg.{method_name}()`."
+        )
+
+class Register_Not_Created_Error(RuntimeError):
+    def __init__(self, methodname):
+        super().__init__(
+            f"The `Register` database has not been created. You must do `with reg.open() as reg:` at " +
+            f"least once before calling the method `{methodname}`."
         )
 
 class Data_Not_Dumped_Error(RuntimeError):pass
