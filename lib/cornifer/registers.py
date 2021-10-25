@@ -542,7 +542,7 @@ cannot do the following:
             self._db.remove(key)
             filename.unlink() # TODO add error checks
 
-    def get_disk_block(self, descr, start_n, length, recursively = False):
+    def get_disk_block_by_metadata(self, descr, start_n, length, recursively = False):
 
         self._check_open_raise("get_disk_block")
         key = self._get_disk_data_key(descr, None, start_n, length)
@@ -556,6 +556,22 @@ cannot do the following:
                 with subreg._recursive_open() as subreg:
                     try:
                         return subreg.get_disk_block(descr, start_n, length, True)
+                    except Data_Not_Found_Error:
+                        pass
+
+        raise Data_Not_Found_Error
+
+    def get_disk_block_by_n(self, descr, n, recursively = False):
+
+        for descr, start_n, length, _ in self._iter_disk_block_metadatas(descr, None):
+            if start_n <= n < start_n + length:
+                return self.get_disk_block_by_metadata(descr, start_n, length)
+
+        if recursively:
+            for subreg in self._iter_subregisters():
+                with subreg._recursive_open() as subreg:
+                    try:
+                        return subreg.get_disk_block_by_n(descr, n, True)
                     except Data_Not_Found_Error:
                         pass
 
@@ -644,6 +660,40 @@ cannot do the following:
             del self._ram_blks[(blk.get_descr(), blk.get_start_n())]
         except KeyError:
             pass
+
+    def get_ram_block_by_n(self, descr, n, recursively = False):
+
+        for _, start_n, length in self._iter_ram_block_metadatas(descr):
+            if start_n <= n < start_n + length:
+                return self.get_ram_block_by_metadata(descr, start_n, length)
+
+        if recursively:
+            for subreg in self._iter_subregisters():
+                with subreg._recursive_open() as subreg:
+                    try:
+                        return subreg.get_disk_block_by_n(descr, n, True)
+                    except Data_Not_Found_Error:
+                        pass
+
+        raise Data_Not_Found_Error
+
+    def get_ram_block_by_metadata(self, descr, start_n, length, recursively = False):
+        try:
+            return self._ram_blks[(descr, start_n, length)]
+        except KeyError:
+            if recursively:
+                for subreg in self._iter_subregisters():
+                    with subreg._recursive_open() as subreg:
+                        try:
+                            return subreg.get_ram_block_by_metadata(descr, start_n, length, True)
+                        except Data_Not_Found_Error:
+                            pass
+                raise Data_Not_Found_Error
+            else:
+                raise Data_Not_Found_Error
+
+    def get_all_ram_blocks(self, descr):
+        return self._ram_blks.values()
 
     #################################
     #    PROTEC RAM BLK METHODS     #
@@ -794,6 +844,12 @@ class _Element_Iter:
     def update_sequences_calculated(self):
         self.intervals = dict( self.reg.list_sequences_calculated(self.descr, self.recursively) )
 
+    def get_next_block(self):
+        try:
+            return self.reg.get_ram_block_by_n(self.descr, self.curr_n, self.recursively)
+        except Data_Not_Found_Error:
+            return self.reg.get_disk_block_by_n(self.descr, self.curr_n, self.recursively)
+
     def __iter__(self):
         return self
 
@@ -805,11 +861,14 @@ class _Element_Iter:
         elif self.curr_blk is None:
             self.update_sequences_calculated()
             self.curr_n = max( self.intervals[0][0] , self.curr_n )
-            self.curr_blk = self.reg.get_disk_block(self.descr, self.curr_n, self.recursively)
+            try:
+                self.curr_blk = self.get_next_block()
+            except Data_Not_Found_Error:
+                raise StopIteration
 
         elif self.curr_n not in self.curr_blk:
             try:
-                self.curr_blk = self.reg.get_disk_block(self.descr, self.curr_n, self.recursively)
+                self.curr_blk = self.get_next_block()
             except Data_Not_Found_Error:
                 self.update_sequences_calculated()
                 for start, length in self.intervals:
@@ -818,7 +877,7 @@ class _Element_Iter:
                         break
                 else:
                     raise StopIteration
-                self.curr_blk = self.reg.get_disk_block(self.descr, self.curr_n, self.recursively)
+                self.curr_blk = self.get_next_block()
 
         ret = self.curr_blk[self.curr_n]
         self.curr_n += self.step
