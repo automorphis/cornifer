@@ -15,15 +15,15 @@
 
 import json
 import warnings
-from abc import ABC
 
 import numpy as np
 
 from cornifer.errors import Sequence_Description_Keyword_Argument_Error
 from cornifer.utilities import check_has_method, replace_lists_with_tuples, replace_tuples_with_lists, \
-    justify_slice
+    justify_slice, order_json_obj
 
-class Sequence_Description(ABC):
+
+class Sequence_Description:
 
     def __init__(self, **kwargs):
 
@@ -33,15 +33,17 @@ class Sequence_Description(ABC):
                 "key."
             )
 
-        self._hash = 0
+        self._hash = hash(type(self))
         for key,val in kwargs.items():
             try:
                 self._hash += hash(val)
             except (TypeError, AttributeError):
                 raise Sequence_Description_Keyword_Argument_Error(
                     f"All keyword arguments must be hashable types. The keyword argument given by \"{key}\" "+
-                    f"not a hashable type. The type of that argument is `{str(type(val))}`."
+                    f"not a hashable type. The type of that argument is `{val.__class__.__name__}`."
                 )
+
+        self.__dict__.update(kwargs)
 
         self._json = None
         self._json = self.to_json()
@@ -58,23 +60,23 @@ class Sequence_Description(ABC):
             )
 
         if "\0\0" in self._json:
-            raise Sequence_Description_JSON_Error(
-                "`descr.to_json()` returns invalid JSON because it contains the double-null "+
+            raise Sequence_Description_Keyword_Argument_Error(
+                "`descr._tojson()` returns invalid JSON because it contains the double-null "+
                 "substring \"\\0\\0\". This substring is reserved because it is used as a separator.\n"+
                 "Please use different keyword-arguments that do not contain \"\\0\\0\" when you construct "+
                 "`Sequence_Description`, or override `to_json` so that it does not return a string that "+
                 "contains \"\\0\\0\".\n" +
                 f"`descr.to_json()` returns:\n{self._json}"
             )
-        self.__dict__.update(kwargs)
 
     @classmethod
     def from_json(cls, json_string):
         json_obj = json.loads(json_string)
         if not isinstance(json_obj, dict):
             raise TypeError(
-                "The outermost layer of the passed `json_string` must be a JavaScript `object`, that is, "
-                f"a Python `dict`. The outermost layer of the passed `json_string` is: `{type(json_obj)}`."
+                "The outermost layer of the passed `json_string` must be a JavaScript `object`, that is, " +
+                f"a Python `dict`. The outermost layer of the passed `json_string` is: " +
+                f"`{json_obj.__class__.__name__}`."
             )
         return cls(**replace_lists_with_tuples(json_obj))
 
@@ -83,13 +85,15 @@ class Sequence_Description(ABC):
             kwargs = replace_tuples_with_lists(self.__dict__)
             del kwargs["_json"]
             del kwargs["_hash"]
+            kwargs = order_json_obj(kwargs)
             try:
                 return json.dumps(kwargs)
             except json.JSONDecodeError:
-                raise ValueError(
-                    "One of the keyword arguments used to construct this instance is not valid JSON. Please "
-                    "reconstruct this instance using valid JSON, or override the classmethod "
-                    f"`{type(self)}.from_json` and the instancemethod `{type(self)}.to_json`."
+                raise Sequence_Description_Keyword_Argument_Error(
+                    "One of the keyword arguments used to construct this instance cannot be encoded into " +
+                    "JSON. Please reconstruct this instance using valid JSON, or override the classmethod " +
+                    f"`{self.__class__.__name__}.from_json` and the instancemethod " +
+                    f"`{self.__class__.__name__}.to_json`."
                 )
         else:
             return self._json
@@ -98,7 +102,7 @@ class Sequence_Description(ABC):
         return self._hash
 
     def __eq__(self, other):
-        return self.to_json() == other.to_json()
+        return type(self) == type(other) and self.to_json() == other.to_json()
 
     def __copy__(self):
         descr = Sequence_Description()
@@ -108,14 +112,24 @@ class Sequence_Description(ABC):
     def __deepcopy__(self, memo):
         return self.__copy__()
 
-class Sequence:
+class Block:
 
-    def __init__(self, data, descr, start_n):
+    def __init__(self, data, descr, start_n = 0):
 
         self._custom_dtype = False
 
         if not isinstance(descr, Sequence_Description):
-            raise TypeError(f"`descr` must be a `Calculation_Description` derived type. Passed type: {type(descr)}")
+            raise TypeError(
+                f"`descr` must be a `Sequence_Description` derived type. Passed " +
+                f"type: {descr.__class__.__name__}"
+            )
+
+        elif not isinstance(start_n, int):
+            raise TypeError("`start_n` must be an integer")
+
+        elif start_n < 0:
+            raise ValueError("`start_n` must be non-negative")
+
 
         if isinstance(data, list):
             self._dtype = "list"
@@ -125,7 +139,8 @@ class Sequence:
 
         elif not check_has_method(data, "__len__"):
             raise ValueError(
-                f"`len(data)` must be defined. Please define the method `__len__` for the type `{type(data)}`."
+                f"`len(data)` must be defined. Please define the method `__len__` for the type " +
+                f"`{data.__class__.__name__}`."
             )
 
         else:
@@ -136,7 +151,6 @@ class Sequence:
         self._descr = descr
         self._data = data
         self._data_ndarray = None
-        self._filename = None
 
     def _check_and_warn_custom_get_ndarray(self, method_name):
 
@@ -145,56 +159,71 @@ class Sequence:
                 self._data_ndarray = self._data.get_ndarray()
             except NameError:
                 raise NotImplementedError(
-                    f"If you have not implemented `{method_name}` for the type `{type(self._data)}`, then " +
-                    f"you must implement the method `get_ndarray()` for the type `{type(self._data)}`."
+                    f"If you have not implemented `{method_name}` for the type" +
+                    f" `{self._data.__class__.__name__}`, then you must implement the method " +
+                    f"`get_ndarray()` for the type `{self._data.__class__.__name__}`."
                 )
             warnings.warn(
-                f"The custom type `{type(self._data)}` has not defined the method `{method_name}`. The API" +
-                " is calling the method `get_ndarray`, which may slow down the program or lead to " +
-                "unexpected behavior."
+                f"The custom type `{self._data.__class__.__name__}` has not defined the method" +
+                f" `{method_name}`. The API is calling the method `get_ndarray`, which may slow down the " +
+                f"program or lead to unexpected behavior."
             )
             return False
 
         else:
             return True
 
-    def get_start_n(self):
-        return self._start_n
-
-    def set_start_n(self, start_n):
-        self._start_n = start_n
+    def get_data(self):
+        return self._data
 
     def get_descr(self):
         return self._descr
 
-    def subdivide(self, interval_length):
-        if not isinstance(interval_length, int):
-            raise TypeError("`interval_length` must be an integer")
-        if interval_length <= 1:
-            raise ValueError("`interval_length` must be at least 2")
+    def get_start_n(self):
+        return self._start_n
+
+    def set_start_n(self, start_n):
+        if not isinstance(start_n, int):
+            raise TypeError("`start_n` must be an integer")
+        elif start_n < 0:
+            raise ValueError("`start_n` must be positive")
+        self._start_n = start_n
+
+    def subdivide(self, subinterval_length):
+        if not isinstance(subinterval_length, int):
+            raise TypeError("`subinterval_length` must be an integer")
+        if subinterval_length <= 1:
+            raise ValueError("`subinterval_length` must be at least 2")
         start_n = self.get_start_n()
         return [
-            self[i : i + interval_length]
-            for i in range(start_n, start_n + len(self), interval_length)
+            self[i : i + subinterval_length]
+            for i in range(start_n, start_n + len(self), subinterval_length)
         ]
 
     def __getitem__(self, item):
 
-        if isinstance(item, slice):
+        if isinstance(item, tuple):
+            raise IndexError(
+                "`blk[]` cannot take more than one dimension of indices."
+            )
+
+        elif isinstance(item, slice):
             descr = self.get_descr()
             start_n = self.get_start_n()
             length = len(self)
-            item = justify_slice(item, start_n, start_n + length - 1, length)
+            item = justify_slice(item, start_n, start_n + length - 1)
 
             if not self._check_and_warn_custom_get_ndarray("__getitem__"):
-                return Sequence(self._data_ndarray[item], descr, start_n)
+                return Block(self._data_ndarray[item, ...], descr, start_n)
+            elif self._dtype == "ndarray":
+                return Block(self._data[item, ...], descr, start_n)
             else:
-                return Sequence(self._data[item], descr, start_n)
+                return Block(self._data[item], descr, start_n)
 
         else:
             if item not in self:
                 raise IndexError(
-                    f"Indices must be between {self.get_start_n()} and {self.get_start_n() + len(self) - 1}"+
+                    f"Indices must be between {self.get_start_n()} and {self.get_start_n() + len(self) - 1}" +
                     ", inclusive."
                 )
 
@@ -215,15 +244,16 @@ class Sequence:
 
     def __hash__(self):
         raise TypeError(
-            f"The type `{type(self)}` is not hashable. Please instead hash " +
-            f"`(seq.get_descr(), seq.get_start_n(), len(seq))`."
+            f"The type `{self.__class__.__name__}` is not hashable. Please instead hash " +
+            f"`(blk.get_descr(), blk.get_start_n(), len(blk))`."
         )
 
     def __eq__(self, other):
 
         if (
             type(self) != type(other) or self._dtype != other._dtype or
-            self.get_descr() != other.get_descr() or self.get_start_n != other.get_start_n
+            self.get_descr() != other.get_descr() or self.get_start_n() != other.get_start_n() or
+            len(self) != len(other)
         ):
             return False
 

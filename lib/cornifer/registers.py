@@ -14,32 +14,48 @@
 """
 
 import inspect
+import math
+import pickle
 from contextlib import contextmanager
 from itertools import chain
 from pathlib import Path
 from abc import ABC, abstractmethod
 
+import numpy as np
 import plyvel
 
 from cornifer.errors import Sub_Register_Cycle_Error, Data_Not_Found_Error, LevelDB_Error, \
     Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error
-from cornifer.sequences import Sequence_Description, Sequence
-from cornifer.utilities import intervals_overlap, random_unique_filename, leveldb_has_key
+from cornifer.sequences import Sequence_Description, Block
+from cornifer.utilities import intervals_overlap, random_unique_filename, leveldb_has_key, \
+    leveldb_prefix_iterator
 
 #################################
 #         LEVELDB KEYS          #
 
-_REGISTER_LEVELDB_NAME = "register"
-_KEY_SEP = b"\x00\x00"
-_KEY_SEP_LEN = len(_KEY_SEP)
-_START_N_PREFIX_KEY = b"start_n_prefix"
-_CLS_KEY = b"cls"
-_MSG_KEY = b"msg"
-_SUB_KEY_PREFIX = b"sub" + _KEY_SEP
-_SEQ_KEY_PREFIX = b"seq" + _KEY_SEP
-_SUB_KEY_PREFIX_LEN = len(_SUB_KEY_PREFIX)
+_REGISTER_LEVELDB_NAME   = "register"
+_KEY_SEP                 = b"\x00\x00"
+_START_N_MAGN_KEY        = b"start_n_magn"
+_START_N_RES_LEN_KEY     = b"start_n_res_len"
+_CLS_KEY                 = b"cls"
+_MSG_KEY                 = b"msg"
+_SUB_KEY_PREFIX          = b"sub"
+_BLK_KEY_PREFIX          = b"blk"
+_DESCR_ID_KEY_PREFIX     = b"descr"
+_ID_DESCR_KEY_PREFIX     = b"id"
+
+_KEY_SEP_LEN             = len(_KEY_SEP)
+_SUB_KEY_PREFIX_LEN      = len(_SUB_KEY_PREFIX)
+_BLK_KEY_PREFIX_LEN      = len(_BLK_KEY_PREFIX)
+_DESCR_ID_KEY_PREFIX_LEN = len(_DESCR_ID_KEY_PREFIX)
+_ID_DESCR_KEY_PREFIX_LEN = len(_ID_DESCR_KEY_PREFIX)
 
 class Register(ABC):
+
+    #################################
+    #           CONSTANTS           #
+
+    _START_N_RES_LEN_DEFAULT = 12
 
     #################################
     #        ERROR MESSAGES         #
@@ -61,10 +77,16 @@ cannot do the following:
 """
     )
 
-    _ADD_DISK_SEQ_ERROR_MSG = (
-        "The `add_disk_sequence` failed. The `seq` has not been dumped to disk, nor has it been linked with this "+
-        "register."
+    _ADD_DISK_BLOCK_ERROR_MSG = (
+        "The `add_disk_block` failed. The `blk` has not been dumped to disk, nor has it been linked with "
+        "this register."
     )
+
+    _LOCAL_DIR_ERROR_MSG = "The `Register` database could not be found."
+
+    _SET_START_N_MAGNITUDE_ERROR_MSG = "This `Register` has not been changed."
+
+    _SET_START_N_RESIDUE_LENGTH_ERROR_MSG = "This `Register` has not been changed."
 
     #################################
     #     PUBLIC INITIALIZATION     #
@@ -75,26 +97,32 @@ cannot do the following:
         if not self.saves_directory.is_file():
             raise FileNotFoundError(
                 f"You must create the file `{str(self.saves_directory)}` before calling "+
-                f"`{type(self)}({str(self.saves_directory)})`."
+                f"`{self.__class__.__name__}({str(self.saves_directory)})`."
             )
 
-        if not isinstance(msg, str):
+        elif not isinstance(msg, str):
             raise TypeError(f"The `msg` argument must be a `str`. Passed type of `msg`: `{str(type(msg))}`.")
 
         self._msg = msg
-        self._msg_bytes = self._msg.encode()
+        try:
+            self._msg_bytes = self._msg.encode("ASCII")
+        except UnicodeEncodeError:
+            raise ValueError(
+                "The passed message includes non-ASCII characters."
+            )
 
         self._local_dir = None
         self._reg_file = None
-
         self._local_dir_bytes = None
         self._subreg_bytes = None
         self._reg_cls_bytes = type(self).__name__.encode()
-        self._msg_bytes = str(self).encode()
-        self._start_n_prefix = 1
-        self._start_n_prefix_bytes = str(1).encode("ASCII")
 
-        self._ram_seqs = {}
+        self._start_n_magn = 0
+        self._start_n_magn_bytes = b"0"
+        self._start_n_res_len = Register._START_N_RES_LEN_DEFAULT
+        self._start_n_res_len_bytes = str(self._start_n_res_len).encode("ASCII")
+
+        self._ram_blks = {}
         self._db = None
 
         self._created = False
@@ -163,12 +191,109 @@ cannot do the following:
         self._msg_bytes = self._msg.encode()
         self._db.put(_MSG_KEY, self._msg_bytes)
 
-    def set_start_n_prefix(self, prefix):
+    def set_start_n_magnitude(self, magnitude):
 
-        self._check_open_raise("set_start_n_prefix")
-        self._start_n_prefix = prefix
-        self._start_n_prefix_bytes = str(prefix).encode("ASCII")
-        self._db.put(_START_N_PREFIX_KEY, self._start_n_prefix_bytes)
+        self._check_open_raise("set_start_n_magnitude")
+
+        if not isinstance(magnitude, int):
+            raise TypeError("`magnitude` must be an `int`.")
+        elif magnitude < 0:
+            raise ValueError("`magnitude` must be non-negative.")
+
+        if magnitude > self._start_n_magn:
+            dif = magnitude - self._start_n_magn
+            zeroes = b"0"*dif
+            with leveldb_prefix_iterator(self._db, _BLK_KEY_PREFIX) as it:
+                for key,_ in it:
+                    _, start_n_bytes, _ = Register._split_disk_block_key(key)
+                    if start_n_bytes[-dif:] != zeroes:
+                        raise ValueError(
+                            f"Cannot set `start_n_magnitude` to {magnitude} because that number is "+
+                            "too large."
+                        )
+        if magnitude != self._start_n_magn:
+            dif = magnitude - self._start_n_magn
+            if dif < 0:
+                zeroes = b"0"*(-dif)
+            with self._db.snapshot() as sn:
+                with leveldb_prefix_iterator(sn, _BLK_KEY_PREFIX) as it:
+                    try:
+                        with self._db.write_batch(transaction = True) as wb:
+                            for key,val in it:
+                                descr_json, start_n_bytes, length_bytes = Register._split_disk_block_key(key)
+                                if dif > 0:
+                                    start_n_bytes = start_n_bytes[ : -dif ]
+                                elif dif < 0:
+                                    start_n_bytes = start_n_bytes + zeroes
+                                new_key = Register._join_disk_block_metadata(
+                                    descr_json, start_n_bytes, length_bytes
+                                )
+                                wb.put(new_key, val)
+                    except plyvel.Error:
+                        raise LevelDB_Error(
+                            self._reg_file,
+                            Register._SET_START_N_MAGNITUDE_ERROR_MSG
+                        )
+
+            self._start_n_magn = magnitude
+            self._start_n_magn_bytes = str(magnitude).encode("ASCII")
+            try:
+                self._db.put(_START_N_MAGN_KEY, self._start_n_magn_bytes)
+            except plyvel.Error:
+                raise LevelDB_Error(
+                    self._reg_file,
+                    Register._SET_START_N_MAGNITUDE_ERROR_MSG
+                )
+
+    def set_start_n_residue_length(self, residue_length):
+
+        self._check_open_raise("set_start_n_residue_length")
+
+        if residue_length < self._start_n_res_len:
+            dif = self._start_n_res_len - residue_length
+            zeroes = b"0"*dif
+            with leveldb_prefix_iterator(self._db, _BLK_KEY_PREFIX) as it:
+                for key,_ in it:
+                    _, start_n_bytes, _ = Register._split_disk_block_key(key)
+                    if start_n_bytes[:dif] != zeroes:
+                        raise ValueError(
+                            f"Cannot set `start_n_residue_length` to {residue_length} because that number is"+
+                            "too small."
+                        )
+
+        if residue_length != self._start_n_res_len:
+            dif = self._start_n_res_len - residue_length
+            if dif < 0:
+                zeroes = b"0"*(-dif)
+            with self._db.snapshot() as sn:
+                with leveldb_prefix_iterator(sn, _BLK_KEY_PREFIX) as it:
+                    try:
+                        with self._db.write_batch(transaction = True) as wb:
+                            for key,val in it:
+                                descr_json, start_n_bytes, length_bytes = Register._split_disk_block_key(key)
+                                if dif > 0:
+                                    start_n_bytes = start_n_bytes[ dif : ]
+                                elif dif < 0:
+                                    start_n_bytes = start_n_bytes + zeroes
+                                new_key = Register._join_disk_block_metadata(
+                                    descr_json, start_n_bytes, length_bytes
+                                )
+                                wb.put(new_key, val)
+                    except plyvel.Error:
+                        raise LevelDB_Error(
+                            self._reg_file,
+                            Register._SET_START_N_RESIDUE_LENGTH_ERROR_MSG
+                        )
+
+            self._start_n_res_len = residue_length
+            self._start_n_res_len_bytes = str(self._start_n_res_len).encode("ASCII")
+            try:
+                self._db.put(_START_N_RES_LEN_KEY, self._start_n_res_len_bytes)
+            except plyvel.Error:
+                raise LevelDB_Error(
+                    self._reg_file,
+                    Register._SET_START_N_RESIDUE_LENGTH_ERROR_MSG
+                )
 
     @contextmanager
     def open(self):
@@ -180,7 +305,8 @@ cannot do the following:
             with self._db.write_batch(transaction = True) as wb:
                 wb.put(_CLS_KEY, self._reg_cls_bytes)
                 wb.put(_MSG_KEY, self._msg_bytes)
-                wb.put(_START_N_PREFIX_KEY, self._start_n_prefix_bytes)
+                wb.put(_START_N_MAGN_KEY, self._start_n_magn_bytes)
+                wb.put(_START_N_RES_LEN_KEY, self._start_n_res_len_bytes)
             Register._add_instance(self)
             yiel = self
         else:
@@ -225,8 +351,12 @@ cannot do the following:
     def _check_open_raise(self, method_name):
         if not self._opened:
             raise Register_Not_Open_Error(method_name)
+        if not self._local_dir.is_dir():
+            raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
 
     def _set_local_dir(self, filename):
+        if not filename.is_dir():
+            raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
         self._created = True
         self._local_dir = filename
         self._local_dir_bytes = self._local_dir.encode()
@@ -241,12 +371,13 @@ cannot do the following:
     def get_all_descriptions(self, recursively = False):
 
         ret = set()
-        for descr, _, _ in self._iter_all_ram_sequence_metadatas():
+        for descr, _, _ in self._iter_ram_block_metadatas():
             ret.add(descr)
 
-        self._check_open_raise("get_descrs")
-        for descr, _, _, _ in self._iter_all_disk_seq_metadatas():
-            ret.add(descr)
+        self._check_open_raise("get_all_descriptions")
+        with leveldb_prefix_iterator(self._db, _ID_DESCR_KEY_PREFIX) as it:
+            for _, val in it:
+                ret.add(Sequence_Description.from_json(val.decode("ASCII")))
 
         if recursively:
             for subreg in self._iter_subregisters():
@@ -257,6 +388,17 @@ cannot do the following:
 
     #################################
     #     PROTEC DESCR METHODS      #
+
+    def _get_descr_by_id(self, _id):
+        return self._db.get(_ID_DESCR_KEY_PREFIX + _id)
+
+    def _get_id_by_descr(self, descr, descr_json):
+        if descr is not None:
+            return self._db.get(_DESCR_ID_KEY_PREFIX + descr.to_json().encode("ASCII"))
+        elif descr_json is not None:
+            return self._db.get(_DESCR_ID_KEY_PREFIX + descr_json)
+        else:
+            raise ValueError
 
     #################################
     #  PUBLIC SUB-REGISTER METHODS  #
@@ -304,21 +446,18 @@ cannot do the following:
 
     def _iter_subregisters(self):
         length = len(_SUB_KEY_PREFIX)
-        it = self._db.iterator(prefix = _SUB_KEY_PREFIX)
-        try:
+        with leveldb_prefix_iterator(self._db, _SUB_KEY_PREFIX) as it:
             for key, val in it:
                 cls_name = self._db.get(key).encode("ASCII")
                 filename = key[length:].encode("ASCII")
                 subreg = Register._from_name(cls_name, filename)
                 yield subreg
-        finally:
-            it.close()
 
     def _get_subregister_key(self):
         return _SUB_KEY_PREFIX + self._local_dir_bytes
 
     #################################
-    #    PUBLIC DISK SEQ METHODS    #
+    #    PUBLIC DISK BLK METHODS    #
 
     @classmethod
     @abstractmethod
@@ -328,7 +467,7 @@ cannot do the following:
         This method should not change any properties of any `Register`, which is why it is a classmethod and
         not an instancemethod. It merely takes `data` and dumps it to disk.
 
-        Most use-cases prefer the instancemethod `add_disk_seq`.
+        Most use-cases prefer the instancemethod `add_disk_block`.
 
         :param data: (any type) The raw data to dump.
         :param filename: (type `pathlib.Path`) The filename to dump to. You may edit this filename if
@@ -345,31 +484,43 @@ cannot do the following:
         This method should not change any properties of any `Register`, which is why it is a classmethod and
         not an instancemethod. It merely loads the raw data saved on the disk and returns it.
 
-        Most use-cases prefer the method `get_seq` (which also returns RAM sequences).
+        Most use-cases prefer the method `get_disk_block`.
 
-        :param filename: (type `pathlib.Path`) Where to load the sequence from. You may need to edit this
+        :param filename: (type `pathlib.Path`) Where to load the block from. You may need to edit this
         filename if necessary, such as by adding a suffix. You do not need to return the edited filename.
         :raises Data_Not_Found_Error: If the data could not be loaded because it doesn't exist.
         :raises Data_Not_Loaded_Error: If the data exists but couldn't be loaded for any reason.
         :return: (any type) The data loaded from the disk.
         """
 
-    def add_disk_sequence(self, seq):
-        """Dump a sequence to disk and link it with this `Register`.
+    def add_disk_block(self, blk):
+        """Dump a block to disk and link it with this `Register`.
 
-        :param seq: (type `Sequence`)
+        :param blk: (type `Block`)
         """
 
-        self._check_open_raise("add_disk_seq")
+        self._check_open_raise("add_disk_block")
+        res = str(blk.get_start_n() % self._start_n_magn)
+        if len(res) > self._start_n_res_len:
+            raise IndexError(
+                "Even after accounting for the `start_n_magnitude` for this register, the `start_n` for the "+
+                "passed `blk` is too large. Either increase `start_n_magnitude` (via " +
+                "`reg.set_start_n_magniude`) or increase the `start_n_residue_length` " +
+                "(via `reg.set_start_n_residue_length`).\n" +
+                f"`start_n`                : {blk.get_start_n()}\n" +
+                f"`start_n_magnitude`      : {self._start_n_magn}\n" +
+                f"`start_n` residue        : {res}\n" +
+                f"`start_n_residue_length` : {self._start_n_res_len}\n"
+            )
 
-        key = self._get_disk_data_key(seq.get_descr(), seq.get_start_n(), len(seq))
+        key = self._get_disk_data_key(blk.get_descr(), None, blk.get_start_n(), len(blk))
         if not leveldb_has_key(self._db, key):
 
             filename = random_unique_filename(self._local_dir)
             try:
-                filename = type(self).dump_disk_data(seq, filename)
+                filename = type(self).dump_disk_data(blk.get_data(), filename)
             except Data_Not_Dumped_Error:
-                raise Data_Not_Dumped_Error(Register._ADD_DISK_SEQ_ERROR_MSG)
+                raise Data_Not_Dumped_Error(Register._ADD_DISK_BLOCK_ERROR_MSG)
 
             filename_bytes = filename.encode()
             try:
@@ -378,140 +529,132 @@ cannot do the following:
                 Path.unlink(filename, missing_ok=True)
                 raise LevelDB_Error(
                     self._reg_file,
-                    Register._ADD_DISK_SEQ_ERROR_MSG
+                    Register._ADD_DISK_BLOCK_ERROR_MSG
                 )
 
-    def remove_disk_sequence(self, descr, start_n, length):
+    def remove_disk_block(self, descr, start_n, length):
 
-        self._check_open_raise("remove_disk_seq")
+        self._check_open_raise("remove_disk_block")
 
-        key = self._get_disk_data_key(descr, start_n, length)
+        key = self._get_disk_data_key(descr, None, start_n, length)
         if leveldb_has_key(self._db, key):
+            filename = Path(str(self._db.get(key)))
             self._db.remove(key)
+            filename.unlink() # TODO add error checks
 
-    #################################
-    #    PROTEC DISK SEQ METHODS    #
+    def get_disk_block(self, descr, start_n, length, recursively = False):
 
-    def _get_disk_data_key(self, descr, start_n, length):
-        return (
-            _SUB_KEY_PREFIX                             +
-            descr.to_json().                     encode("ASCII") + _KEY_SEP +
-            str(start_n % self._start_n_prefix). encode("ASCII") + _KEY_SEP +
-            str(length).                         encode("ASCII")
-        )
-
-    def _iter_disk_sequence_metadatas_from_description(self, descr):
-
-        descr_bytes = descr.to_json().encode("ASCII")
-        prefix = _SUB_KEY_PREFIX + descr_bytes + _KEY_SEP
-        it = self._db.iterator(prefix = prefix)
-
-        try:
-            for key,val in it:
-                yield self._convert_disk_sequence_key(key, descr_bytes) + (val,)
-        finally:
-            it.close()
-
-    def _iter_all_disk_seq_metadatas(self):
-        it = self._db.iterator(prefix = _SUB_KEY_PREFIX)
-        try:
-            for key,val in it:
-                yield self._convert_disk_sequence_key(key) + (val,)
-        finally:
-            it.close()
-
-    def _convert_disk_sequence_key(self, key, omit_descr_bytes = None):
-
-        if omit_descr_bytes is not None:
-            start_index = _SUB_KEY_PREFIX_LEN + len(omit_descr_bytes) + _KEY_SEP_LEN
-        else:
-            start_index = _SUB_KEY_PREFIX_LEN
-
-        key_split = key[start_index:].split(_KEY_SEP)
-
-        if omit_descr_bytes is not None:
-            start_n_bytes, length_bytes = key_split
-            descr_bytes = omit_descr_bytes
-        else:
-            descr_bytes, start_n_bytes, length_bytes = key_split
-
-        return (
-            descr_bytes.decode("ASCII"),
-            self._start_n_prefix + int(start_n_bytes.decode("ASCII")),
-            int(length_bytes.decode("ASCII"))
-        )
-
-    #################################
-    #    PUBLIC RAM SEQ METHODS     #
-
-    def add_ram_sequence(self, seq):
-
-        descr = seq.get_descr()
-        start_n = seq.get_start_n()
-        if (descr,start_n) not in self._ram_seqs.keys():
-            self._ram_seqs[(descr, start_n)] = seq
-
-    def remove_ram_sequence(self, seq):
-
-        try:
-            del self._ram_seqs[(seq.get_descr(), seq.get_start_n())]
-        except KeyError:
-            pass
-
-    #################################
-    #    PROTEC RAM SEQ METHODS     #
-
-    def _iter_all_ram_sequence_metadatas(self):
-        for (descr, start_n), seq in self._ram_seqs.items():
-            yield descr, start_n, len(seq)
-
-    def _iter_ram_sequence_metadatas_from_description(self, descr):
-        for (_descr, _start_n), _seq in self._ram_seqs.items():
-            if _descr == descr:
-                yield _descr, _start_n, len(_seq)
-
-    #################################
-    # PUBLIC RAM & DISK SEQ METHODS #
-
-    def get_sequence(self, descr, n, recursively = False):
-
-        for _ram_seq in self._ram_seqs:
-            if _ram_seq.get_descr() == descr and n in _ram_seq:
-                return _ram_seq
-
-        self._check_open_raise("get_seq")
-        for descr, start_n, length, filename in self._iter_disk_sequence_metadatas_from_description(descr):
-            if start_n <= n < start_n + length:
-                data = type(self).load_disk_data(filename)
-                return Sequence(data, descr, start_n)
+        self._check_open_raise("get_disk_block")
+        key = self._get_disk_data_key(descr, None, start_n, length)
+        if leveldb_has_key(self._db, key):
+            filename = Path(self._db.get(key).decode("ASCII"))
+            data = type(self).load_disk_data(filename)
+            return Block(data, descr, start_n)
 
         if recursively:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open() as subreg:
                     try:
-                        return subreg.get_sequence(descr, n, True)
+                        return subreg.get_disk_block(descr, start_n, length, True)
                     except Data_Not_Found_Error:
                         pass
 
         raise Data_Not_Found_Error
 
-    def get_all_sequences(self, descr, recursively = False):
+    def get_all_disk_blocks(self, descr, recursively = False):
 
-        for (_descr, _), _ram_seq in self._ram_seqs.items():
-            if _descr == descr:
-                yield _ram_seq
-
-        self._check_open_raise("get_all_seqs")
-        for (_descr, _start_n, _, filename) in self._iter_all_disk_seq_metadatas():
-            if _descr == descr:
-                data = type(self).load_disk_data(filename)
-                yield Sequence(data, _descr, _start_n)
+        self._check_open_raise("get_all_disk_blocks")
+        for _, descr, start_n, _, filename in self._iter_disk_block_metadatas(descr, None):
+            data = type(self).load_disk_data(filename)
+            yield Block(data, descr, start_n)
 
         if recursively:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open() as subreg:
-                    for seq in subreg.get_all_sequences():
-                        yield seq
+                    for blk in subreg.get_all_blocks():
+                        yield blk
+
+    #################################
+    #    PROTEC DISK BLK METHODS    #
+
+    def _get_disk_data_key(self, descr, descr_json, start_n, length):
+        if descr is not None:
+            _id = self._get_id_by_descr(descr.to_json().encode("ASCII"), None)
+        elif descr_json is not None:
+            _id = self._get_id_by_descr(None, descr_json)
+        else:
+            raise ValueError
+        start_n_str = str(start_n)[:-self._start_n_magn].zfill(self._start_n_res_len)
+        return (
+                _SUB_KEY_PREFIX             +
+                _id                         + _KEY_SEP +
+                start_n_str.encode("ASCII") + _KEY_SEP +
+                str(length).encode("ASCII")
+        )
+
+    def _iter_disk_block_metadatas(self, descr, descr_json):
+
+        if descr is not None:
+            descr_json = descr.to_json().encode("ASCII")
+
+        if descr_json is None:
+            prefix = _SUB_KEY_PREFIX
+        else:
+            prefix = _SUB_KEY_PREFIX + descr_json
+
+        with self._db.snapshot() as sn:
+            with leveldb_prefix_iterator(sn, prefix) as it:
+                for key,val in it:
+                    yield self._convert_disk_block_key(key, descr) + (Path(val.decode("ASCII")),)
+
+    @staticmethod
+    def _split_disk_block_key(key):
+        return key[:_BLK_KEY_PREFIX_LEN].split(_KEY_SEP)
+
+    @staticmethod
+    def _join_disk_block_metadata(descr_json, start_n_bytes, length_bytes):
+        return (
+            _BLK_KEY_PREFIX +
+            descr_json      + _KEY_SEP +
+            start_n_bytes   + _KEY_SEP +
+            length_bytes
+        )
+
+    def _convert_disk_block_key(self, key, descr = None):
+
+        descr_id, start_n_bytes, length_bytes = Register._split_disk_block_key(key)
+        if descr is None:
+            descr_json = self._get_descr_by_id(descr_id)
+            descr = Sequence_Description.from_json(descr_json.decode("ASCII"))
+        return descr, int(start_n_bytes.decode("ASCII")), int(length_bytes.decode("ASCII"))
+
+    #################################
+    #    PUBLIC RAM BLK METHODS     #
+
+    def add_ram_block(self, blk):
+
+        descr = blk.get_descr()
+        start_n = blk.get_start_n()
+        if (descr,start_n) not in self._ram_blks.keys():
+            self._ram_blks[(descr, start_n)] = blk
+
+    def remove_ram_block(self, blk):
+
+        try:
+            del self._ram_blks[(blk.get_descr(), blk.get_start_n())]
+        except KeyError:
+            pass
+
+    #################################
+    #    PROTEC RAM BLK METHODS     #
+
+    def _iter_ram_block_metadatas(self, descr = None):
+        for (_descr, _start_n), _blk in self._ram_blks.items():
+            if descr is not None and _descr == descr:
+                yield _descr, _start_n, len(_blk)
+
+    #################################
+    # PUBLIC RAM & DISK BLK METHODS #
 
     def __getitem__(self, descr_and_n_and_recursively):
         short = descr_and_n_and_recursively
@@ -548,14 +691,19 @@ cannot do the following:
 
         # otherwise return a single element
         else:
-            return self.get_sequence(descr, n, recursively)[n]
+            for descr, start_n, length in self._iter_disk_block_metadatas(descr,None):
+                if start_n <= n < start_n + length:
+                    break
+            else:
+                raise Data_Not_Found_Error()
+            return self.get_disk_block(descr,start_n, length, recursively)[n]
 
     def list_sequences_calculated(self, descr, recursively = False):
 
         intervals_sorted = sorted(
             [
                 (start_n, length)
-                for _, start_n, length, _ in self._iter_ram_and_disk_sequence_metadatas_from_description(descr,recursively)
+                for _, start_n, length, _ in self._iter_ram_and_disk_block_metadatas(descr,None,recursively)
             ],
             key = lambda t: t[0]
         )
@@ -573,42 +721,35 @@ cannot do the following:
         return intervals_reduced
 
     #################################
-    # PROTEC RAM & DISK SEQ METHODS #
+    # PROTEC RAM & DISK BLK METHODS #
 
-    def _iter_all_ram_and_disk_sequence_metadatas(self, recursively = False):
-
-        for metadata in chain(self._iter_all_ram_sequence_metadatas(), self._iter_all_disk_seq_metadatas()):
-            yield metadata
-
-        if recursively:
-            for subreg in self._iter_subregisters():
-                with subreg._recursive_open() as subreg:
-                    for metadata in subreg._iter_ram_and_disk_sequence_metadatas():
-                        yield metadata
-                        
-    def _iter_ram_and_disk_sequence_metadatas_from_description(self, descr, recursively = False):
+    def _iter_ram_and_disk_block_metadatas(self, descr = None, descr_json = None, recursively = False):
 
         for metadata in chain(
-            self._iter_ram_sequence_metadatas_from_description(descr),
-            self._iter_disk_sequence_metadatas_from_description(descr)
+            self._iter_ram_block_metadatas(descr),
+            self._iter_disk_block_metadatas(descr,descr_json)
         ):
             yield metadata
 
         if recursively:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open() as subreg:
-                    for metadata in subreg._iter_ram_sequence_metadatas_from_description(descr, True):
+                    for metadata in subreg._iter_ram_block_metadatas_from_description(descr, True):
                         yield metadata
 
 class Pickle_Register(Register):
 
     @classmethod
     def dump_disk_data(cls, data, filename):
-        pass
+        filename = filename.with_suffix(".pkl")
+        with filename.open("wb") as fh:
+            pickle.dump(data, fh)
+        return filename
 
     @classmethod
     def load_disk_data(cls, filename):
-        pass
+        with filename.open("rb") as fh:
+            return pickle.load(fh)
 
 Register.add_subclass(Pickle_Register)
 
@@ -616,37 +757,15 @@ class NumPy_Register(Register):
 
     @classmethod
     def dump_disk_data(cls, data, filename):
-        pass
+        filename = filename.with_suffix(".npy")
+        np.save(filename, data, allow_pickle = False, fix_imports = False)
+        return filename
 
     @classmethod
     def load_disk_data(cls, filename):
-        pass
+        return np.load(filename, mmap_mode = None, allow_pickle = False, fix_imports = False)
 
 Register.add_subclass(NumPy_Register)
-
-class RAM_Only_Register(Register):
-
-    @classmethod
-    def dump_disk_data(cls, data, filename):
-        pass
-
-    @classmethod
-    def load_disk_data(cls, filename):
-        pass
-
-Register.add_subclass(RAM_Only_Register)
-
-class Plaintext_Register(Register):
-
-    @classmethod
-    def dump_disk_data(cls, data, filename):
-        pass
-
-    @classmethod
-    def load_disk_data(cls, filename):
-        pass
-
-Register.add_subclass(Plaintext_Register)
 
 class HDF5_Register(Register):
 
@@ -660,49 +779,47 @@ class HDF5_Register(Register):
 
 Register.add_subclass(HDF5_Register)
 
-class _Register_Iter:
+class _Element_Iter:
 
     def __init__(self, reg, descr, slc, recursively = False):
         self.reg = reg
         self.descr = descr
-        self.slc = slice(
-            slc.start if slc.start else 0,
-            slc.stop,
-            slc.step  if slc.step  else 1
-        )
-        self.curr_seq = None
+        self.step = slc.step if slc.step else 1
+        self.stop = slc.stop
         self.recursively = recursively
-        self.intervals = chain(
-            range(
-                max(t[0], self.slc.start),
-                min(t[0] + t[1], self.slc.stop) if self.slc.stop else t[0] + t[1]
-            )
-            for t in self.reg.list_intervals_calculated(self.descr,self.recursively)
-            if (
-                (self.slc.stop and intervals_overlap(t, (self.slc.start, self.slc.stop - self.slc.start))) or
-                (not self.slc.stop and self.slc.start <= t[1] + t[0])
-            )
-        )
+        self.curr_blk = None
+        self.intervals = None
+        self.curr_n = slc.start if slc.start else 0
+
+    def update_sequences_calculated(self):
+        self.intervals = dict( self.reg.list_sequences_calculated(self.descr, self.recursively) )
 
     def __iter__(self):
         return self
 
-class _Element_Iter(_Register_Iter):
-
     def __next__(self):
 
-        curr_n = next(self.intervals) # raises StopIteration
-        if not self.curr_seq or self.curr_n not in self.curr_seq:
-            self.curr_seq = self.reg.get_sequence(self.descr, self.curr_n, self.recursively)
-        ret = self.curr_seq[self.curr_n]
-        self.curr_n += self.slc.step
-        return self.curr_n, ret
-
-class _Sequence_Iter(_Register_Iter):
-
-    def __next__(self):
-        if self.slc.stop is not None and self.curr_n >= self.slc.stop:
+        if self.stop is not None and self.curr_n >= self.stop:
             raise StopIteration
-        if not self.curr_seq or self.curr_n not in self.curr_seq:
-            ret = self.reg.get_sequence(self.descr, self.curr_n, self.recursively)
-        ret = self.curr_seq[self.curr_n]
+
+        elif self.curr_blk is None:
+            self.update_sequences_calculated()
+            self.curr_n = max( self.intervals[0][0] , self.curr_n )
+            self.curr_blk = self.reg.get_disk_block(self.descr, self.curr_n, self.recursively)
+
+        elif self.curr_n not in self.curr_blk:
+            try:
+                self.curr_blk = self.reg.get_disk_block(self.descr, self.curr_n, self.recursively)
+            except Data_Not_Found_Error:
+                self.update_sequences_calculated()
+                for start, length in self.intervals:
+                    if start > self.curr_n:
+                        self.curr_n += math.ceil( (start - self.curr_n) / self.step ) * self.step
+                        break
+                else:
+                    raise StopIteration
+                self.curr_blk = self.reg.get_disk_block(self.descr, self.curr_n, self.recursively)
+
+        ret = self.curr_blk[self.curr_n]
+        self.curr_n += self.step
+        return ret

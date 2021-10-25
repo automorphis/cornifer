@@ -39,7 +39,7 @@ class Sequence_Description_Keyword_Argument_Error(RuntimeError):pass
 class LevelDB_Error(Data_Not_Dumped_Error):
     def __init__(self, db_file, msg):
         super().__init__(
-            f"The levelDB database {str(db_file)} has been corrupted. " + msg
+            f"Writing to the LevelDB database {str(db_file)} failed. " + msg
         )
 
 class Sub_Register_Cycle_Error(RuntimeError):
@@ -48,5 +48,5 @@ class Sub_Register_Cycle_Error(RuntimeError):
             "Attempting to add this register as a sub-register will created a directed cycle in the " +
             "subregister relation. \n" +
             f"Description of the intended super-register:\n\"{str(parent)}\"\n" +
-            f"Description of the intended sub-register: \n\"{str(child)}\""
+            f"Description of the intended sub-register:\n\"{str(child)}\""
         )

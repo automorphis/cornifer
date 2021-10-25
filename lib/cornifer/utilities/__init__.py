@@ -106,7 +106,7 @@ def justify_slice(slc, min_index, max_index):
         raise ValueError("min_index < 0")
 
     start = slc.start   if slc.start    else min_index
-    stop =  slc.stop    if slc.stop     else max_index
+    stop =  slc.stop    if slc.stop     else max_index + 1
     step =  slc.step    if slc.step     else 1
 
     start = _justify_slice_start_stop(start, min_index, max_index)
@@ -125,13 +125,25 @@ def _justify_slice_start_stop(num, min_index, max_index):
     else:
         return num - min_index
 
-# @contextmanager
-# def open_leveldb(filename, create_if_missing = False):
-#     db = plyvel.DB(filename, create_if_missing=create_if_missing)
-#     try:
-#         yield db
-#     finally:
-#         db.close()
+def order_json_obj(json_obj):
+    if isinstance(json_obj, dict):
+        ordered_items = sorted(list(json_obj.items()),key=lambda t: t[0])
+        return {
+            key : order_json_obj(val)
+            for key,val in ordered_items
+        }
+    elif isinstance(json_obj, list):
+        return list(map(order_json_obj, json_obj))
+    else:
+        return json_obj
 
 def leveldb_has_key(db, key):
     return db.get(key,default = None) is not None
+
+@contextmanager
+def leveldb_prefix_iterator(db, prefix):
+    it = db.iterator(prefix=prefix)
+    try:
+        yield it
+    finally:
+        it.close()
