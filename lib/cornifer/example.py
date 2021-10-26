@@ -1,30 +1,37 @@
+from math import ceil, sqrt
 from pathlib import Path
 
-from cornifer import Sequence_Description, NumPy_Register, Sequence
+from cornifer import Apri_Info, NumPy_Register, Block
 
 my_saves_dir = Path.home() / "my_cornifer_saves"
 
-def is_prime(n):pass
+def is_prime(m):
 
+    if m <= 1:
+        return False
+    for k in range( 2, ceil(sqrt(m)) ):
+        if m % k == 0:
+            return False
+    return True
 
 lst = []
-descr = Sequence_Description(msg = "primes")
-seq = Sequence(lst, descr, 1)
+descr = Apri_Info(name ="primes")
+blk = Block(lst, descr, 1)
 register = NumPy_Register(my_saves_dir, "primes example")
-register.add_ram_sequence(seq)
+register.add_ram_block(blk)
 
 length = 100000
-total = 0
-max_n = 10**9
+total_primes = 0
+max_m = 10**9
 
 with register.open() as register:
 
-    for n in range(2, max_n+1):
-        if is_prime(n):
-            total += 1
-            lst.append(n)
+    for m in range(2, max_m+1):
+        if is_prime(m):
+            total_primes += 1
+            lst.append(m)
 
-        if (total % length == 0 and total > 0) or n == max_n:
-            register.add_disk_sequence(seq)
-            seq.set_start_n(total+1)
+        if (total_primes % length == 0 and total_primes > 0) or m == max_m:
+            register.add_disk_block(blk)
+            blk.set_start_n(total_primes+1)
             lst.clear()

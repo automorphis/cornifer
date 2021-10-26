@@ -147,3 +147,10 @@ def leveldb_prefix_iterator(db, prefix):
         yield it
     finally:
         it.close()
+
+def leveldb_count_keys(db, prefix):
+    count = 0
+    with leveldb_prefix_iterator(db, prefix) as it:
+         for _ in it:
+            count += 1
+    return count

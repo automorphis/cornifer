@@ -41,7 +41,7 @@ class Data_Not_Loaded_Error(RuntimeError):pass
 
 class Data_Not_Found_Error(RuntimeError):pass
 
-class Sequence_Description_Keyword_Argument_Error(RuntimeError):pass
+class Keyword_Argument_Error(RuntimeError):pass
 
 class LevelDB_Error(Data_Not_Dumped_Error):
     def __init__(self, db_file, msg):

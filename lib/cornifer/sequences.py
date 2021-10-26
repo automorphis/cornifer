@@ -15,59 +15,18 @@
 
 import json
 import warnings
+from abc import ABC, abstractmethod
 
 import numpy as np
 
-from cornifer.errors import Sequence_Description_Keyword_Argument_Error
+from cornifer.errors import Keyword_Argument_Error
 from cornifer.utilities import check_has_method, replace_lists_with_tuples, replace_tuples_with_lists, \
     justify_slice, order_json_obj
 
-
-class Sequence_Description:
+class _Info(ABC):
 
     def __init__(self, **kwargs):
-
-        if "_json" in kwargs.keys() or "_hash" in kwargs.keys():
-            raise Sequence_Description_Keyword_Argument_Error(
-                "The keyword-argument keys \"_json\" and \"_hash\" are reserved. Please choose a different " +
-                "key."
-            )
-
-        self._hash = hash(type(self))
-        for key,val in kwargs.items():
-            try:
-                self._hash += hash(val)
-            except (TypeError, AttributeError):
-                raise Sequence_Description_Keyword_Argument_Error(
-                    f"All keyword arguments must be hashable types. The keyword argument given by \"{key}\" "+
-                    f"not a hashable type. The type of that argument is `{val.__class__.__name__}`."
-                )
-
         self.__dict__.update(kwargs)
-
-        self._json = None
-        self._json = self.to_json()
-
-        # try:
-        self._json.encode("ASCII")
-        # except UnicodeEncodeError:
-        #     raise Sequence_Description_Keyword_Argument_Error(
-        #         "`descr.to_json()` returns invalid JSON because it contains a non-ASCII character.\nPlease " +
-        #         "use different keyword-arguments that do not contain non-ASCII characters when you construct"+
-        #         "`Sequence_Description`, or override `to_json` so that it does not return a string that " +
-        #         "contains non-ASCII characters." +
-        #         f"`descr.to_json()` returns:\n{self._json}"
-        #     )
-
-        if "\0\0" in self._json:
-            raise Sequence_Description_Keyword_Argument_Error(
-                "`descr._tojson()` returns invalid JSON because it contains the double-null "+
-                "substring \"\\0\\0\". This substring is reserved because it is used as a separator.\n"+
-                "Please use different keyword-arguments that do not contain \"\\0\\0\" when you construct "+
-                "`Sequence_Description`, or override `to_json` so that it does not return a string that "+
-                "contains \"\\0\\0\".\n" +
-                f"`descr.to_json()` returns:\n{self._json}"
-            )
 
     @classmethod
     def from_json(cls, json_string):
@@ -81,52 +40,86 @@ class Sequence_Description:
         return cls(**replace_lists_with_tuples(json_obj))
 
     def to_json(self):
-        if self._json is None:
-            kwargs = replace_tuples_with_lists(self.__dict__)
-            del kwargs["_json"]
-            del kwargs["_hash"]
-            kwargs = order_json_obj(kwargs)
-            try:
-                return json.dumps(kwargs,
-                    ensure_ascii = True,
-                    allow_nan = True,
-                    indent = None,
-                    separators = (',', ':')
-                )
-            except (TypeError, ValueError):
-                raise Sequence_Description_Keyword_Argument_Error(
-                    "One of the keyword arguments used to construct this instance cannot be encoded into " +
-                    "JSON. Please reconstruct this instance using different arguments, or override the " +
-                    f"classmethod `{self.__class__.__name__}.from_json` and the instancemethod " +
-                    f"`{self.__class__.__name__}.to_json`."
-                )
-        else:
-            return self._json
+        kwargs = replace_tuples_with_lists(self.__dict__)
+        kwargs = order_json_obj(kwargs)
+        try:
+            ret = json.dumps(kwargs,
+                ensure_ascii = True,
+                allow_nan = True,
+                indent = None,
+                separators = (',', ':')
+            )
+        except (TypeError, ValueError):
+            raise Keyword_Argument_Error(
+                "One of the keyword arguments used to construct this instance cannot be encoded into " +
+                "JSON. Use different keyword arguments, or override the " +
+                f"classmethod `{self.__class__.__name__}.from_json` and the instancemethod " +
+                f"`{self.__class__.__name__}.to_json`." # TODO change
+            )
+        if "\0" in ret:
+            raise Keyword_Argument_Error(
+                "One of the keyword arguments used to construct this instance contains the null character " +
+                "'\\0'. Use different keyword arguments, or blah blah" # TODO change
+            )
+        return ret
 
-    def __hash__(self):
-        return self._hash
+    @abstractmethod
+    def __hash__(self):pass
 
     def __eq__(self, other):
         return type(self) == type(other) and self.to_json() == other.to_json()
 
     def __copy__(self):
-        descr = Sequence_Description()
-        descr.__dict__.update(self.__dict__)
-        return descr
+        info = type(self)()
+        info.__dict__.update(self.__dict__)
+        return info
 
     def __deepcopy__(self, memo):
         return self.__copy__()
 
+class Apri_Info(_Info):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        if "_json" in kwargs.keys() or "_hash" in kwargs.keys():
+            raise Keyword_Argument_Error(
+                "The keyword-argument keys \"_json\" and \"_hash\" are reserved. Please choose a different " +
+                "key."
+            )
+
+        self._json = super().to_json()
+        self._hash = hash(type(self))
+        for key,val in kwargs.items():
+            try:
+                self._hash += hash(val)
+            except (TypeError, AttributeError):
+                raise Keyword_Argument_Error(
+                    f"All keyword arguments must be hashable types. The keyword argument given by \"{key}\" "+
+                    f"not a hashable type. The type of that argument is `{val.__class__.__name__}`."
+                )
+
+    def to_json(self):
+        return self._json
+
+    def __hash__(self):
+        return self._hash
+
+class Apos_Info(_Info):
+
+    def __hash__(self):
+        raise TypeError("`Apos_Info` is not a hashable type.")
+
 class Block:
 
-    def __init__(self, data, descr, start_n = 0):
+    def __init__(self, data, apri, start_n = 0):
 
         self._custom_dtype = False
 
-        if not isinstance(descr, Sequence_Description):
+        if not isinstance(apri, Apri_Info):
             raise TypeError(
-                f"`descr` must be a `Sequence_Description` derived type. Passed " +
-                f"type: {descr.__class__.__name__}"
+                f"`apri` must be an `Apri_Info` derived type. Passed " +
+                f"type: {apri.__class__.__name__}"
             )
 
         elif not isinstance(start_n, int):
@@ -153,7 +146,7 @@ class Block:
             self._custom_dtype = True
 
         self._start_n = start_n
-        self._descr = descr
+        self._apri = apri
         self._data = data
         self._data_ndarray = None
 
@@ -181,8 +174,8 @@ class Block:
     def get_data(self):
         return self._data
 
-    def get_descr(self):
-        return self._descr
+    def get_apri(self):
+        return self._apri
 
     def get_start_n(self):
         return self._start_n
@@ -213,17 +206,17 @@ class Block:
             )
 
         elif isinstance(item, slice):
-            descr = self.get_descr()
+            apri = self.get_apri()
             start_n = self.get_start_n()
             length = len(self)
             item = justify_slice(item, start_n, start_n + length - 1)
 
             if not self._check_and_warn_custom_get_ndarray("__getitem__"):
-                return Block(self._data_ndarray[item, ...], descr, start_n)
+                return Block(self._data_ndarray[item, ...], apri, start_n)
             elif self._dtype == "ndarray":
-                return Block(self._data[item, ...], descr, start_n)
+                return Block(self._data[item, ...], apri, start_n)
             else:
-                return Block(self._data[item], descr, start_n)
+                return Block(self._data[item], apri, start_n)
 
         else:
             if item not in self:
@@ -250,14 +243,14 @@ class Block:
     def __hash__(self):
         raise TypeError(
             f"The type `{self.__class__.__name__}` is not hashable. Please instead hash " +
-            f"`(blk.get_descr(), blk.get_start_n(), len(blk))`."
+            f"`(blk.get_apri(), blk.get_start_n(), len(blk))`."
         )
 
     def __eq__(self, other):
 
         if (
             type(self) != type(other) or self._dtype != other._dtype or
-            self.get_descr() != other.get_descr() or self.get_start_n() != other.get_start_n() or
+            self.get_apri() != other.get_apri() or self.get_start_n() != other.get_start_n() or
             len(self) != len(other)
         ):
             return False

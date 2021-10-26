@@ -6,69 +6,69 @@ from unittest import TestCase
 
 import numpy as np
 
-from cornifer import Sequence_Description, Block
-from cornifer.errors import Sequence_Description_Keyword_Argument_Error
+from cornifer import Apri_Info, Block
+from cornifer.errors import Keyword_Argument_Error
 
 
 class Test_Sequence_Description(TestCase):
 
     def test___init__(self):
 
-        with self.assertRaises(Sequence_Description_Keyword_Argument_Error):
-            Sequence_Description(_json = "sup")
+        with self.assertRaises(Keyword_Argument_Error):
+            Apri_Info(_json ="sup")
 
-        with self.assertRaises(Sequence_Description_Keyword_Argument_Error):
-            Sequence_Description(_hash = "sup")
+        with self.assertRaises(Keyword_Argument_Error):
+            Apri_Info(_hash ="sup")
 
-        with self.assertRaises(Sequence_Description_Keyword_Argument_Error):
-            Sequence_Description(lst = [1,2,3])
+        with self.assertRaises(Keyword_Argument_Error):
+            Apri_Info(lst = [1, 2, 3])
 
-        with self.assertRaises(Sequence_Description_Keyword_Argument_Error):
-            Sequence_Description(dct = {1:2})
+        with self.assertRaises(Keyword_Argument_Error):
+            Apri_Info(dct = {1:2})
 
         try:
-            Sequence_Description(tup = (1,2))
-        except Sequence_Description_Keyword_Argument_Error:
+            Apri_Info(tup = (1, 2))
+        except Keyword_Argument_Error:
             self.fail("tuples are hashable")
 
         try:
-            Sequence_Description(msg = "hey")
-        except Sequence_Description_Keyword_Argument_Error:
+            Apri_Info(msg ="hey")
+        except Keyword_Argument_Error:
             self.fail("strings are hashable")
 
         try:
-            Sequence_Description(pi = "π")
-        except Sequence_Description_Keyword_Argument_Error:
+            Apri_Info(pi ="π")
+        except Keyword_Argument_Error:
             self.fail("pi is okay")
 
         try:
-            Sequence_Description(double_null = "\0\0")
-        except Sequence_Description_Keyword_Argument_Error:
+            Apri_Info(double_null ="\0\0")
+        except Keyword_Argument_Error:
             self.fail("double null okay")
 
-        descr = Sequence_Description(msg = "primes", mod4 = 1)
+        descr = Apri_Info(msg ="primes", mod4 = 1)
         self.assertEqual(descr.msg, "primes")
         self.assertEqual(descr.mod4, 1)
 
     def test__from_json(self):
         with self.assertRaises(TypeError):
-            Sequence_Description.from_json("[\"no\"]")
-        descr = Sequence_Description.from_json("{\"msg\": \"primes\"}")
+            Apri_Info.from_json("[\"no\"]")
+        descr = Apri_Info.from_json("{\"msg\": \"primes\"}")
         self.assertEqual(descr.msg, "primes")
-        descr = Sequence_Description.from_json("{\"mod4\": 1}")
+        descr = Apri_Info.from_json("{\"mod4\": 1}")
         self.assertEqual(descr.mod4, 1)
-        descr = Sequence_Description.from_json("{\"tup\": [1,2,3]}")
+        descr = Apri_Info.from_json("{\"tup\": [1,2,3]}")
         self.assertEqual(descr.tup, (1,2,3))
 
     def test__to_json(self):
-        _json = Sequence_Description(msg = "primes", mod4 = 3).to_json()
+        _json = Apri_Info(msg ="primes", mod4 = 3).to_json()
         self.assertTrue(isinstance(_json, str))
         obj = json.loads(_json)
         self.assertTrue(isinstance(obj, dict))
         self.assertEqual(len(obj), 2)
         self.assertEqual(obj, {"msg": "primes", "mod4": 3})
 
-        _json = Sequence_Description(msg="primes", primes = (2,3,5)).to_json()
+        _json = Apri_Info(msg="primes", primes = (2, 3, 5)).to_json()
         self.assertTrue(isinstance(_json, str))
         obj = json.loads(_json)
         self.assertTrue(isinstance(obj, dict))
@@ -77,34 +77,34 @@ class Test_Sequence_Description(TestCase):
 
     def test___hash__(self):
         self.assertEqual(
-            hash(Sequence_Description(msg = "primes", mod4 = 1)),
-            hash(Sequence_Description(mod4 = 1, msg = "primes"))
+            hash(Apri_Info(msg ="primes", mod4 = 1)),
+            hash(Apri_Info(mod4 = 1, msg ="primes"))
         )
         self.assertNotEqual(
-            hash(Sequence_Description(msg = "primes", mod4 = 1)),
-            hash(Sequence_Description(mod4 = 1))
+            hash(Apri_Info(msg ="primes", mod4 = 1)),
+            hash(Apri_Info(mod4 = 1))
         )
 
     def test___eq__(self):
         self.assertEqual(
-            Sequence_Description(msg = "primes", mod4 = 1),
-            Sequence_Description(mod4 = 1, msg = "primes")
+            Apri_Info(msg ="primes", mod4 = 1),
+            Apri_Info(mod4 = 1, msg ="primes")
         )
         self.assertNotEqual(
-            Sequence_Description(msg = "primes", mod4 = 1),
-            Sequence_Description(mod4 = 1)
+            Apri_Info(msg ="primes", mod4 = 1),
+            Apri_Info(mod4 = 1)
         )
         self.assertNotEqual(
-            Sequence_Description(mod4 = 1),
-            Sequence_Description(msg = "primes", mod4 = 1)
+            Apri_Info(mod4 = 1),
+            Apri_Info(msg ="primes", mod4 = 1)
         )
 
     def test___copy__(self):
         self.assertEqual(
-            Sequence_Description(),
-            copy(Sequence_Description())
+            Apri_Info(),
+            copy(Apri_Info())
         )
-        descr = Sequence_Description(msg = "primes")
+        descr = Apri_Info(msg ="primes")
         self.assertEqual(
             descr,
             copy(descr)
@@ -113,7 +113,7 @@ class Test_Sequence_Description(TestCase):
             hash(descr),
             hash(copy(descr))
         )
-        descr = Sequence_Description(msg = "primes", mod4 = 1)
+        descr = Apri_Info(msg ="primes", mod4 = 1)
         self.assertEqual(
             descr,
             copy(descr)
@@ -127,7 +127,7 @@ class Test_Block(TestCase):
 
     def test___init__(self):
 
-        descr = Sequence_Description(name = "primes")
+        descr = Apri_Info(name ="primes")
 
         with self.assertRaises(TypeError):
             Block([], "primes", 0)
@@ -166,7 +166,7 @@ class Test_Block(TestCase):
 
     def test_set_start_n(self):
 
-        descr = Sequence_Description(name = "primes")
+        descr = Apri_Info(name ="primes")
 
         seq = Block([], descr, 0)
         with self.assertRaises(TypeError):
@@ -184,7 +184,7 @@ class Test_Block(TestCase):
         )
 
     def test_subdivide(self):
-        descr = Sequence_Description(name = "primes")
+        descr = Apri_Info(name ="primes")
 
         with self.assertRaises(TypeError):
             Block([], descr).subdivide(3.5)
@@ -221,7 +221,7 @@ class Test_Block(TestCase):
             )
 
     def test___getitem__(self):
-        descr = Sequence_Description(name="primes")
+        descr = Apri_Info(name="primes")
 
         with self.assertRaises(IndexError):
             Block(np.empty((50, 50)), descr)[25, 25]
@@ -388,7 +388,7 @@ class Test_Block(TestCase):
         )
 
     def test___len__(self):
-        descr = Sequence_Description(name = "primes")
+        descr = Apri_Info(name ="primes")
 
         lst = []
         seq = Block(lst, descr)
@@ -433,7 +433,7 @@ class Test_Block(TestCase):
         )
 
     def test___contains__(self):
-        descr = Sequence_Description(name = "primes")
+        descr = Apri_Info(name ="primes")
         for n, start_n in product(range(50), repeat = 2):
             self.assertIn(
                 n + start_n,
@@ -442,8 +442,8 @@ class Test_Block(TestCase):
 
     def test___eq__(self):
 
-        descr1 = Sequence_Description(name = "primes")
-        descr2 = Sequence_Description(name = "primes", mod4 = 1)
+        descr1 = Apri_Info(name ="primes")
+        descr2 = Apri_Info(name ="primes", mod4 = 1)
 
         self.assertEqual(
             Block(np.arange(50), descr1),
@@ -484,4 +484,4 @@ class Test_Block(TestCase):
     def test___hash__(self):
 
         with self.assertRaises(TypeError):
-            hash(Block(np.arange(50), Sequence_Description(name = "primes")))
+            hash(Block(np.arange(50), Apri_Info(name ="primes")))

@@ -13,5 +13,5 @@
     GNU General Public License for more details.
 """
 
-from cornifer.sequences import Block, Sequence_Description
+from cornifer.sequences import Block, Apri_Info
 from cornifer.registers import Register, Pickle_Register, NumPy_Register
