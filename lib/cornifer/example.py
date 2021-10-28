@@ -1,4 +1,4 @@
-from math import ceil, sqrt
+from math import floor, sqrt
 from pathlib import Path
 
 from cornifer import Apri_Info, NumPy_Register, Block
@@ -7,9 +7,9 @@ my_saves_dir = Path.home() / "my_cornifer_saves"
 
 def is_prime(m):
 
-    if m <= 1:
+    if not isinstance(m, int) or m <= 1:
         return False
-    for k in range( 2, ceil(sqrt(m)) ):
+    for k in range( 2, floor(sqrt(m)) + 1 ):
         if m % k == 0:
             return False
     return True

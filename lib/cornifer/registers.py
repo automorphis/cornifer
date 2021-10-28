@@ -17,15 +17,15 @@ import inspect
 import math
 import pickle
 from contextlib import contextmanager
-from itertools import chain
 from pathlib import Path
 from abc import ABC, abstractmethod
 
 import numpy as np
 import plyvel
 
-from cornifer.errors import Sub_Register_Cycle_Error, Data_Not_Found_Error, LevelDB_Error, \
-    Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error, Register_Not_Created_Error
+from cornifer.errors import Sub_Register_Cycle_Error, Data_Not_Found_Error, \
+    Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error, Register_Not_Created_Error, \
+    Critical_Database_Error, Database_Error
 from cornifer.sequences import Apri_Info, Block
 from cornifer.utilities import intervals_overlap, random_unique_filename, leveldb_has_key, \
     leveldb_prefix_iterator
@@ -33,30 +33,30 @@ from cornifer.utilities import intervals_overlap, random_unique_filename, leveld
 #################################
 #         LEVELDB KEYS          #
 
-_REGISTER_LEVELDB_NAME = "register"
-_KEY_SEP               = b"\x00\x00"
-_START_N_MAGN_KEY      = b"start_n_magn"
-_START_N_RES_LEN_KEY   = b"start_n_res_len"
-_CLS_KEY               = b"cls"
-_MSG_KEY               = b"msg"
-_SUB_KEY_PREFIX        = b"sub"
-_BLK_KEY_PREFIX        = b"blk"
-_APRI_ID_KEY_PREFIX    = b"apri"
-_ID_APRI_KEY_PREFIX    = b"id"
-_CURR_ID_KEY           = b"curr_id"
+_REGISTER_LEVELDB_NAME   = "register"
+_KEY_SEP                 = b"\x00\x00"
+_START_N_HEAD_KEY        = b"head"
+_START_N_TAIL_LENGTH_KEY = b"tail_length"
+_CLS_KEY                 = b"cls"
+_MSG_KEY                 = b"msg"
+_SUB_KEY_PREFIX          = b"sub"
+_BLK_KEY_PREFIX          = b"blk"
+_APRI_ID_KEY_PREFIX      = b"apri"
+_ID_APRI_KEY_PREFIX      = b"id"
+_CURR_ID_KEY             = b"curr_id"
 
-_KEY_SEP_LEN            = len(_KEY_SEP)
-_SUB_KEY_PREFIX_LEN     = len(_SUB_KEY_PREFIX)
-_BLK_KEY_PREFIX_LEN     = len(_BLK_KEY_PREFIX)
-_APRI_ID_KEY_PREFIX_LEN = len(_APRI_ID_KEY_PREFIX)
-_ID_APRI_KEY_PREFIX_LEN = len(_ID_APRI_KEY_PREFIX)
+_KEY_SEP_LEN             = len(_KEY_SEP)
+_SUB_KEY_PREFIX_LEN      = len(_SUB_KEY_PREFIX)
+_BLK_KEY_PREFIX_LEN      = len(_BLK_KEY_PREFIX)
+_APRI_ID_KEY_PREFIX_LEN  = len(_APRI_ID_KEY_PREFIX)
+_ID_APRI_KEY_PREFIX_LEN  = len(_ID_APRI_KEY_PREFIX)
 
 class Register(ABC):
 
     #################################
     #           CONSTANTS           #
 
-    _START_N_RES_LEN_DEFAULT = 12
+    _START_N_TAIL_LENGTH_DEFAULT = 12
 
     #################################
     #        ERROR MESSAGES         #
@@ -85,9 +85,9 @@ cannot do the following:
 
     _LOCAL_DIR_ERROR_MSG = "The `Register` database could not be found."
 
-    _SET_START_N_MAGNITUDE_ERROR_MSG = "This `Register` has not been changed."
-
-    _SET_START_N_RESIDUE_LENGTH_ERROR_MSG = "This `Register` has not been changed."
+    _SET_START_N_INFO_ERROR_MSG = (
+        "`set_start_n_info` failed. Recovered successfully; the database has not been changed or corrupted."
+    )
 
     #################################
     #     PUBLIC INITIALIZATION     #
@@ -118,13 +118,13 @@ cannot do the following:
         self._subreg_bytes = None
         self._reg_cls_bytes = type(self).__name__.encode()
 
-        self._start_n_magn = 0
-        self._start_n_magn_bytes = b"0"
-        self._start_n_mod = 1
-        self._start_n_res_len = Register._START_N_RES_LEN_DEFAULT
-        self._start_n_res_len_bytes = str(self._start_n_res_len).encode("ASCII")
+        self._start_n_head = 0
+        self._start_n_head_bytes = b"0"
+        self._start_n_tail_length = Register._START_N_TAIL_LENGTH_DEFAULT
+        self._start_n_tail_length_bytes = str(self._start_n_tail_length).encode("ASCII")
+        self._start_n_tail_mod = 10 ** self._start_n_tail_length
 
-        self._ram_blks = {}
+        self._ram_blks = []
         self._db = None
 
         self._created = False
@@ -214,110 +214,87 @@ cannot do the following:
         self._msg_bytes = self._msg.encode()
         self._db.put(_MSG_KEY, self._msg_bytes)
 
-    def set_start_n_magnitude(self, magnitude):
+    def set_start_n_info(self, head, tail_length):
 
-        self._check_open_raise("set_start_n_magnitude")
+        self._check_open_raise("set_start_n_info")
 
-        if not isinstance(magnitude, int):
-            raise TypeError("`magnitude` must be an `int`.")
-        elif magnitude < 0:
-            raise ValueError("`magnitude` must be non-negative.")
+        if not isinstance(head, int) or not isinstance(tail_length, int):
+            raise TypeError("`head` and `tail_length` must both be of type `int`.")
 
-        if magnitude > self._start_n_magn:
-            dif = magnitude - self._start_n_magn
-            zeroes = b"0"*dif
-            with leveldb_prefix_iterator(self._db, _BLK_KEY_PREFIX) as it:
-                for key,_ in it:
-                    _, start_n_bytes, _ = Register._split_disk_block_key(key)
-                    if start_n_bytes[-dif:] != zeroes:
-                        raise ValueError(
-                            f"Cannot set `start_n_magnitude` to {magnitude} because that number is "+
-                            "too large."
-                        )
-        if magnitude != self._start_n_magn:
-            dif = magnitude - self._start_n_magn
-            if dif < 0:
-                zeroes = b"0"*(-dif)
-            with self._db.snapshot() as sn:
-                with leveldb_prefix_iterator(sn, _BLK_KEY_PREFIX) as it:
+        elif head < 0 or tail_length <= 0:
+            raise ValueError("`head` must be non-negative and and `tail_length` must be positive.")
+
+        if head == self._start_n_head and tail_length == self._start_n_tail_length:
+            return
+
+        # todo check smaller tail_length
+
+        blank = Apri_Info()
+        new_div = 10 ** tail_length
+        with leveldb_prefix_iterator(self._db, _BLK_KEY_PREFIX) as it:
+            for key, _ in it:
+                _, start_n, _ = self._convert_disk_block_key(key,blank)
+                if start_n // new_div != head:
+                    apri,_,length = self._convert_disk_block_key(key)
+                    raise ValueError(
+                        "The following `start_n` does not have the correct head:\n" +
+                        f"`start_n`   : {start_n}f\n" +
+                        "That `start_n` is associated with a `Block` whose `Apri_Info` and length is:\n" +
+                        f"`Apri_Info` : {str(apri)}\n" +
+                        f"length      : {length}"
+                    )
+
+        try:
+            with self._db.write_batch(transaction = True) as wb:
+                wb.put(_START_N_HEAD_KEY, str(head).encode("ASCII"))
+                wb.put(_START_N_TAIL_LENGTH_KEY, str(tail_length).encode("ASCII"))
+        except plyvel.Error:
+            raise Database_Error(
+                self._reg_file,
+                Register._SET_START_N_INFO_ERROR_MSG
+            )
+
+        old_keys = []
+        with self._db.snapshot() as sn:
+            with leveldb_prefix_iterator(sn, _BLK_KEY_PREFIX) as it:
+                try:
+                    with self._db.write_batch(transaction = True) as wb:
+                        for key,val in it:
+                            _, start_n, _ = self._convert_disk_block_key(key,blank)
+                            apri_json, _, length_bytes = Register._split_disk_block_key(key)
+                            new_start_n_bytes = str(start_n % head).encode("ASCII")
+                            new_key = Register._join_disk_block_metadata(apri_json, new_start_n_bytes, length_bytes)
+                            if key != new_key:
+                                old_keys.append(key)
+                            wb.put(new_key, val)
+                except plyvel.Error:
                     try:
-                        with self._db.write_batch(transaction = True) as wb:
-                            for key,val in it:
-                                apri_json, start_n_bytes, length_bytes = Register._split_disk_block_key(key)
-                                if dif > 0:
-                                    start_n_bytes = start_n_bytes[ : -dif ]
-                                elif dif < 0:
-                                    start_n_bytes = start_n_bytes + zeroes
-                                new_key = Register._join_disk_block_metadata(
-                                    apri_json, start_n_bytes, length_bytes
-                                )
-                                wb.put(new_key, val)
+                        self._db.put(_START_N_HEAD_KEY, self._start_n_head_bytes)
+                        self._db.put(_START_N_TAIL_LENGTH_KEY, self._start_n_tail_length_bytes)
                     except plyvel.Error:
-                        raise LevelDB_Error(
+                        raise Critical_Database_Error(
                             self._reg_file,
-                            Register._SET_START_N_MAGNITUDE_ERROR_MSG
+                            "Could not recover from a failed batch write."
                         )
+                    raise Database_Error(
+                        self._reg_file,
+                        Register._SET_START_N_INFO_ERROR_MSG
+                    )
 
-            self._start_n_magn = magnitude
-            self._start_n_magn_bytes = str(magnitude).encode("ASCII")
-            self._start_n_mod = 10**magnitude
-            try:
-                self._db.put(_START_N_MAGN_KEY, self._start_n_magn_bytes)
-            except plyvel.Error:
-                raise LevelDB_Error(
-                    self._reg_file,
-                    Register._SET_START_N_MAGNITUDE_ERROR_MSG
-                )
+        try:
+            for key in old_keys:
+                self._db.delete(key)
+        except plyvel.Error:
+            raise Critical_Database_Error(
+                self._reg_file,
+                "`set_start_n_info` failed."
+            )
 
-    def set_start_n_residue_length(self, residue_length):
-
-        self._check_open_raise("set_start_n_residue_length")
-
-        if residue_length < self._start_n_res_len:
-            dif = self._start_n_res_len - residue_length
-            zeroes = b"0"*dif
-            with leveldb_prefix_iterator(self._db, _BLK_KEY_PREFIX) as it:
-                for key,_ in it:
-                    _, start_n_bytes, _ = Register._split_disk_block_key(key)
-                    if start_n_bytes[:dif] != zeroes:
-                        raise ValueError(
-                            f"Cannot set `start_n_residue_length` to {residue_length} because that number is"+
-                            "too small."
-                        )
-
-        if residue_length != self._start_n_res_len:
-            dif = self._start_n_res_len - residue_length
-            if dif < 0:
-                zeroes = b"0"*(-dif)
-            with self._db.snapshot() as sn:
-                with leveldb_prefix_iterator(sn, _BLK_KEY_PREFIX) as it:
-                    try:
-                        with self._db.write_batch(transaction = True) as wb:
-                            for key,val in it:
-                                apri_json, start_n_bytes, length_bytes = Register._split_disk_block_key(key)
-                                if dif > 0:
-                                    start_n_bytes = start_n_bytes[ dif : ]
-                                elif dif < 0:
-                                    start_n_bytes = start_n_bytes + zeroes
-                                new_key = Register._join_disk_block_metadata(
-                                    apri_json, start_n_bytes, length_bytes
-                                )
-                                wb.put(new_key, val)
-                    except plyvel.Error:
-                        raise LevelDB_Error(
-                            self._reg_file,
-                            Register._SET_START_N_RESIDUE_LENGTH_ERROR_MSG
-                        )
-
-            self._start_n_res_len = residue_length
-            self._start_n_res_len_bytes = str(self._start_n_res_len).encode("ASCII")
-            try:
-                self._db.put(_START_N_RES_LEN_KEY, self._start_n_res_len_bytes)
-            except plyvel.Error:
-                raise LevelDB_Error(
-                    self._reg_file,
-                    Register._SET_START_N_RESIDUE_LENGTH_ERROR_MSG
-                )
+        self._start_n_head = head
+        self._start_n_head_bytes = str(self._start_n_head).encode("ASCII")
+        self._start_n_tail_length = tail_length
+        self._start_n_tail_length_bytes = str(self._start_n_tail_length).encode("ASCII")
+        self._start_n_tail_mod = 10 ** self._start_n_tail_length
 
     @contextmanager
     def open(self):
@@ -330,8 +307,8 @@ cannot do the following:
             with self._db.write_batch(transaction = True) as wb:
                 wb.put(_CLS_KEY, self._reg_cls_bytes)
                 wb.put(_MSG_KEY, self._msg_bytes)
-                wb.put(_START_N_MAGN_KEY, self._start_n_magn_bytes)
-                wb.put(_START_N_RES_LEN_KEY, self._start_n_res_len_bytes)
+                wb.put(_START_N_HEAD_KEY, self._start_n_head_bytes)
+                wb.put(_START_N_TAIL_LENGTH_KEY, self._start_n_tail_length_bytes)
                 wb.put(_CURR_ID_KEY, b"0")
             Register._add_instance(self)
             yiel = self
@@ -403,8 +380,8 @@ cannot do the following:
     def get_all_apri_info(self, recursively = False):
 
         ret = set()
-        for apri, _, _ in self._iter_ram_block_metadatas():
-            ret.add(apri)
+        for blk in self._ram_blks:
+            ret.add(blk.get_apri())
 
         self._check_open_raise("get_all_apri_info")
         with leveldb_prefix_iterator(self._db, _ID_APRI_KEY_PREFIX) as it:
@@ -414,7 +391,7 @@ cannot do the following:
         if recursively:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open() as subreg:
-                    ret.update(subreg.get_all_apris())
+                    ret.update(subreg.get_all_apri_info())
 
         return ret
 
@@ -448,11 +425,11 @@ cannot do the following:
     #################################
     #      PUBLIC APOS METHODS      #
 
-    def add_apos(self, apri, apos): pass
+    def set_apos_info(self, apri, apos): pass
 
-    def remove_apos(self, apri, apos): pass
+    def get_apos_info(self): pass
 
-    def get_all_apos(self, apri): pass
+    def remove_apos_info(self, apri, apos): pass
 
     #################################
     #  PUBLIC SUB-REGISTER METHODS  #
@@ -555,26 +532,14 @@ cannot do the following:
 
         self._check_open_raise("add_disk_block")
 
-        start_n_str = str(blk.get_start_n())
-
-        if self._start_n_magn > 0 and start_n_str[ -self._start_n_magn : ] != "0"*self._start_n_magn:
-            pass # TODO log warning
-
-        if self._start_n_magn > 0:
-            res_str = start_n_str[ : -self._start_n_magn]
-        else:
-            res_str = start_n_str
-
-        if len(res_str) > self._start_n_res_len:
+        start_n_head = blk.get_start_n() // self._start_n_tail_mod
+        if start_n_head != self._start_n_head :
             raise IndexError(
-                "Even after accounting for the `start_n_magnitude` for this register, the `start_n` for the "+
-                "passed `blk` is too large. Either increase `start_n_magnitude` (via " +
-                "`reg.set_start_n_magniude`) or increase the `start_n_residue_length` " +
-                "(via `reg.set_start_n_residue_length`).\n" +
-                f"`start_n`                : {blk.get_start_n()}\n" +
-                f"`start_n_magnitude`      : {self._start_n_magn}\n" +
-                f"`start_n` residue        : {res_str}\n" +
-                f"`start_n_residue_length` : {self._start_n_res_len}\n"
+                "The `start_n` for the passed `Block` does not have the correct head:\n" +
+                f"`tail_length`   : {self._start_n_tail_length}\n" +
+                f"expected `head` : {self._start_n_head}\n"
+                f"`start_n`       : {blk.get_start_n()}\n" +
+                f"`start_n` head  : {start_n_head}\n"
             )
 
         key = self._get_disk_block_key(blk.get_apri(), None, blk.get_start_n(), len(blk))
@@ -591,7 +556,7 @@ cannot do the following:
                 self._db.put(key, filename_bytes)
             except plyvel.Error:
                 Path.unlink(filename, missing_ok=True)
-                raise LevelDB_Error(
+                raise Database_Error(
                     self._reg_file,
                     Register._ADD_DISK_BLOCK_ERROR_MSG
                 )
@@ -663,11 +628,12 @@ cannot do the following:
             raise ValueError
 
         _id = self._get_id_by_apri(apri, apri_json)
-        start_n_str = str(start_n)[:-self._start_n_magn].zfill(self._start_n_res_len)
+        tail = start_n % self._start_n_tail_mod
+
         return (
                 _BLK_KEY_PREFIX             +
                 _id                         + _KEY_SEP +
-                start_n_str.encode("ASCII") + _KEY_SEP +
+                str(tail)  .encode("ASCII") + _KEY_SEP +
                 str(length).encode("ASCII")
         )
 
@@ -707,7 +673,7 @@ cannot do the following:
             apri = Apri_Info.from_json(apri_json.decode("ASCII"))
         return (
             apri,
-            int(start_n_bytes.decode("ASCII")) + self._start_n_mod,
+            int(start_n_bytes.decode("ASCII")) + self._start_n_head,
             int(length_bytes.decode("ASCII"))
         )
 
@@ -716,26 +682,27 @@ cannot do the following:
 
     def add_ram_block(self, blk):
 
-        apri = blk.get_apri()
-        start_n = blk.get_start_n()
-        if (apri,start_n) not in self._ram_blks.keys():
-            self._ram_blks[(apri, start_n)] = blk
+        if all(ram_blk is not blk for ram_blk in self._ram_blks):
+            self._ram_blks.append(blk)
 
     def remove_ram_block(self, blk):
 
-        try:
-            del self._ram_blks[(blk.get_apri(), blk.get_start_n())]
-        except KeyError:
-            pass
+        for i, ram_blk in enumerate(self._ram_blks):
+            if ram_blk is blk:
+                del self._ram_blks[i]
+                return
+
+        raise Data_Not_Found_Error
 
     def get_ram_block_by_n(self, apri, n, recursively = False):
 
         #TODO for warnings: if ram blocks have overlapping data, log warning when this methid
         # is called
 
-        for _, start_n, length in self._iter_ram_block_metadatas(apri):
-            if start_n <= n < start_n + length:
-                return self._ram_blks[(apri, start_n)]
+        for blk in self._ram_blks:
+            start_n = blk.get_start_n()
+            if blk.get_apri() == apri and start_n <= n < start_n + len(blk):
+                return blk
 
         if recursively:
             for subreg in self._iter_subregisters():
@@ -747,9 +714,10 @@ cannot do the following:
 
         raise Data_Not_Found_Error
 
-    def get_all_ram_blocks(self, recursively = False):
-        for blk in self._ram_blks.values():
-            yield blk
+    def get_all_ram_blocks(self, apri, recursively = False):
+        for blk in self._ram_blks:
+            if blk.get_apri() == apri:
+                yield blk
         if recursively:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open() as subreg:
@@ -758,11 +726,6 @@ cannot do the following:
 
     #################################
     #    PROTEC RAM BLK METHODS     #
-
-    def _iter_ram_block_metadatas(self, apri = None):
-        for (_apri, _start_n), _blk in self._ram_blks.items():
-            if apri is not None and _apri == apri:
-                yield _apri, _start_n, len(_blk)
 
     #################################
     # PUBLIC RAM & DISK BLK METHODS #
@@ -814,7 +777,7 @@ cannot do the following:
         intervals_sorted = sorted(
             [
                 (start_n, length)
-                for _, start_n, length, _ in self._iter_ram_and_disk_block_metadatas(apri,None,recursively)
+                for _, start_n, length, _ in self._iter_ram_and_disk_block_metadatas(apri,recursively)
             ],
             key = lambda t: t[0]
         )
@@ -834,18 +797,19 @@ cannot do the following:
     #################################
     # PROTEC RAM & DISK BLK METHODS #
 
-    def _iter_ram_and_disk_block_metadatas(self, apri = None, apri_json = None, recursively = False):
+    def _iter_ram_and_disk_block_metadatas(self, apri, recursively = False):
 
-        for metadata in chain(
-            self._iter_ram_block_metadatas(apri),
-            self._iter_disk_block_metadatas(apri,apri_json)
-        ):
+        for blk in self._ram_blks:
+            if blk.get_apri() == apri:
+                yield apri, blk.get_start_n(), len(blk)
+
+        for metadata in self._iter_disk_block_metadatas(apri,None):
             yield metadata
 
         if recursively:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open() as subreg:
-                    for metadata in subreg._iter_ram_block_metadatas(apri, True):
+                    for metadata in subreg._iter_ram_and_disk_block_metadatas(apri, True):
                         yield metadata
 
 class Pickle_Register(Register):
