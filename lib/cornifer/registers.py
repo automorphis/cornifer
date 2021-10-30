@@ -23,7 +23,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import plyvel
 
-from cornifer.errors import Sub_Register_Cycle_Error, Data_Not_Found_Error, \
+from cornifer.errors import Subregister_Cycle_Error, Data_Not_Found_Error, \
     Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error, Register_Not_Created_Error, \
     Critical_Database_Error, Database_Error
 from cornifer.sequences import Apri_Info, Block
@@ -429,21 +429,23 @@ cannot do the following:
     def add_subregister(self, subreg):
 
         self._check_open_raise("add_subregister")
+        if not subreg._created:
+            raise Register_Not_Created_Error("add_subregister")
 
         key = subreg._get_subregister_key()
         if not leveldb_has_key(self._db, key):
             if subreg._check_no_cycles(self):
                 self._db.put(key, subreg._reg_cls_bytes)
             else:
-                raise Sub_Register_Cycle_Error(self, subreg)
+                raise Subregister_Cycle_Error(self, subreg)
 
     def remove_subregister(self, subreg):
 
         self._check_open_raise("remove_subregister")
 
         key = subreg._get_subregister_key()
-        if not leveldb_has_key(self._db, key):
-            self._db.remove(key)
+        if leveldb_has_key(self._db, key):
+            self._db.delete(key)
 
     #################################
     #  PROTEC SUB-REGISTER METHODS  #
@@ -451,12 +453,15 @@ cannot do the following:
     def _check_no_cycles(self, original):
 
         if not self._created or not original._created:
-            return True
+            raise Register_Not_Created_Error("_check_no_cycles")
+
+        if self is original:
+            return False
 
         with self._recursive_open() as reg:
 
             if any(
-                original == subreg
+                original is subreg
                 for subreg in reg._iter_subregisters()
             ):
                 return False
@@ -713,9 +718,10 @@ cannot do the following:
             if blk.get_apri() == apri:
                 yield blk
         if recursively:
+            self._check_open_raise("get_all_ram_blocks")
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open() as subreg:
-                    for blk in subreg.get_all_ram_blocks(True):
+                    for blk in subreg.get_all_ram_blocks(apri, True):
                         yield blk
 
     #################################

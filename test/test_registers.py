@@ -8,9 +8,9 @@ import plyvel
 
 from cornifer import Numpy_Register, Register, Apri_Info, Block
 from cornifer.errors import Register_Not_Open_Error, Register_Not_Created_Error, Register_Already_Open_Error, \
-    Data_Not_Found_Error, Register_Error
+    Data_Not_Found_Error, Register_Error, Subregister_Cycle_Error
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, _CLS_KEY, _MSG_KEY, _CURR_ID_KEY, \
-    _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY
+    _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX
 from cornifer.utilities import leveldb_count_keys, leveldb_prefix_iterator
 
 """
@@ -355,7 +355,7 @@ class Test_Register(TestCase):
             len(reg._ram_blks)
         )
 
-    def test_get_ram_block_by_n(self):
+    def test_get_ram_block_by_n_no_recursive(self):
 
         reg = Testy_Register(SAVES_DIR, "hello")
         apri = Apri_Info(name = "list")
@@ -1063,10 +1063,7 @@ class Test_Register(TestCase):
                         10 ** Register._START_N_TAIL_LENGTH_DEFAULT, 0, Register._START_N_TAIL_LENGTH_DEFAULT
                     )
 
-    def check__iter_disk_block_metadatas(
-            self, t,
-            apri, start_n, length
-    ):
+    def check__iter_disk_block_metadatas(self, t, apri, start_n, length):
         self.assertEqual(
             4,
             len(t)
@@ -1303,7 +1300,6 @@ class Test_Register(TestCase):
             ]:
                 with self.assertRaises(Data_Not_Found_Error):
                     reg.get_disk_block_by_metadata(*metadata)
-
 
     def test_remove_disk_block(self):
 
@@ -1593,19 +1589,261 @@ class Test_Register(TestCase):
     def test__check_no_cycles(self):
 
         reg = Testy_Register(SAVES_DIR, "hello")
-        self.assertTrue(
+        with self.assertRaises(Register_Not_Created_Error):
+            reg._check_no_cycles(reg)
+
+        reg = Testy_Register(SAVES_DIR, "hello")
+        with reg.open():pass
+        # loop
+        self.assertFalse(
             reg._check_no_cycles(reg)
         )
-        with reg.open() as reg:
-            reg._db.put(reg._get_subregister_key(), reg._reg_cls_bytes)
-            self.assertFalse(
-                reg._check_no_cycles(reg)
-            )
 
         reg1 = Testy_Register(SAVES_DIR, "hello")
         reg2 = Testy_Register(SAVES_DIR, "hello")
-        with reg2.open():pass
+        reg3 = Testy_Register(SAVES_DIR, "hello")
+        reg4 = Testy_Register(SAVES_DIR, "hello")
+        with reg1.open(): pass
+        with reg2.open(): pass
+        with reg3.open(): pass
+        with reg4.open(): pass
+
+        # ok
+        self.assertTrue(
+            reg2._check_no_cycles(reg1)
+        )
+
         with reg1.open() as reg1:
-            self.assertTrue(
-                reg2._check_no_cycles(reg1)
+            reg1._db.put(reg2._get_subregister_key(), reg2._reg_cls_bytes)
+        # 2-cycle
+        self.assertFalse(
+            reg1._check_no_cycles(reg2)
+        )
+
+        with reg2.open() as reg2:
+            reg2._db.put(reg3._get_subregister_key(), reg3._reg_cls_bytes)
+        # 2-cycle with tail
+        self.assertFalse(
+            reg2._check_no_cycles(reg3)
+        )
+        # 3-cycle
+        self.assertFalse(
+            reg1._check_no_cycles(reg3)
+        )
+        # 2-path with shortcut
+        self.assertTrue(
+            reg3._check_no_cycles(reg1)
+        )
+
+        with reg3.open() as reg3:
+            reg3._db.put(reg4._get_subregister_key(), reg4._reg_cls_bytes)
+
+        # 4-cycle
+        self.assertFalse(
+            reg1._check_no_cycles(reg4)
+        )
+
+        # 3-path with shortcut
+        self.assertTrue(
+            reg4._check_no_cycles(reg1)
+        )
+
+    def test_add_subregister(self):
+
+        reg1 = Testy_Register(SAVES_DIR, "hello")
+        reg2 = Testy_Register(SAVES_DIR, "hello")
+        with self.assertRaisesRegex(Register_Not_Open_Error, "add_subregister"):
+            reg1.add_subregister(reg2)
+
+        reg1 = Testy_Register(SAVES_DIR, "hello")
+        reg2 = Testy_Register(SAVES_DIR, "hello")
+        with reg1.open() as reg1:
+            with self.assertRaisesRegex(Register_Not_Created_Error, "add_subregister"):
+                reg1.add_subregister(reg2)
+
+        reg1 = Testy_Register(SAVES_DIR, "hello")
+        reg2 = Testy_Register(SAVES_DIR, "hello")
+        reg3 = Testy_Register(SAVES_DIR, "hello")
+        with reg2.open(): pass
+        with reg1.open() as reg1:
+            try:
+                reg1.add_subregister(reg2)
+            except Subregister_Cycle_Error:
+                self.fail()
+
+        with reg3.open(): pass
+        with reg2.open() as reg2:
+            try:
+                reg2.add_subregister(reg3)
+            except Subregister_Cycle_Error:
+                self.fail()
+        with reg1.open() as reg1:
+            try:
+                reg1.add_subregister(reg3)
+            except Subregister_Cycle_Error:
+                self.fail()
+
+        reg1 = Testy_Register(SAVES_DIR, "hello")
+        reg2 = Testy_Register(SAVES_DIR, "hello")
+        reg3 = Testy_Register(SAVES_DIR, "hello")
+        with reg3.open(): pass
+        with reg2.open() as reg2:
+            try:
+                reg2.add_subregister(reg3)
+            except Subregister_Cycle_Error:
+                self.fail()
+        with reg1.open() as reg1:
+            try:
+                reg1.add_subregister(reg2)
+            except Subregister_Cycle_Error:
+                self.fail()
+        with reg3.open() as reg3:
+            with self.assertRaises(Subregister_Cycle_Error):
+                reg3.add_subregister(reg1)
+
+    def test_remove_subregister(self):
+
+        reg1 = Testy_Register(SAVES_DIR, "hello")
+        reg2 = Testy_Register(SAVES_DIR, "hello")
+        reg3 = Testy_Register(SAVES_DIR, "hello")
+        with reg2.open():pass
+        with reg3.open():pass
+        with reg1.open():
+            reg1.add_subregister(reg2)
+            self.assertEqual(
+                1,
+                leveldb_count_keys(reg1._db, _SUB_KEY_PREFIX)
             )
+            reg1.remove_subregister(reg2)
+            self.assertEqual(
+                0,
+                leveldb_count_keys(reg1._db, _SUB_KEY_PREFIX)
+            )
+
+            reg1.add_subregister(reg2)
+            reg1.add_subregister(reg3)
+            self.assertEqual(
+                2,
+                leveldb_count_keys(reg1._db, _SUB_KEY_PREFIX)
+            )
+            reg1.remove_subregister(reg2)
+            self.assertEqual(
+                1,
+                leveldb_count_keys(reg1._db, _SUB_KEY_PREFIX)
+            )
+            reg1.remove_subregister(reg3)
+            self.assertEqual(
+                0,
+                leveldb_count_keys(reg1._db, _SUB_KEY_PREFIX)
+            )
+
+    def test_get_all_ram_blocks(self):
+
+        reg = Testy_Register(SAVES_DIR, "whatever")
+        apri = Apri_Info(name = "whatev")
+
+        with reg.open() as reg: pass
+        with self.assertRaisesRegex(Register_Not_Open_Error, "get_all_ram_blocks"):
+            for _ in reg.get_all_ram_blocks(apri, True): pass
+
+        apri1 = Apri_Info(name = "foomy")
+        apri2 = Apri_Info(name = "doomy")
+        blk1 = Block(list(range(10)), apri1)
+        blk2 = Block(list(range(20)), apri1, 10)
+        blk3 = Block(list(range(14)), apri2, 50)
+        blk4 = Block(list(range(100)), apri2, 120)
+        blk5 = Block(list(range(120)), apri2, 1000)
+        reg1 = Testy_Register(SAVES_DIR, "helllo")
+        reg2 = Testy_Register(SAVES_DIR, "suuup")
+        reg1.add_ram_block(blk1)
+        reg1.add_ram_block(blk2)
+        reg1.add_ram_block(blk3)
+        reg2.add_ram_block(blk4)
+        reg2.add_ram_block(blk5)
+        try:
+            reg1.get_all_ram_blocks(apri1, True)
+        except Register_Not_Open_Error:
+            self.fail("_check_open_raise should only be called if data couldn't be found in initial register")
+
+        total = 0
+        for i, blk in enumerate(reg1.get_all_ram_blocks(apri1)):
+            total += 1
+            if i == 0:
+                self.assertIs(
+                    blk1,
+                    blk
+                )
+            elif i == 1:
+                self.assertIs(
+                    blk2,
+                    blk
+                )
+            else:
+                self.fail()
+        self.assertEqual(
+            2,
+            total
+        )
+
+
+        with reg2.open(): pass
+        with reg1.open() as reg1:
+            reg1.add_subregister(reg2)
+            total = 0
+            for i, blk in enumerate(reg1.get_all_ram_blocks(apri1, True)):
+                total += 1
+                if i == 0:
+                    self.assertIs(
+                        blk1,
+                        blk
+                    )
+                elif i == 1:
+                    self.assertIs(
+                        blk2,
+                        blk
+                    )
+                else:
+                    self.fail()
+            self.assertEqual(
+                2,
+                total
+            )
+
+            total = 0
+            for i, blk in enumerate(reg1.get_all_ram_blocks(apri2, True)):
+                total += 1
+                if i == 0:
+                    self.assertIs(
+                        blk3,
+                        blk
+                    )
+                elif i == 1:
+                    self.assertIs(
+                        blk4,
+                        blk
+                    )
+                elif i == 2:
+                    self.assertIs(
+                        blk5,
+                        blk
+                    )
+                else:
+                    self.fail()
+            self.assertEqual(
+                3,
+                total
+            )
+
+    def test_get_ram_block_by_n(self):pass
+
+    def test_sequences_calculated(self):pass
+
+    def test__iter_ram_and_disk_block_metadatas(self):pass
+
+    def test_get_all_disk_blocks(self):pass
+
+    def test_get_disk_block_by_n(self):pass
+
+    def test_get_disk_block_by_metadata(self):pass
+
+    def test_get_all_apri_info(self):pass

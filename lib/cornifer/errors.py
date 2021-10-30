@@ -60,7 +60,7 @@ class Data_Not_Found_Error(OSError):pass
 
 class Keyword_Argument_Error(RuntimeError):pass
 
-class Sub_Register_Cycle_Error(Register_Error):
+class Subregister_Cycle_Error(Register_Error):
     def __init__(self, parent, child):
         super().__init__(
             "Attempting to add this register as a sub-register will created a directed cycle in the " +
