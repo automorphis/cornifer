@@ -14,4 +14,4 @@
 """
 
 from cornifer.sequences import Block, Apri_Info
-from cornifer.registers import Register, Pickle_Register, NumPy_Register
+from cornifer.registers import Register, Pickle_Register, Numpy_Register

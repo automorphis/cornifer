@@ -119,16 +119,13 @@ cannot do the following:
         self._reg_cls_bytes = type(self).__name__.encode()
 
         self._start_n_head = 0
-        self._start_n_head_bytes = b"0"
         self._start_n_tail_length = Register._START_N_TAIL_LENGTH_DEFAULT
-        self._start_n_tail_length_bytes = str(self._start_n_tail_length).encode("ASCII")
         self._start_n_tail_mod = 10 ** self._start_n_tail_length
 
         self._ram_blks = []
         self._db = None
 
         self._created = False
-        self._opened = False
 
     @staticmethod
     def add_subclass(subclass):
@@ -227,20 +224,18 @@ cannot do the following:
         if head == self._start_n_head and tail_length == self._start_n_tail_length:
             return
 
-        # todo check smaller tail_length
-
         blank = Apri_Info()
-        new_div = 10 ** tail_length
+        new_mod = 10 ** tail_length
         with leveldb_prefix_iterator(self._db, _BLK_KEY_PREFIX) as it:
             for key, _ in it:
                 _, start_n, _ = self._convert_disk_block_key(key,blank)
-                if start_n // new_div != head:
+                if start_n // new_mod != head:
                     apri,_,length = self._convert_disk_block_key(key)
                     raise ValueError(
                         "The following `start_n` does not have the correct head:\n" +
-                        f"`start_n`   : {start_n}f\n" +
+                        f"`start_n`   : {start_n}\n" +
                         "That `start_n` is associated with a `Block` whose `Apri_Info` and length is:\n" +
-                        f"`Apri_Info` : {str(apri)}\n" +
+                        f"`Apri_Info` : {str(apri.to_json())}\n" +
                         f"length      : {length}"
                     )
 
@@ -262,15 +257,15 @@ cannot do the following:
                         for key,val in it:
                             _, start_n, _ = self._convert_disk_block_key(key,blank)
                             apri_json, _, length_bytes = Register._split_disk_block_key(key)
-                            new_start_n_bytes = str(start_n % head).encode("ASCII")
+                            new_start_n_bytes = str(start_n % new_mod).encode("ASCII")
                             new_key = Register._join_disk_block_metadata(apri_json, new_start_n_bytes, length_bytes)
                             if key != new_key:
                                 old_keys.append(key)
                             wb.put(new_key, val)
                 except plyvel.Error:
                     try:
-                        self._db.put(_START_N_HEAD_KEY, self._start_n_head_bytes)
-                        self._db.put(_START_N_TAIL_LENGTH_KEY, self._start_n_tail_length_bytes)
+                        self._db.put(_START_N_HEAD_KEY, str(self._start_n_head).encode("ASCII"))
+                        self._db.put(_START_N_TAIL_LENGTH_KEY, str(self._start_n_tail_length).encode("ASCII"))
                     except plyvel.Error:
                         raise Critical_Database_Error(
                             self._reg_file,
@@ -291,9 +286,7 @@ cannot do the following:
             )
 
         self._start_n_head = head
-        self._start_n_head_bytes = str(self._start_n_head).encode("ASCII")
         self._start_n_tail_length = tail_length
-        self._start_n_tail_length_bytes = str(self._start_n_tail_length).encode("ASCII")
         self._start_n_tail_mod = 10 ** self._start_n_tail_length
 
     @contextmanager
@@ -303,12 +296,11 @@ cannot do the following:
             local_dir.mkdir()
             self._set_local_dir(local_dir)
             self._db = plyvel.DB(str(self._reg_file), create_if_missing= True)
-            self._opened = True
             with self._db.write_batch(transaction = True) as wb:
                 wb.put(_CLS_KEY, self._reg_cls_bytes)
                 wb.put(_MSG_KEY, self._msg_bytes)
-                wb.put(_START_N_HEAD_KEY, self._start_n_head_bytes)
-                wb.put(_START_N_TAIL_LENGTH_KEY, self._start_n_tail_length_bytes)
+                wb.put(_START_N_HEAD_KEY, str(self._start_n_head).encode("ASCII"))
+                wb.put(_START_N_TAIL_LENGTH_KEY, str(self._start_n_tail_length).encode("ASCII"))
                 wb.put(_CURR_ID_KEY, b"0")
             Register._add_instance(self)
             yiel = self
@@ -324,14 +316,14 @@ cannot do the following:
 
     def _open_created(self):
         ret = Register._get_instance(self)
-        if ret._opened:
+        if not ret._created:
+            raise Register_Not_Created_Error("_open_created")
+        if ret._db is not None and not ret._db.closed:
             raise Register_Already_Open_Error()
-        ret._opened = True
         ret._db = plyvel.DB(str(ret._reg_file))
         return ret
 
     def _close_created(self):
-        self._opened = False
         self._db.close()
 
     @contextmanager
@@ -340,19 +332,19 @@ cannot do the following:
             raise Register_Not_Created_Error("_recursive_open")
         else:
             try:
-                opened = self._open_created()
+                yiel = self._open_created()
                 need_close = True
             except Register_Already_Open_Error:
-                opened = self
+                yiel = self
                 need_close = False
             try:
-                yield opened
+                yield yiel
             finally:
                 if need_close:
-                    opened._close_created()
+                    yiel._close_created()
 
     def _check_open_raise(self, method_name):
-        if not self._opened:
+        if self._db is None or self._db.closed:
             raise Register_Not_Open_Error(method_name)
         if not self._local_dir.is_dir():
             raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
@@ -459,7 +451,7 @@ cannot do the following:
     def _check_no_cycles(self, original):
 
         if not self._created or not original._created:
-            return False
+            return True
 
         with self._recursive_open() as reg:
 
@@ -479,8 +471,8 @@ cannot do the following:
         length = len(_SUB_KEY_PREFIX)
         with leveldb_prefix_iterator(self._db, _SUB_KEY_PREFIX) as it:
             for key, val in it:
-                cls_name = self._db.get(key).encode("ASCII")
-                filename = key[length:].encode("ASCII")
+                cls_name = self._db.get(key).decode("ASCII")
+                filename = Path(key[length:].decode("ASCII"))
                 subreg = Register._from_name(cls_name, filename)
                 yield subreg
 
@@ -567,13 +559,13 @@ cannot do the following:
 
         key = self._get_disk_block_key(apri, None, start_n, length)
         if leveldb_has_key(self._db, key):
-            filename = Path(str(self._db.get(key)))
-            self._db.remove(key)
+            filename = Path(self._db.get(key).decode("ASCII"))
+            self._db.delete(key)
             filename.unlink() # TODO add error checks
 
     def get_disk_block_by_metadata(self, apri, start_n, length, recursively = False):
 
-        self._check_open_raise("get_disk_block")
+        self._check_open_raise("get_disk_block_by_metadata")
         key = self._get_disk_block_key(apri, None, start_n, length)
         if leveldb_has_key(self._db, key):
             filename = Path(self._db.get(key).decode("ASCII"))
@@ -592,6 +584,11 @@ cannot do the following:
 
     def get_disk_block_by_n(self, apri, n, recursively = False):
 
+        self._check_open_raise("get_disk_block_by_n")
+
+        if n < 0:
+            raise ValueError("n must be positive")
+
         for apri, start_n, length, _ in self._iter_disk_block_metadatas(apri, None):
             if start_n <= n < start_n + length:
                 return self.get_disk_block_by_metadata(apri, start_n, length)
@@ -609,7 +606,7 @@ cannot do the following:
     def get_all_disk_blocks(self, apri, recursively = False):
 
         self._check_open_raise("get_all_disk_blocks")
-        for _, apri, start_n, _, filename in self._iter_disk_block_metadatas(apri, None):
+        for apri, start_n, _, filename in self._iter_disk_block_metadatas(apri, None):
             data = type(self).load_disk_data(filename)
             yield Block(data, apri, start_n)
 
@@ -639,13 +636,10 @@ cannot do the following:
 
     def _iter_disk_block_metadatas(self, apri, apri_json):
 
-        if apri is not None:
-            apri_json = apri.to_json().encode("ASCII")
-
-        if apri_json is None:
-            prefix = _SUB_KEY_PREFIX
+        if apri_json is None and apri is None:
+            prefix = _BLK_KEY_PREFIX
         else:
-            prefix = _SUB_KEY_PREFIX + apri_json
+            prefix = _BLK_KEY_PREFIX + self._get_id_by_apri(apri,apri_json)
 
         with self._db.snapshot() as sn:
             with leveldb_prefix_iterator(sn, prefix) as it:
@@ -673,7 +667,7 @@ cannot do the following:
             apri = Apri_Info.from_json(apri_json.decode("ASCII"))
         return (
             apri,
-            int(start_n_bytes.decode("ASCII")) + self._start_n_head,
+            int(start_n_bytes.decode("ASCII")) + self._start_n_head * self._start_n_tail_mod,
             int(length_bytes.decode("ASCII"))
         )
 
@@ -828,7 +822,7 @@ class Pickle_Register(Register):
 
 Register.add_subclass(Pickle_Register)
 
-class NumPy_Register(Register):
+class Numpy_Register(Register):
 
     @classmethod
     def dump_disk_data(cls, data, filename):
@@ -840,7 +834,7 @@ class NumPy_Register(Register):
     def load_disk_data(cls, filename):
         return np.load(filename, mmap_mode = None, allow_pickle = False, fix_imports = False)
 
-Register.add_subclass(NumPy_Register)
+Register.add_subclass(Numpy_Register)
 
 class HDF5_Register(Register):
 

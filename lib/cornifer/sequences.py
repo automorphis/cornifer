@@ -27,6 +27,7 @@ class _Info(ABC):
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
+        self._reserved_kws = ["_reserved_kws"]
 
     @classmethod
     def from_json(cls, json_string):
@@ -41,6 +42,8 @@ class _Info(ABC):
 
     def to_json(self):
         kwargs = replace_tuples_with_lists(self.__dict__)
+        for kw in self._reserved_kws:
+            kwargs.pop(kw,None)
         kwargs = order_json_obj(kwargs)
         try:
             ret = json.dumps(kwargs,
@@ -63,11 +66,36 @@ class _Info(ABC):
             )
         return ret
 
+    def _add_reserved_kw(self, kw):
+        self._reserved_kws.append(kw)
+
+    def _check_reserved_kws(self, kwargs):
+        if any(kw in kwargs for kw in self._reserved_kws):
+            raise Keyword_Argument_Error(
+                "The following keyword-argument keys are reserved. Choose a different key.\n" +
+                f"{', '.join(self._reserved_kws)}"
+            )
+
     @abstractmethod
     def __hash__(self):pass
 
     def __eq__(self, other):
         return type(self) == type(other) and self.to_json() == other.to_json()
+
+    def __str__(self):
+        ret = f"{self.__class__.__name__}("
+        first = True
+        for key,val in self.__dict__.items():
+            if key not in self._reserved_kws:
+                if first:
+                    first = False
+                else:
+                    ret += ", "
+                ret += f"{key}=" + repr(val)
+        return ret + ")"
+
+    def __repr__(self):
+        return str(self)
 
     def __copy__(self):
         info = type(self)()
@@ -82,11 +110,9 @@ class Apri_Info(_Info):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        if "_json" in kwargs.keys() or "_hash" in kwargs.keys():
-            raise Keyword_Argument_Error(
-                "The keyword-argument keys \"_json\" and \"_hash\" are reserved. Please choose a different " +
-                "key."
-            )
+        self._add_reserved_kw("_json")
+        self._add_reserved_kw("_hash")
+        self._check_reserved_kws(kwargs)
 
         self._json = super().to_json()
         self._hash = hash(type(self))
@@ -245,6 +271,16 @@ class Block:
             f"The type `{self.__class__.__name__}` is not hashable. Please instead hash " +
             f"`(blk.get_apri(), blk.get_start_n(), len(blk))`."
         )
+
+    def __str__(self):
+        ret = self.__class__.__name__ + "("
+        ret += f"<{self._dtype}>, "
+        ret += repr(self._apri) + ", "
+        ret += str(self._start_n) + ")"
+        return ret
+
+    def __repr__(self):
+        return str(self)
 
     def __eq__(self, other):
 
