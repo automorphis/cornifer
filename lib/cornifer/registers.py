@@ -25,7 +25,7 @@ import plyvel
 
 from cornifer.errors import Subregister_Cycle_Error, Data_Not_Found_Error, \
     Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error, Register_Not_Created_Error, \
-    Critical_Database_Error, Database_Error
+    Critical_Database_Error, Database_Error, Register_Error
 from cornifer.sequences import Apri_Info, Block
 from cornifer.utilities import intervals_overlap, random_unique_filename, leveldb_has_key, \
     leveldb_prefix_iterator
@@ -143,34 +143,48 @@ cannot do the following:
     _instances = {}
 
     @staticmethod
-    def _from_name(name, local_dir):
+    def _from_local_dir(local_dir):
 
-        if name == "Register":
-            raise TypeError(
-                "`Register` is an abstract class, meaning that `Register` itself cannot be instantiated, " +
-                "only its concrete subclasses."
-            )
-        con = Register._constructors.get(name, None)
-        if con is None:
-            raise TypeError(
-                f"`Register` is not aware of a subclass called `{name}`. Please add the subclass to " +
-                f"`Register` via `Register.add_subclass({name})`."
-            )
-
-        reg1 = con(local_dir.parent, "")
-        reg1._set_local_dir(local_dir)
+        reg1 = _Blank_Register(local_dir.parent, "")
         reg2 = Register._get_instance(reg1)
 
-        if reg1 is reg2:
-            # if `reg1 is reg2`, then the user does not have a `reg1` reference, hence its LevelDB
-            # database is not open, hence it is safe to manually open here
-            db = plyvel.DB(str(reg2._local_dir / _REGISTER_LEVELDB_NAME))
-            msg_bytes = db.get(_MSG_KEY)
-            reg2._msg = msg_bytes.decode("ASCII")
-            reg2._msg_bytes = msg_bytes
-            db.close()
+        if reg1 is not reg2:
+            return reg2
 
-        return reg2
+        else:
+            try:
+                db = plyvel.DB(local_dir)
+            except plyvel.IOError:
+                raise Register_Already_Open_Error()
+            except plyvel.Error:
+                raise Register_Not_Created_Error("_from_local_dir")
+
+            cls_name = db.get(_CLS_KEY)
+            if cls_name is None:
+                raise Register_Error(f"`{_CLS_KEY.decode()}` key not found for register : {local_dir}")
+            cls_name = cls_name.decode("ASCII")
+
+            if cls_name == "Register":
+                raise TypeError(
+                    "`Register` is an abstract class, meaning that `Register` itself cannot be instantiated, " +
+                    "only its concrete subclasses."
+                )
+
+            con = Register._constructors.get(cls_name, None)
+            if con is None:
+                raise TypeError(
+                    f"`Register` is not aware of a subclass called `{cls_name}`. Please add the subclass to "+
+                    f"`Register` via `Register.add_subclass({cls_name})`."
+                )
+
+            msg_bytes = db.get(_MSG_KEY)
+            if msg_bytes is None:
+                raise Register_Error(f"`{_MSG_KEY.decode()}` key not found for register : {local_dir}")
+            msg = msg_bytes.decode("ASCII")
+
+            reg = con(local_dir.parent, msg)
+            reg._set_local_dir(local_dir)
+            return reg
 
     @staticmethod
     def _add_instance(reg):
@@ -191,13 +205,13 @@ cannot do the following:
         if not self._created or not other._created:
             raise Register_Not_Created_Error("__eq__")
         else:
-            return type(self) == type(other) and self._local_dir.resolve() == other._local_dir.resolve()
+            return self._local_dir.resolve() == other._local_dir.resolve()
 
     def __hash__(self):
         if not self._created:
             raise Register_Not_Created_Error("__hash__")
         else:
-            return hash(str(self._local_dir.resolve())) + hash(type(self))
+            return hash(str(self._local_dir.resolve()))
 
     def __str__(self):
         return self._msg
@@ -205,10 +219,14 @@ cannot do the following:
     def __repr__(self):
         return f"{self.__class__.__name__}(\"{str(self.saves_directory)}\", \"{self._msg}\")"
 
+    def __contains__(self, apri):
+        self._check_open_raise("__contains__")
+        return apri in self.get_all_apri_info()
+
     def set_message(self, msg):
         self._check_open_raise("set_message")
         self._msg = msg
-        self._msg_bytes = self._msg.encode()
+        self._msg_bytes = self._msg.encode("ASCII")
         self._db.put(_MSG_KEY, self._msg_bytes)
 
     def set_start_n_info(self, head, tail_length):
@@ -358,6 +376,8 @@ cannot do the following:
             )
         if not local_dir.is_dir():
             raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
+        if not (local_dir / _REGISTER_LEVELDB_NAME).is_dir():
+            raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
         self._created = True
         self._local_dir = local_dir
         self._local_dir_bytes = str(self._local_dir).encode("ASCII")
@@ -478,7 +498,7 @@ cannot do the following:
             for key, val in it:
                 cls_name = self._db.get(key).decode("ASCII")
                 filename = Path(key[length:].decode("ASCII"))
-                subreg = Register._from_name(cls_name, filename)
+                subreg = Register._from_local_dir(filename)
                 yield subreg
 
     def _get_subregister_key(self):
@@ -698,12 +718,16 @@ cannot do the following:
         #TODO for warnings: if ram blocks have overlapping data, log warning when this methid
         # is called
 
+        if n < 0:
+            raise IndexError("`n` must be non-negative")
+
         for blk in self._ram_blks:
             start_n = blk.get_start_n()
             if blk.get_apri() == apri and start_n <= n < start_n + len(blk):
                 return blk
 
         if recursively:
+            self._check_open_raise("get_ram_block_by_n")
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open() as subreg:
                     try:
@@ -772,7 +796,7 @@ cannot do the following:
                 raise Data_Not_Found_Error()
             return self.get_disk_block_by_metadata(apri, start_n, length, recursively)[n]
 
-    def list_sequences_calculated(self, apri, recursively = False):
+    def list_intervals_calculated(self, apri, recursively = False):
 
         intervals_sorted = sorted(
             [
@@ -811,6 +835,13 @@ cannot do the following:
                 with subreg._recursive_open() as subreg:
                     for metadata in subreg._iter_ram_and_disk_block_metadatas(apri, True):
                         yield metadata
+
+class _Blank_Register(Register):
+
+    @classmethod
+    def dump_disk_data(cls, data, filename):pass
+    @classmethod
+    def load_disk_data(cls, filename):pass
 
 class Pickle_Register(Register):
 
@@ -867,7 +898,7 @@ class _Element_Iter:
         self.curr_n = slc.start if slc.start else 0
 
     def update_sequences_calculated(self):
-        self.intervals = dict( self.reg.list_sequences_calculated(self.apri, self.recursively) )
+        self.intervals = dict(self.reg.list_intervals_calculated(self.apri, self.recursively))
 
     def get_next_block(self):
         try:

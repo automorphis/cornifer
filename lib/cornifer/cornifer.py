@@ -46,7 +46,7 @@ def cornify(directory, verbose = False, suppress_errors = True):
                     continue
 
             try:
-                register = Register._from_name(cls_str, directory)
+                register = Register._from_local_dir(cls_str, directory)
             except ValueError:
                 e = ValueError(
                     f"The file `{str(cls_file)}` contains an invalid class name."

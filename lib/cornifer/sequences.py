@@ -274,7 +274,7 @@ class Block:
 
     def __str__(self):
         ret = self.__class__.__name__ + "("
-        ret += f"<{self._dtype}>, "
+        ret += f"<{self._dtype}>:{len(self)}, "
         ret += repr(self._apri) + ", "
         ret += str(self._start_n) + ")"
         return ret

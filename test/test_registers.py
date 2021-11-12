@@ -358,6 +358,10 @@ class Test_Register(TestCase):
     def test_get_ram_block_by_n_no_recursive(self):
 
         reg = Testy_Register(SAVES_DIR, "hello")
+        with self.assertRaisesRegex(IndexError, "non-negative"):
+            reg.get_ram_block_by_n(Apri_Info(name = "no"), -1)
+
+        reg = Testy_Register(SAVES_DIR, "hello")
         apri = Apri_Info(name = "list")
         blk = Block(list(range(1000)), apri)
         reg.add_ram_block(blk)
@@ -375,7 +379,7 @@ class Test_Register(TestCase):
                 blk1,
                 reg.get_ram_block_by_n(apri, n)
             )
-        for n in [-1, 1000]:
+        for n in [1000]:
             with self.assertRaises(Data_Not_Found_Error):
                 reg.get_ram_block_by_n(apri, n)
 
@@ -789,16 +793,16 @@ class Test_Register(TestCase):
         reg = Testy_Register(SAVES_DIR, "hello")
         with reg.open() as reg: pass
         with self.assertRaisesRegex(TypeError, "abstract"):
-            Register._from_name("Register", reg._local_dir)
+            Register._from_local_dir("Register", reg._local_dir)
 
         reg = Testy_Register(SAVES_DIR, "hello")
         with reg.open() as reg: pass
         with self.assertRaisesRegex(TypeError, "add_subclass"):
-            Register._from_name("Testy_Register2", reg._local_dir)
+            Register._from_local_dir("Testy_Register2", reg._local_dir)
 
         reg1 = Testy_Register(SAVES_DIR, "hellooooo")
         with reg1.open() as reg1: pass
-        reg2 = Register._from_name("Testy_Register", reg1._local_dir)
+        reg2 = Register._from_local_dir("Testy_Register", reg1._local_dir)
         self.assertIs(
             reg1,
             reg2
@@ -1182,7 +1186,7 @@ class Test_Register(TestCase):
 
         del Register._instances[reg2]
 
-        reg3 = Register._from_name("Testy_Register", reg2._local_dir)
+        reg3 = Register._from_local_dir("Testy_Register", reg2._local_dir)
 
         self.assertEqual(
             reg2,
@@ -1746,6 +1750,7 @@ class Test_Register(TestCase):
         with self.assertRaisesRegex(Register_Not_Open_Error, "get_all_ram_blocks"):
             for _ in reg.get_all_ram_blocks(apri, True): pass
 
+        reg = Testy_Register(SAVES_DIR, "whatever")
         apri1 = Apri_Info(name = "foomy")
         apri2 = Apri_Info(name = "doomy")
         blk1 = Block(list(range(10)), apri1)
@@ -1834,9 +1839,70 @@ class Test_Register(TestCase):
                 total
             )
 
-    def test_get_ram_block_by_n(self):pass
+    def test_get_ram_block_by_n(self):
 
-    def test_sequences_calculated(self):pass
+        reg = Testy_Register(SAVES_DIR, "whatever")
+
+        apri = Apri_Info(name = "whatev")
+        with reg.open() as reg: pass
+        with self.assertRaisesRegex(Register_Not_Open_Error, "get_ram_block_by_n"):
+            for _ in reg.get_ram_block_by_n(apri, 0, True): pass
+
+        apri1 = Apri_Info(name = "foomy")
+        apri2 = Apri_Info(name = "doomy")
+        blk1 = Block(list(range(10)), apri1)
+        blk2 = Block(list(range(20)), apri1, 10)
+        blk3 = Block(list(range(14)), apri2, 50)
+        blk4 = Block(list(range(100)), apri2, 120)
+        blk5 = Block(list(range(120)), apri2, 1000)
+        reg1 = Testy_Register(SAVES_DIR, "helllo")
+        reg2 = Testy_Register(SAVES_DIR, "suuup")
+        reg1.add_ram_block(blk1)
+        reg1.add_ram_block(blk2)
+        reg1.add_ram_block(blk3)
+        reg2.add_ram_block(blk4)
+        reg2.add_ram_block(blk5)
+        try:
+            reg1.get_ram_block_by_n(apri1, 0, True)
+        except Register_Not_Open_Error:
+            self.fail("_check_open_raise should only be called if data couldn't be found in initial register")
+
+        tests = [
+            (reg1, (apri1,    0, True ), blk1),
+            (reg1, (apri1,    0, False), blk1),
+            (reg1, (apri1,    9, True ), blk1),
+            (reg1, (apri1,    9, False), blk1),
+            (reg1, (apri1,   10, True ), blk2),
+            (reg1, (apri1,   10, False), blk2),
+            (reg1, (apri1,   29, True ), blk2),
+            (reg1, (apri1,   29, False), blk2),
+            (reg1, (apri2,   50, True ), blk3),
+            (reg1, (apri2,   50, False), blk3),
+            (reg1, (apri2,   63, True ), blk3),
+            (reg1, (apri2,   63, False), blk3),
+            (reg2, (apri2,  120, True ), blk4),
+            (reg2, (apri2,  219, True ), blk4),
+            (reg2, (apri2, 1000, True ), blk5),
+            (reg2, (apri2, 1119, True ), blk5)
+        ]
+
+
+        for reg, args, blk in tests:
+            if args[2]:
+                with reg.open() as reg:
+                    self.assertIs(
+                        blk,
+                        reg.get_ram_block_by_n(*args)
+                    )
+            else:
+                self.assertIs(
+                    blk,
+                    reg.get_ram_block_by_n(*args)
+                )
+
+    def test_sequences_calculated(self):
+
+
 
     def test__iter_ram_and_disk_block_metadatas(self):pass
 

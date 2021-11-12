@@ -46,7 +46,7 @@ def log_raise_error(error, verbose, suppress_errors):
     if not suppress_errors:
         raise error
 
-def random_unique_filename(directory, suffix ="", length = 10, alphabet = BASE56, num_attempts = 10):
+def random_unique_filename(directory, suffix ="", length = 6, alphabet = BASE56, num_attempts = 10):
     directory = Path(directory)
     for _ in range(num_attempts):
         filename =  directory / "".join(random.choices(alphabet, k=length))
