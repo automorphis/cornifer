@@ -17,8 +17,6 @@ import re
 from itertools import product
 from pathlib import Path, PurePath
 
-import plyvel
-
 from cornifer.errors import Register_Error, Register_Not_Created_Error
 from cornifer.registers import _REGISTER_LEVELDB_NAME, _CLS_KEY, Register, _MSG_KEY
 

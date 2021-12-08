@@ -1,5 +1,5 @@
 """
-    Cornifer, an intuitive data manager for empirical and computational mathematics.
+    Beta Expansions of Salem Numbers, calculating periods thereof
     Copyright (C) 2021 Michael P. Lane
 
     This program is free software: you can redistribute it and/or modify
@@ -13,6 +13,19 @@
     GNU General Public License for more details.
 """
 
-from cornifer.info import Apri_Info
-from cornifer.blocks import Block
-from cornifer.registers import Register, Pickle_Register, Numpy_Register
+from setuptools import setup
+
+setup(
+    name = 'Cornifer',
+    version = '0.1',
+    description = "An easy-to-use data manager for experimental mathematics.",
+    author = "Michael P. Lane",
+    author_email = "lane.662@osu.edu",
+    url = "https://github.com/automorphis/cornifer",
+    package_dir = {"": "lib"},
+    packages = [
+        "cornifer",
+        "cornifer.utilities"
+    ],
+    zip_safe=False
+)

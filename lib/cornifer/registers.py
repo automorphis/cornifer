@@ -13,6 +13,23 @@
     GNU General Public License for more details.
 """
 
+"""
+TODO:
+ - add version numbers to register databases
+ - code Apos_Info
+ - add subregister tutorial to docs
+ - complete test cases for recurisve function calls
+ - check that saves_directory is string or pure_path instance to Register __init__
+ - write test cases for search and load 
+ - include docs for search_args
+ - write test_docs
+ - rename `Register` `msg` to `message`
+ - rename `Sequence` `data` to `segment`
+ - rework `test__from_name_same_register`
+ - rework `test__from_local_dir_different_registers`
+ - resolve leveldb header problem in sage
+"""
+
 import inspect
 import math
 import pickle
@@ -26,7 +43,7 @@ import plyvel
 from cornifer.errors import Subregister_Cycle_Error, Data_Not_Found_Error, \
     Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error, Register_Not_Created_Error, \
     Critical_Database_Error, Database_Error, Register_Error
-from cornifer.sequences import Apri_Info, Block
+from cornifer import Apri_Info, Block
 from cornifer.utilities import intervals_overlap, random_unique_filename, leveldb_has_key, \
     leveldb_prefix_iterator
 
@@ -145,13 +162,12 @@ cannot do the following:
     @staticmethod
     def _from_local_dir(local_dir):
 
-        reg1 = _Blank_Register(local_dir.parent, "")
-        reg2 = Register._get_instance(reg1)
-
-        if reg1 is not reg2:
-            return reg2
+        if Register._instance_exists(local_dir):
+            # return the `Register` that has already been opened
+            return Register._get_instance(local_dir)
 
         else:
+
             try:
                 db = plyvel.DB(local_dir)
             except plyvel.IOError:
@@ -187,31 +203,38 @@ cannot do the following:
             return reg
 
     @staticmethod
-    def _add_instance(reg):
-        Register._instances[reg] = reg
+    def _add_instance(local_dir, reg):
+        Register._instances[local_dir] = reg
 
     @staticmethod
-    def _get_instance(reg):
-        try:
-            return Register._instances[reg]
-        except KeyError:
-            Register._add_instance(reg)
-            return reg
+    def _instance_exists(local_dir):
+        return local_dir in Register._instances.keys()
+
+    @staticmethod
+    def _get_instance(local_dir):
+        return Register._instances[local_dir]
 
     #################################
     #    PUBLIC REGISTER METHODS    #
 
     def __eq__(self, other):
+
         if not self._created or not other._created:
             raise Register_Not_Created_Error("__eq__")
+
+        elif type(self) != type(other):
+            return False
+
         else:
             return self._local_dir.resolve() == other._local_dir.resolve()
 
     def __hash__(self):
+
         if not self._created:
             raise Register_Not_Created_Error("__hash__")
+
         else:
-            return hash(str(self._local_dir.resolve()))
+            return hash(str(self._local_dir.resolve())) + hash(type(self))
 
     def __str__(self):
         return self._msg
@@ -309,21 +332,29 @@ cannot do the following:
 
     @contextmanager
     def open(self):
+
         if not self._created:
+            # set local directory info and create levelDB database
             local_dir = random_unique_filename(self.saves_directory)
             local_dir.mkdir()
-            self._set_local_dir(local_dir)
+            self._reg_file = local_dir / _REGISTER_LEVELDB_NAME
             self._db = plyvel.DB(str(self._reg_file), create_if_missing= True)
+            self._set_local_dir(local_dir)
+
             with self._db.write_batch(transaction = True) as wb:
+                # set register info
                 wb.put(_CLS_KEY, self._reg_cls_bytes)
                 wb.put(_MSG_KEY, self._msg_bytes)
                 wb.put(_START_N_HEAD_KEY, str(self._start_n_head).encode("ASCII"))
                 wb.put(_START_N_TAIL_LENGTH_KEY, str(self._start_n_tail_length).encode("ASCII"))
                 wb.put(_CURR_ID_KEY, b"0")
-            Register._add_instance(self)
+
+            Register._add_instance(local_dir, self)
             yiel = self
+
         else:
             yiel = self._open_created()
+
         try:
             yield yiel
         finally:
@@ -333,12 +364,20 @@ cannot do the following:
     #    PROTEC REGISTER METHODS    #
 
     def _open_created(self):
-        ret = Register._get_instance(self)
+
+        if Register._instance_exists(self._local_dir):
+            ret = Register._get_instance(self._local_dir)
+        else:
+            ret = self
+
         if not ret._created:
             raise Register_Not_Created_Error("_open_created")
+
         if ret._db is not None and not ret._db.closed:
             raise Register_Already_Open_Error()
+
         ret._db = plyvel.DB(str(ret._reg_file))
+
         return ret
 
     def _close_created(self):
@@ -368,7 +407,7 @@ cannot do the following:
             raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
 
     def _set_local_dir(self, local_dir):
-        if not local_dir.parent.resolve() == self.saves_directory.resolve():
+        if local_dir.parent.resolve() != self.saves_directory.resolve():
             raise ValueError(
                 "The `local_dir` argument must be a sub-directory of `reg.saves_directory`.\n" +
                 f"`local_dir.parent`    : {str(local_dir.parent)}\n"
@@ -377,7 +416,7 @@ cannot do the following:
         if not local_dir.is_dir():
             raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
         if not (local_dir / _REGISTER_LEVELDB_NAME).is_dir():
-            raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
+           raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG)
         self._created = True
         self._local_dir = local_dir
         self._local_dir_bytes = str(self._local_dir).encode("ASCII")
@@ -564,7 +603,7 @@ cannot do the following:
 
             filename = random_unique_filename(self._local_dir)
             try:
-                filename = type(self).dump_disk_data(blk.get_data(), filename)
+                filename = type(self).dump_disk_data(blk.get_segment(), filename)
             except Data_Not_Dumped_Error:
                 raise Data_Not_Dumped_Error(Register._ADD_DISK_BLOCK_ERROR_MSG)
 
@@ -835,13 +874,6 @@ cannot do the following:
                 with subreg._recursive_open() as subreg:
                     for metadata in subreg._iter_ram_and_disk_block_metadatas(apri, True):
                         yield metadata
-
-class _Blank_Register(Register):
-
-    @classmethod
-    def dump_disk_data(cls, data, filename):pass
-    @classmethod
-    def load_disk_data(cls, filename):pass
 
 class Pickle_Register(Register):
 
