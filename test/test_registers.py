@@ -8,7 +8,7 @@ import plyvel
 
 from cornifer import Numpy_Register, Register, Apri_Info, Block
 from cornifer.errors import Register_Not_Open_Error, Register_Not_Created_Error, Register_Already_Open_Error, \
-    Data_Not_Found_Error, Register_Error, Subregister_Cycle_Error
+    Data_Not_Found_Error, Register_Error, Subregister_Cycle_Error, Apri_Info_Not_Found_Error
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, _CLS_KEY, _MSG_KEY, _CURR_ID_KEY, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
     _REGISTER_LEVELDB_NAME
@@ -564,18 +564,20 @@ class Test_Register(TestCase):
 
     def test__get_id_by_apri_new(self):
 
-        apri = Apri_Info(name = "hi")
         reg = Testy_Register(SAVES_DIR, "hi")
         with self.assertRaises(ValueError):
-            reg._get_id_by_apri(None,None)
+            reg._get_id_by_apri(None, None, True)
+        with self.assertRaises(ValueError):
+            reg._get_id_by_apri(None, None, False)
 
         apri1 = Apri_Info(name = "hi")
         apri2 = Apri_Info(name = "hello")
         apri3 = Apri_Info(name = "sup")
+        apri4 = Apri_Info(name = "hey")
         reg = Testy_Register(SAVES_DIR, "hi")
         with reg.open() as reg:
             curr_id = reg._db.get(_CURR_ID_KEY)
-            _id1 = reg._get_id_by_apri(apri1,None)
+            _id1 = reg._get_id_by_apri(apri1, None, True)
             self.assertEqual(
                 curr_id,
                 _id1
@@ -589,7 +591,7 @@ class Test_Register(TestCase):
                 leveldb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
 
-            _id2 = reg._get_id_by_apri(apri2, None)
+            _id2 = reg._get_id_by_apri(apri2, None, True)
             self.assertNotEqual(
                 _id1,
                 _id2
@@ -603,7 +605,7 @@ class Test_Register(TestCase):
                 leveldb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
 
-            _id3 = reg._get_id_by_apri(None, apri3.to_json().encode("ASCII"))
+            _id3 = reg._get_id_by_apri(None, apri3.to_json().encode("ASCII"), True)
             self.assertNotIn(
                 _id3,
                 [_id1, _id2]
@@ -616,6 +618,9 @@ class Test_Register(TestCase):
                 3,
                 leveldb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
+
+            with self.assertRaises(Apri_Info_Not_Found_Error):
+                reg._get_id_by_apri(apri4, None, False)
 
     def test__get_instance(self):
 
@@ -751,7 +756,7 @@ class Test_Register(TestCase):
         reg = Testy_Register(SAVES_DIR, "hello")
         with reg.open() as reg:
             apri1 = Apri_Info(name = "hi")
-            _id1 = reg._get_id_by_apri(apri1, None)
+            _id1 = reg._get_id_by_apri(apri1, None, True)
 
             self.assertIsInstance(
                 _id1,
@@ -763,11 +768,12 @@ class Test_Register(TestCase):
             )
 
             apri2 = Apri_Info(name = "sup")
-            _id2 = reg._get_id_by_apri(apri2, None)
+            _id2 = reg._get_id_by_apri(apri2, None, True)
             self.assertEqual(
                 apri2,
                 Apri_Info.from_json(reg._get_apri_by_id(_id2).decode("ASCII"))
             )
+
 
     def test_get_all_apri_info_no_recursive(self):
 
@@ -779,7 +785,7 @@ class Test_Register(TestCase):
         with reg.open() as reg:
 
             apri1 = Apri_Info(name = "hello")
-            reg._get_id_by_apri(apri1, None)
+            reg._get_id_by_apri(apri1, None, True)
             self.assertEqual(
                 1,
                 len(list(reg.get_all_apri_info()))
@@ -850,10 +856,10 @@ class Test_Register(TestCase):
     def test__get_id_by_apri(self):
 
         reg = Testy_Register(SAVES_DIR, "hello")
-        apri = Apri_Info(name = "hello")
+        apri1 = Apri_Info(name = "hello")
         with reg.open() as reg:
-            _id1 = reg._get_id_by_apri(apri,None)
-            _id2 = reg._get_id_by_apri(apri,None)
+            _id1 = reg._get_id_by_apri(apri1, None, True)
+            _id2 = reg._get_id_by_apri(apri1, None, True)
             self.assertIsInstance(
                 _id2,
                 bytes
@@ -863,7 +869,7 @@ class Test_Register(TestCase):
                 _id2
             )
 
-            _id3 = reg._get_id_by_apri(None, apri.to_json().encode("ASCII"))
+            _id3 = reg._get_id_by_apri(None, apri1.to_json().encode("ASCII"), False)
             self.assertEqual(
                 _id1,
                 _id3
@@ -1267,11 +1273,11 @@ class Test_Register(TestCase):
             reg._db.closed
         )
 
-    def test_get_disk_block_by_metadata_no_recursive(self):
+    def test_get_disk_block_no_recursive(self):
 
         reg = Numpy_Register(SAVES_DIR, "hello")
-        with self.assertRaisesRegex(Register_Not_Open_Error, "get_disk_block_by_metadata"):
-            reg.get_disk_block_by_metadata(Apri_Info(name = "i am the octopus"), 0, 0)
+        with self.assertRaisesRegex(Register_Not_Open_Error, "get_disk_block"):
+            reg.get_disk_block(Apri_Info(name = "i am the octopus"), 0, 0)
 
         reg = Numpy_Register(SAVES_DIR, "hello")
         with reg.open() as reg:
@@ -1280,18 +1286,18 @@ class Test_Register(TestCase):
             reg.add_disk_block(blk1)
             self.assertEqual(
                 blk1,
-                reg.get_disk_block_by_metadata(apri1, 0, 100)
+                reg.get_disk_block(apri1, 0, 100)
             )
 
             blk2 = Block(np.arange(100,200), apri1, 100)
             reg.add_disk_block(blk2)
             self.assertEqual(
                 blk2,
-                reg.get_disk_block_by_metadata(apri1, 100, 100)
+                reg.get_disk_block(apri1, 100, 100)
             )
             self.assertEqual(
                 blk1,
-                reg.get_disk_block_by_metadata(apri1, 0, 100)
+                reg.get_disk_block(apri1, 0, 100)
             )
 
             apri2 = Apri_Info(name = "hello")
@@ -1299,15 +1305,15 @@ class Test_Register(TestCase):
             reg.add_disk_block(blk3)
             self.assertEqual(
                 blk3,
-                reg.get_disk_block_by_metadata(apri2, 2000, 1000)
+                reg.get_disk_block(apri2, 2000, 1000)
             )
             self.assertEqual(
                 blk2,
-                reg.get_disk_block_by_metadata(apri1, 100, 100)
+                reg.get_disk_block(apri1, 100, 100)
             )
             self.assertEqual(
                 blk1,
-                reg.get_disk_block_by_metadata(apri1, 0, 100)
+                reg.get_disk_block(apri1, 0, 100)
             )
 
             for metadata in [
@@ -1316,7 +1322,7 @@ class Test_Register(TestCase):
                 (Apri_Info(name = "noooo"), 0, 100)
             ]:
                 with self.assertRaises(Data_Not_Found_Error):
-                    reg.get_disk_block_by_metadata(*metadata)
+                    reg.get_disk_block(*metadata)
 
     def test_remove_disk_block(self):
 

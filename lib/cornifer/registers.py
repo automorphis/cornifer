@@ -15,26 +15,37 @@
 
 """
 TODO:
- - add version numbers to register databases
- - code Apos_Info
- - add subregister tutorial to docs
- - complete test cases for recurisve function calls
- - check that saves_directory is string or pure_path instance to Register __init__
+ - implement mmapping for Numpy_Register
+ - fix `set_start_n_info` to signature `head, body_length, tail`
+ - resolve leveldb header problem in sage
+ - give public "metadata" methods a better name (x)
+ - add version numbers to register databases (add to register loader) (x)
+ - code Apos_Info (x)
+ - check that saves_directory is string or pure_path instance to Register __init__ (x)
+ - change `Data_Not_Found_Error` to not be `OSError` (x)
+ - rename `Register` `msg` to `message` (x)
+ - rename `Sequence` `data` to `segment` (x)
+ - add type and value checks for all public methods (x)
+ - convert `int` type checks using `is_int` method (x)
+ - convert numpy ints to python ints (x)
+ 
+ - complete test cases for recursive function calls
  - write test cases for search and load 
- - include docs for search_args
- - write test_docs
- - rename `Register` `msg` to `message`
- - rename `Sequence` `data` to `segment`
  - rework `test__from_name_same_register`
  - rework `test__from_local_dir_different_registers`
- - resolve leveldb header problem in sage
+
+ - include docs for search_args
+ - make docs about C++ build tools install problem on Windows 10
+ - write test_docs
+ - add subregister tutorial to docs
+ - make docs about leveldb header problem in sage
 """
 
 import inspect
 import math
 import pickle
 from contextlib import contextmanager
-from pathlib import Path
+from pathlib import Path, PurePath
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -42,15 +53,15 @@ import plyvel
 
 from cornifer.errors import Subregister_Cycle_Error, Data_Not_Found_Error, \
     Data_Not_Dumped_Error, Register_Not_Open_Error, Register_Already_Open_Error, Register_Not_Created_Error, \
-    Critical_Database_Error, Database_Error, Register_Error
-from cornifer import Apri_Info, Block
+    Critical_Database_Error, Database_Error, Register_Error, Apri_Info_Not_Found_Error
+from cornifer import Apri_Info, Block, Apos_Info
 from cornifer.utilities import intervals_overlap, random_unique_filename, leveldb_has_key, \
-    leveldb_prefix_iterator
+    leveldb_prefix_iterator, is_int, BASE56
+from cornifer.version import VERSION_FILE_NAME, CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 #################################
 #         LEVELDB KEYS          #
 
-_REGISTER_LEVELDB_NAME   = "register"
 _KEY_SEP                 = b"\x00\x00"
 _START_N_HEAD_KEY        = b"head"
 _START_N_TAIL_LENGTH_KEY = b"tail_length"
@@ -61,12 +72,17 @@ _BLK_KEY_PREFIX          = b"blk"
 _APRI_ID_KEY_PREFIX      = b"apri"
 _ID_APRI_KEY_PREFIX      = b"id"
 _CURR_ID_KEY             = b"curr_id"
+_APOS_KEY_PREFIX         = b"apos"
 
 _KEY_SEP_LEN             = len(_KEY_SEP)
 _SUB_KEY_PREFIX_LEN      = len(_SUB_KEY_PREFIX)
 _BLK_KEY_PREFIX_LEN      = len(_BLK_KEY_PREFIX)
 _APRI_ID_KEY_PREFIX_LEN  = len(_APRI_ID_KEY_PREFIX)
 _ID_APRI_KEY_PREFIX_LEN  = len(_ID_APRI_KEY_PREFIX)
+
+_REGISTER_LEVELDB_NAME   = "register"
+
+LOCAL_DIR_CHARS          = BASE56
 
 class Register(ABC):
 
@@ -109,19 +125,32 @@ cannot do the following:
     #################################
     #     PUBLIC INITIALIZATION     #
 
-    def __init__(self, saves_directory, msg):
+    def __init__(self, saves_directory, message):
+        """Abstract `Register` constructor.
+
+        When called by concrete subclasses, this constructor neither creates nor opens a `Register` database.
+
+        :param saves_directory: (type `str`)
+        :param message: (type `str`) A brief message describing the data associated to this `Register`.
+        """
+
+        if not isinstance(saves_directory, (str, PurePath)):
+            raise TypeError("`saves_directory` must be a string or a `PurePath`.")
+
         self.saves_directory = Path(saves_directory)
 
         if not self.saves_directory.is_dir():
             raise FileNotFoundError(
                 f"You must create the file `{str(self.saves_directory)}` before calling "+
-                f"`{self.__class__.__name__}(\"{str(self.saves_directory)}\", \"{msg}\")`."
+                f"`{self.__class__.__name__}(\"{str(self.saves_directory)}\", \"{message}\")`."
             )
 
-        elif not isinstance(msg, str):
-            raise TypeError(f"The `msg` argument must be a `str`. Passed type of `msg`: `{str(type(msg))}`.")
+        elif not isinstance(message, str):
+            raise TypeError(
+                f"The `message` argument must be a string. Passed type of `message`: `{str(type(message))}`."
+            )
 
-        self._msg = msg
+        self._msg = message
         try:
             self._msg_bytes = self._msg.encode("ASCII")
         except UnicodeEncodeError:
@@ -131,9 +160,10 @@ cannot do the following:
 
         self._local_dir = None
         self._reg_file = None
+        self._version_file = None
         self._local_dir_bytes = None
         self._subreg_bytes = None
-        self._reg_cls_bytes = type(self).__name__.encode()
+        self._reg_cls_bytes = type(self).__name__.encode("ASCII")
 
         self._start_n_head = 0
         self._start_n_tail_length = Register._START_N_TAIL_LENGTH_DEFAULT
@@ -146,10 +176,13 @@ cannot do the following:
 
     @staticmethod
     def add_subclass(subclass):
+
         if not inspect.isclass(subclass):
             raise TypeError("The `subclass` argument must be a class.")
+
         if not issubclass(subclass, Register):
             raise TypeError(f"The class `{subclass.__name__}` must be a subclass of `Register`.")
+
         Register._constructors[subclass.__name__] = subclass
 
     #################################
@@ -177,7 +210,7 @@ cannot do the following:
 
             cls_name = db.get(_CLS_KEY)
             if cls_name is None:
-                raise Register_Error(f"`{_CLS_KEY.decode()}` key not found for register : {local_dir}")
+                raise Register_Error(f"`{_CLS_KEY.decode('ASCII')}` key not found for register : {local_dir}")
             cls_name = cls_name.decode("ASCII")
 
             if cls_name == "Register":
@@ -195,7 +228,7 @@ cannot do the following:
 
             msg_bytes = db.get(_MSG_KEY)
             if msg_bytes is None:
-                raise Register_Error(f"`{_MSG_KEY.decode()}` key not found for register : {local_dir}")
+                raise Register_Error(f"`{_MSG_KEY.decode('ASCII')}` key not found for register : {local_dir}")
             msg = msg_bytes.decode("ASCII")
 
             reg = con(local_dir.parent, msg)
@@ -246,21 +279,52 @@ cannot do the following:
         self._check_open_raise("__contains__")
         return apri in self.get_all_apri_info()
 
-    def set_message(self, msg):
+    def set_message(self, message):
+        """Give this `Register` a brief description.
+
+        WARNING: This method OVERWRITES the current message. In order to append a new message to the current one, do
+        something like the following:
+
+            old_message = str(reg)
+            new_message = old_message + " Hello!"
+            reg.set_message(new_message)
+
+        :param message: (type `str`)
+        """
+
         self._check_open_raise("set_message")
-        self._msg = msg
+
+        if not isinstance(message, str):
+            raise TypeError("`message` must be a string.")
+
+        self._msg = message
         self._msg_bytes = self._msg.encode("ASCII")
         self._db.put(_MSG_KEY, self._msg_bytes)
 
     def set_start_n_info(self, head, tail_length):
+        """
+
+        :param head: (type `int`) non-negative
+        :param tail_length: (type `int`) positive
+        """
 
         self._check_open_raise("set_start_n_info")
 
-        if not isinstance(head, int) or not isinstance(tail_length, int):
-            raise TypeError("`head` and `tail_length` must both be of type `int`.")
+        if not is_int(head):
+            raise TypeError("`head` must be of type `int`.")
+        else:
+            head = int(head)
 
-        elif head < 0 or tail_length <= 0:
-            raise ValueError("`head` must be non-negative and and `tail_length` must be positive.")
+        if not is_int(tail_length):
+            raise TypeError("`tail_length` must of of type `int`.")
+        else:
+            tail_length = int(tail_length)
+
+        if head < 0:
+            raise ValueError("`head` must be non-negative.")
+
+        if tail_length <= 0:
+            raise ValueError("`tail_length` must be positive.")
 
         if head == self._start_n_head and tail_length == self._start_n_tail_length:
             return
@@ -284,6 +348,7 @@ cannot do the following:
             with self._db.write_batch(transaction = True) as wb:
                 wb.put(_START_N_HEAD_KEY, str(head).encode("ASCII"))
                 wb.put(_START_N_TAIL_LENGTH_KEY, str(tail_length).encode("ASCII"))
+
         except plyvel.Error:
             raise Database_Error(
                 self._reg_file,
@@ -335,9 +400,10 @@ cannot do the following:
 
         if not self._created:
             # set local directory info and create levelDB database
-            local_dir = random_unique_filename(self.saves_directory)
+            local_dir = random_unique_filename(self.saves_directory, alphabet= LOCAL_DIR_CHARS)
             local_dir.mkdir()
             self._reg_file = local_dir / _REGISTER_LEVELDB_NAME
+            self._version_file = local_dir / VERSION_FILE_NAME
             self._db = plyvel.DB(str(self._reg_file), create_if_missing= True)
             self._set_local_dir(local_dir)
 
@@ -348,6 +414,9 @@ cannot do the following:
                 wb.put(_START_N_HEAD_KEY, str(self._start_n_head).encode("ASCII"))
                 wb.put(_START_N_TAIL_LENGTH_KEY, str(self._start_n_tail_length).encode("ASCII"))
                 wb.put(_CURR_ID_KEY, b"0")
+
+            with self._version_file.open("w") as fh:
+                fh.write(CURRENT_VERSION)
 
             Register._add_instance(local_dir, self)
             yiel = self
@@ -425,10 +494,19 @@ cannot do the following:
             _SUB_KEY_PREFIX + self._local_dir_bytes
         )
 
+    @staticmethod
+    def _is_compatible_version(local_dir):
+
+        with (local_dir / VERSION_FILE_NAME).open("r") as fh:
+            return fh.readline().trim() in COMPATIBLE_VERSIONS
+
     #################################
     #      PUBLIC APRI METHODS      #
 
     def get_all_apri_info(self, recursively = False):
+
+        if not isinstance(recursively, bool):
+            raise TypeError("`recursively` must be of type `bool`")
 
         ret = set()
         for blk in self._ram_blks:
@@ -450,9 +528,29 @@ cannot do the following:
     #      PROTEC APRI METHODS      #
 
     def _get_apri_by_id(self, _id):
+        """Get JSON bytestring representing an `Apri_Info` instance.
+
+        :param _id: (type `bytes`)
+        :return: (type `bytes`)
+        """
         return self._db.get(_ID_APRI_KEY_PREFIX + _id)
 
-    def _get_id_by_apri(self, apri, apri_json):
+    def _get_id_by_apri(self, apri, apri_json, missing_ok):
+        """Get an `Apri_Info` ID for this database. If `missing_ok is True`, then create an ID if the passed `apri` or
+        `apri_json` is unknown to this `Register`.
+
+        One of `apri` and `apri_json` can be `None`, but not both. If both are not `None`, then `apri` is used.
+
+        `self._db` must be opened by the caller.
+
+        :param apri: (type `Apri_Info`)
+        :param apri_json: (type `bytes`)
+        :param missing_ok: (type `bool`) Create an ID if the passed `apri` or `apri_json` is unknown to this `Register`.
+        :raises ValueError: If both `apri` and `apri_json` are `None`.
+        :raises Apri_Info_Not_Found_Error: If `apri` or `apri_json` is not known to this `Register` and `missing_ok
+        is False`.
+        :return: (type `bytes`)
+        """
 
         if apri is not None:
             key = _APRI_ID_KEY_PREFIX + apri.to_json().encode("ASCII")
@@ -462,9 +560,11 @@ cannot do the following:
             raise ValueError
 
         _id = self._db.get(key, default = None)
+
         if _id is not None:
             return _id
-        else:
+
+        elif missing_ok:
             _id = self._db.get(_CURR_ID_KEY)
             next_id = str(int(_id) + 1).encode("ASCII")
             with self._db.write_batch(transaction = True) as wb:
@@ -473,14 +573,103 @@ cannot do the following:
                 wb.put(_ID_APRI_KEY_PREFIX + _id, key[_APRI_ID_KEY_PREFIX_LEN:])
             return _id
 
+        else:
+            if apri is None:
+                apri = Apri_Info.from_json(apri_json.decode("ASCII"))
+            raise Apri_Info_Not_Found_Error(apri)
+
     #################################
     #      PUBLIC APOS METHODS      #
 
-    def set_apos_info(self, apri, apos): pass
+    def set_apos_info(self, apri, apos):
+        """Set some `Apos_Info` for corresponding `Apri_Info`.
 
-    def get_apos_info(self): pass
+        WARNING: This method will OVERWRITE any previous saved `Apos_Info`. If you do not want to lose any previously
+        saved data, then you should do something like the following:
 
-    def remove_apos_info(self, apri, apos): pass
+            apos = reg.get_apos_info(apri)
+            apos.period_length = 5
+            reg.set_apos_info(apos)
+
+        :param apri: (type `Apri_Info`)
+        :param apos: (type `Apos_Info`)
+        """
+
+        self._check_open_raise("set_apos_info")
+
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`")
+
+        if not isinstance(apos, Apos_Info):
+            raise TypeError("`apos` must be of type `Apos_Info`")
+
+        key = self._get_apos_key(apri, None, True)
+        apos_json = apos.to_json().encode("ASCII")
+        self._db.put(key, apos_json)
+
+    def get_apos_info(self, apri):
+        """Get some `Apos_Info` associated with a given `Apri_Info`.
+
+        :param apri: (type `Apri_Info`)
+        :raises Apri_Info_Not_Found_Error: If `apri` is not known to this `Register`.
+        :raises Data_Not_Found_Error: If no `Apos_Info` has been associated to `apri`.
+        :return: (type `Apos_Info`)
+        """
+
+        self._check_open_raise("get_apos_info")
+
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`")
+
+        key = self._get_apos_key(apri, None, False)
+        apos_json = self._db.get(key, default=None)
+
+        if apos_json is not None:
+            return Apos_Info.from_json(apos_json.decode("ASCII"))
+
+        else:
+            raise Data_Not_Found_Error(f"No `Apos_Info` associated with `{str(apri)}`.")
+
+    def remove_apos_info(self, apri, apos):
+
+        self._check_open_raise("remove_apos_info")
+
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`.")
+
+        if not isinstance(apos, Apos_Info):
+            raise TypeError("`apos` must be of type `Apos_Info`.")
+
+        key = self._get_apos_key(apri, None, False)
+
+        if leveldb_has_key(self._db, key):
+            self._db.delete(key)
+
+        else:
+            raise Data_Not_Found_Error(f"No `Apos_Info` associated with `{str(apri)}`.")
+
+    #################################
+    #      PROTEC APOS METHODS      #
+
+    def _get_apos_key(self, apri, apri_json, missing_ok):
+        """Get a key for an `Apos_Info` entry.
+
+        One of `apri` and `apri_json` can be `None`, but not both. If both are not `None`, then `apri` is used. If
+        `missing_ok is True`, then create a new `Apri_Info` ID if one does not already exist for `apri`.
+
+        :param apri: (type `Apri_Info`)
+        :param apri_json: (type `bytes`)
+        :param missing_ok: (type `bool`)
+        :raises ValueError: If both `apri` and `apri_json` are `None`.
+        :raises Apri_Info_Not_Found_Error: If `missing_ok is False` and `apri` is not known to this `Register`.
+        :return: (type `bytes`)
+        """
+
+        if apri is None and apri_json is None:
+            raise ValueError
+
+        apri_id = self._get_id_by_apri(apri, apri_json, missing_ok)
+        return _APOS_KEY_PREFIX + _KEY_SEP + apri_id
 
     #################################
     #  PUBLIC SUB-REGISTER METHODS  #
@@ -488,6 +677,10 @@ cannot do the following:
     def add_subregister(self, subreg):
 
         self._check_open_raise("add_subregister")
+
+        if not isinstance(subreg, Register):
+            raise TypeError("`subreg` must be of a `Register` derived type")
+
         if not subreg._created:
             raise Register_Not_Created_Error("add_subregister")
 
@@ -501,6 +694,9 @@ cannot do the following:
     def remove_subregister(self, subreg):
 
         self._check_open_raise("remove_subregister")
+
+        if not isinstance(subreg, Register):
+            raise TypeError("`subreg` must be of a `Register` derived type")
 
         key = subreg._get_subregister_key()
         if leveldb_has_key(self._db, key):
@@ -551,10 +747,10 @@ cannot do the following:
     def dump_disk_data(cls, data, filename):
         """Dump data to the disk.
 
-        This method should not change any properties of any `Register`, which is why it is a classmethod and
-        not an instancemethod. It merely takes `data` and dumps it to disk.
+        This method should not change any properties of any `Register`, which is why it is a class-method and
+        not an instance-method. It merely takes `data` and dumps it to disk.
 
-        Most use-cases prefer the instancemethod `add_disk_block`.
+        Most use-cases prefer the instance-method `add_disk_block`.
 
         :param data: (any type) The raw data to dump.
         :param filename: (type `pathlib.Path`) The filename to dump to. You may edit this filename if
@@ -581,12 +777,16 @@ cannot do the following:
         """
 
     def add_disk_block(self, blk):
-        """Dump a block to disk and link it with this `Register`.
+        """Dump a `Block` to disk and link it with this `Register`.
 
         :param blk: (type `Block`)
         """
+        #TODO: throw error if key already exists
 
         self._check_open_raise("add_disk_block")
+
+        if not isinstance(blk, Block):
+            raise TypeError("`blk` must be of type `Block`.")
 
         start_n_head = blk.get_start_n() // self._start_n_tail_mod
         if start_n_head != self._start_n_head :
@@ -598,7 +798,7 @@ cannot do the following:
                 f"`start_n` head  : {start_n_head}\n"
             )
 
-        key = self._get_disk_block_key(blk.get_apri(), None, blk.get_start_n(), len(blk))
+        key = self._get_disk_block_key(blk.get_apri(), None, blk.get_start_n(), len(blk), True)
         if not leveldb_has_key(self._db, key):
 
             filename = random_unique_filename(self._local_dir)
@@ -621,17 +821,66 @@ cannot do the following:
 
         self._check_open_raise("remove_disk_block")
 
-        key = self._get_disk_block_key(apri, None, start_n, length)
-        if leveldb_has_key(self._db, key):
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`")
+
+        if not is_int(start_n):
+            raise TypeError("start_n` must be an `int`")
+        else:
+            start_n = int(start_n)
+
+        if not is_int(length):
+            raise TypeError("`length` must be an `int`")
+        else:
+            length = int(length)
+
+        if not length >= 0:
+            raise ValueError("`length` must be non-negative")
+
+        try:
+            key = self._get_disk_block_key(apri, None, start_n, length, False)
+            known_apri = True
+
+        except Apri_Info_Not_Found_Error:
+            key = None
+            known_apri = False
+
+        if known_apri and leveldb_has_key(self._db, key):
             filename = Path(self._db.get(key).decode("ASCII"))
             self._db.delete(key)
             filename.unlink() # TODO add error checks
 
-    def get_disk_block_by_metadata(self, apri, start_n, length, recursively = False):
+    def get_disk_block(self, apri, start_n, length, recursively = False):
 
-        self._check_open_raise("get_disk_block_by_metadata")
-        key = self._get_disk_block_key(apri, None, start_n, length)
-        if leveldb_has_key(self._db, key):
+        self._check_open_raise("get_disk_block")
+
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`.")
+
+        if not is_int(start_n):
+            raise TypeError("`start_n` must be of type `int`.")
+        else:
+            start_n = int(start_n)
+
+        if not is_int(length):
+            raise TypeError("`start_n` must be of type `int`.")
+        else:
+            length = int(length)
+
+        if not isinstance(recursively, bool):
+            raise TypeError("`recursively` must be of type `bool`.")
+
+        if length < 0:
+            raise ValueError("`length` must be non-negative")
+
+        try:
+            key = self._get_disk_block_key(apri, None, start_n, length, False)
+            found_key = True
+        except Apri_Info_Not_Found_Error:
+            key = None
+            found_key = False
+
+        if found_key and leveldb_has_key(self._db, key):
             filename = Path(self._db.get(key).decode("ASCII"))
             data = type(self).load_disk_data(filename)
             return Block(data, apri, start_n)
@@ -650,12 +899,23 @@ cannot do the following:
 
         self._check_open_raise("get_disk_block_by_n")
 
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`.")
+
+        if not is_int(n):
+            raise TypeError("`n` must be of type `int`.")
+        else:
+            n = int(n)
+
+        if not isinstance(recursively, bool):
+            raise TypeError("`recursively` must be of type `bool`.")
+
         if n < 0:
-            raise ValueError("n must be positive")
+            raise ValueError("`n` must be positive")
 
         for apri, start_n, length, _ in self._iter_disk_block_metadatas(apri, None):
             if start_n <= n < start_n + length:
-                return self.get_disk_block_by_metadata(apri, start_n, length)
+                return self.get_disk_block(apri, start_n, length)
 
         if recursively:
             for subreg in self._iter_subregisters():
@@ -670,6 +930,13 @@ cannot do the following:
     def get_all_disk_blocks(self, apri, recursively = False):
 
         self._check_open_raise("get_all_disk_blocks")
+
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`.")
+
+        if not isinstance(recursively, bool):
+            raise TypeError("`recursively` must be of type `bool`.")
+
         for apri, start_n, _, filename in self._iter_disk_block_metadatas(apri, None):
             data = type(self).load_disk_data(filename)
             yield Block(data, apri, start_n)
@@ -683,12 +950,28 @@ cannot do the following:
     #################################
     #    PROTEC DISK BLK METHODS    #
 
-    def _get_disk_block_key(self, apri, apri_json, start_n, length):
+    def _get_disk_block_key(self, apri, apri_json, start_n, length, missing_ok = False):
+        """Get the database key for a disk `Block`.
+
+        One of `apri` and `apri_json` can be `None`, but not both. If both are not `None`, then `apri` is used.
+        `self._db` must be opened by the caller. This method only queries the database to obtain the `apri` ID.
+
+        If `missing_ok is True` and an ID for `apri` does not already exist, then a new one will be created. If
+        `missing_ok is False` and an ID does not already exist, then an error is raised.
+
+        :param apri: (type `Apri_Info`)
+        :param apri_json: (types `bytes`)
+        :param start_n: (type `int`) The start index of the `Block`.
+        :param length: (type `int`) The length of the `Block`.
+        :raises ValueError: If both `apri` and `apri_json` are `None`.
+        :raises Apri_Info_Not_Found_Error: If `missing_ok is False` and `apri` is not known to this `Register`.
+        :return: (type `bytes`)
+        """
 
         if apri is None and apri_json is None:
             raise ValueError
 
-        _id = self._get_id_by_apri(apri, apri_json)
+        _id = self._get_id_by_apri(apri, apri_json, missing_ok)
         tail = start_n % self._start_n_tail_mod
 
         return (
@@ -703,7 +986,7 @@ cannot do the following:
         if apri_json is None and apri is None:
             prefix = _BLK_KEY_PREFIX
         else:
-            prefix = _BLK_KEY_PREFIX + self._get_id_by_apri(apri,apri_json)
+            prefix = _BLK_KEY_PREFIX + self._get_id_by_apri(apri,apri_json,False) #TODO: fix `_get_id_by_apri` call, add try-except clause
 
         with self._db.snapshot() as sn:
             with leveldb_prefix_iterator(sn, prefix) as it:
@@ -740,10 +1023,16 @@ cannot do the following:
 
     def add_ram_block(self, blk):
 
+        if not isinstance(blk, Block):
+            raise TypeError("`blk` must be of type `Block`.")
+
         if all(ram_blk is not blk for ram_blk in self._ram_blks):
             self._ram_blks.append(blk)
 
     def remove_ram_block(self, blk):
+
+        if not isinstance(blk, Block):
+            raise TypeError("`blk` must be of type `Block`.")
 
         for i, ram_blk in enumerate(self._ram_blks):
             if ram_blk is blk:
@@ -753,6 +1042,17 @@ cannot do the following:
         raise Data_Not_Found_Error
 
     def get_ram_block_by_n(self, apri, n, recursively = False):
+
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`.")
+
+        if not is_int(n):
+            raise TypeError("`n` must be of type `int`.")
+        else:
+            n = int(n)
+
+        if not isinstance(recursively, bool):
+            raise TypeError("`recursively` must be of type `bool`.")
 
         #TODO for warnings: if ram blocks have overlapping data, log warning when this methid
         # is called
@@ -777,9 +1077,17 @@ cannot do the following:
         raise Data_Not_Found_Error
 
     def get_all_ram_blocks(self, apri, recursively = False):
+
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`.")
+
+        if not isinstance(recursively, bool):
+            raise TypeError("`recursively` must be of type `bool`.")
+
         for blk in self._ram_blks:
             if blk.get_apri() == apri:
                 yield blk
+
         if recursively:
             self._check_open_raise("get_all_ram_blocks")
             for subreg in self._iter_subregisters():
@@ -801,7 +1109,7 @@ cannot do the following:
             isinstance(short, tuple) or
             not(2 <= len(short) <= 3) or
             not(isinstance(short[0], Apri_Info)) or
-            not(isinstance(short[1], (int,slice))) or
+            (not is_int(short[1]) and not isinstance(short[1], slice)) or
             (len(short) == 3 and not isinstance(short[2],bool))
         ):
             raise TypeError(Register.___GETITEM___ERROR_MSG)
@@ -833,9 +1141,15 @@ cannot do the following:
                     break
             else:
                 raise Data_Not_Found_Error()
-            return self.get_disk_block_by_metadata(apri, start_n, length, recursively)[n]
+            return self.get_disk_block(apri, start_n, length, recursively)[n]
 
     def list_intervals_calculated(self, apri, recursively = False):
+
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`.")
+
+        if not isinstance(recursively, bool):
+            raise TypeError("`recursively` must be of type `bool`.")
 
         intervals_sorted = sorted(
             [

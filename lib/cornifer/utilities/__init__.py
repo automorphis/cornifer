@@ -18,6 +18,7 @@ import random
 from contextlib import contextmanager
 from pathlib import Path
 
+import numpy as np
 import plyvel
 
 BYTES_PER_KB = 1024
@@ -154,3 +155,6 @@ def leveldb_count_keys(db, prefix):
          for _ in it:
             count += 1
     return count
+
+def is_int(num):
+    return isinstance(num, (int, np.int32, np.int64))

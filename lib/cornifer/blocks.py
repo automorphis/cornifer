@@ -19,27 +19,26 @@ import warnings
 import numpy as np
 
 from cornifer import Apri_Info
-from cornifer.utilities import check_has_method, justify_slice
+from cornifer.utilities import check_has_method, justify_slice, is_int
 
 
 class Block:
 
     def __init__(self, segment, apri, start_n = 0):
 
-        self._custom_dtype = False
 
         if not isinstance(apri, Apri_Info):
-            raise TypeError(
-                f"`apri` must be an `Apri_Info` derived type. Passed " +
-                f"type: {apri.__class__.__name__}"
-            )
+            raise TypeError("`apri` must be of type `Apri_Info`.")
 
-        elif not isinstance(start_n, int):
-            raise TypeError("`start_n` must be an integer")
+        if not is_int(start_n):
+            raise TypeError("`start_n` must be of type `int`.")
+        else:
+            start_n = int(start_n)
 
-        elif start_n < 0:
-            raise ValueError("`start_n` must be non-negative")
+        if start_n < 0:
+            raise ValueError("`start_n` must be non-negative.")
 
+        self._custom_dtype = False
 
         if isinstance(segment, list):
             self._dtype = "list"
@@ -93,17 +92,27 @@ class Block:
         return self._start_n
 
     def set_start_n(self, start_n):
-        if not isinstance(start_n, int):
-            raise TypeError("`start_n` must be an integer")
-        elif start_n < 0:
+
+        if not is_int(start_n):
+            raise TypeError("`start_n` must be of type `int`")
+        else:
+            start_n = int(start_n)
+
+        if start_n < 0:
             raise ValueError("`start_n` must be positive")
+
         self._start_n = start_n
 
     def subdivide(self, subinterval_length):
-        if not isinstance(subinterval_length, int):
+
+        if not is_int(subinterval_length):
             raise TypeError("`subinterval_length` must be an integer")
+        else:
+            subinterval_length = int(subinterval_length)
+
         if subinterval_length <= 1:
             raise ValueError("`subinterval_length` must be at least 2")
+
         start_n = self.get_start_n()
         return [
             self[i : i + subinterval_length]

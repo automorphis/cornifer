@@ -18,7 +18,7 @@ from itertools import product
 from pathlib import Path, PurePath
 
 from cornifer.errors import Register_Error, Register_Not_Created_Error
-from cornifer.registers import _REGISTER_LEVELDB_NAME, _CLS_KEY, Register, _MSG_KEY
+from cornifer.registers import _REGISTER_LEVELDB_NAME, _CLS_KEY, Register, _MSG_KEY, LOCAL_DIR_CHARS
 
 _regs = []
 _search_called = False
@@ -35,14 +35,18 @@ _ARGS_TYPES = {
     "print_warnings" : bool,
     "warnings_limit" : int,
 
+    "print_incompatible_registers" : bool,
+
     "key_exact_match" : bool,
 
     "tuple_exact_match" : bool,
 
     "dict_exact_match" : bool,
 
-    "str_exact_match" : bool
+    "str_exact_match" : bool,
+
 }
+
 _args = {
     "reg_limit" : 10,
 
@@ -55,6 +59,8 @@ _args = {
     "print_warnings" : True,
     "warnings_limit" : 10,
 
+    "print_incompatible_registers" : False,
+
     "key_exact_match" : False,
 
     "tuple_exact_match" : False,
@@ -63,14 +69,18 @@ _args = {
 
     "str_exact_match" : False
 }
-def search_args(**kwargs):
+
+def set_search_args(**kwargs):
+    """This function changes the output of the `search` function."""
 
     for key,val in kwargs:
 
         if key not in _ARGS_TYPES.keys():
             raise KeyError(f"Unrecognized `search_arg` key: {key}")
+
         elif not isinstance(val, _ARGS_TYPES[key]):
             raise TypeError(f"Expected type for key \"{key}\" value : {_ARGS_TYPES[key].__name__}")
+
         elif _ARGS_TYPES[key] == int and val < 0:
             raise ValueError(f"Value for key \"{key}\" must be a nonnegative integer.")
 
@@ -80,17 +90,27 @@ def search_args(**kwargs):
 def load(identifier, saves_directory = None):
 
     if not isinstance(identifier, str):
-        raise TypeError("`ident` must be a `str`")
+        raise TypeError("`identifier` must be a string.")
 
     if saves_directory is None:
         saves_directory = Path.cwd()
+
     elif isinstance(saves_directory, str):
         saves_directory = Path(saves_directory)
+
     elif not isinstance(saves_directory, PurePath):
-        raise TypeError("if `saves_directory is not None`, then it must be either a `PurePath` or a `str`")
+        raise TypeError("If `saves_directory is not None`, then it must be either a `PurePath` or a string.")
+
+    if "(" in identifier or ")" in identifier:
+        raise ValueError("You don't need to include the parentheses for the `identifier` when you call `load`.")
+
+    bad_symbs = [symb for symb in identifier if symb not in LOCAL_DIR_CHARS]
+    if len(bad_symbs) > 0:
+        raise ValueError("An identifier cannot contain any of the following symbols: " + "".join(bad_symbs))
 
     try:
         return Register._from_local_dir(saves_directory / identifier)
+
     except Register_Not_Created_Error:
         raise Register_Not_Created_Error("load")
 
@@ -101,8 +121,10 @@ def search(apri = None, saves_directory = None, **kwargs):
     saves_directory = Path(saves_directory)
 
     for key, val in kwargs.items():
+
         try:
             hash(val)
+
         except TypeError:
             raise TypeError(
                 f"All search keyword arguments must be hashable types. The argument corresponding " +
@@ -119,13 +141,21 @@ def search(apri = None, saves_directory = None, **kwargs):
     warnings = []
     regs = []
     for d in saves_directory.iterdir():
+
         leveldb_path = d / _REGISTER_LEVELDB_NAME
         if d.is_dir() and leveldb_path.is_dir():
 
+            if not Register._is_compatible_version(d):
+                if _args["print_incompatible_registers"]:
+                    warnings.append(f"`Register` at `{str(d)}` has an incompatible version.")
+                else:
+                    continue
+
             try:
                 reg = Register._from_local_dir(d)
+
             except (Register_Error, TypeError) as m:
-                warnings.append(f"`Register` at `{d}` not loaded. Error text: {str(m)}")
+                warnings.append(f"`Register` at `{str(d)}` not loaded. Error text: {str(m)}")
                 continue
 
             added = False
@@ -175,7 +205,7 @@ def search(apri = None, saves_directory = None, **kwargs):
     for i, (reg,apris,ints) in enumerate(regs):
         if i >= _args["reg_limit"]:
             break
-        prnt += f"({i}) {reg._local_dir.name} \"{str(reg)}\"\n"
+        prnt += f"({reg._local_dir.name}) \"{str(reg)}\"\n"
         if _args["print_apri"]:
             for j,apri in enumerate(apris):
                 if j >= _args["apri_limit"]:
