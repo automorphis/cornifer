@@ -16,3 +16,4 @@
 from cornifer.info import Apri_Info, Apos_Info
 from cornifer.blocks import Block
 from cornifer.registers import Register, Pickle_Register, Numpy_Register
+from cornifer.register_loader import search, load

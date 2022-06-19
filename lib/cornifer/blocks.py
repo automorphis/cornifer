@@ -12,8 +12,6 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
-
-
 import warnings
 
 import numpy as np
@@ -195,3 +193,5 @@ class Block:
 
         else:
             return self._seg == other._seg
+
+

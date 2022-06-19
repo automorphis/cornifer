@@ -16,12 +16,57 @@
 
 import json
 from abc import ABC, abstractmethod
+from copy import copy
 
-from cornifer.errors import Keyword_Argument_Error
-from cornifer.utilities import replace_lists_with_tuples, replace_tuples_with_lists, order_json_obj
+from cornifer.utilities import order_json_obj
 
 
-class _Info(ABC):
+class _Info_JSONEncoder(json.JSONEncoder):
+
+    def default(self, obj):
+
+        if isinstance(obj, _Info):
+            return obj.__class__.__name__ + ".from_json(" + obj.to_json() + ")"
+
+        elif isinstance(obj, tuple):
+            return list(obj)
+
+        else:
+            return super().default(obj)
+
+class _Info_JSONDecoder(json.JSONDecoder):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(object_hook=self.object_hook, *args, **kwargs)
+
+    def object_hook(self, obj):
+
+        if isinstance(obj, str):
+
+            obj = obj.strip(" \t")
+            if (obj[:9] == "Apri_Info" or obj[:9] == "Apos_Info") and obj[9:20] == ".from_json(" and obj[-1] == ")":
+
+                json_str = obj[20:-1].strip(" \t")
+
+                if obj[:9] == "Apri_Info":
+                    return Apri_Info.from_json(json_str)
+
+                else:
+                    return Apos_Info.from_json(json_str)
+
+            else:
+                return obj
+
+        elif isinstance(obj, dict):
+            return {key : self.object_hook(val) for key, val in obj.items()}
+
+        elif isinstance(obj, list):
+            return tuple([self.object_hook(item) for item in obj])
+
+        else:
+            return obj
+
+class _Info( ABC):
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -29,47 +74,57 @@ class _Info(ABC):
 
     @classmethod
     def from_json(cls, json_string):
-        json_obj = json.loads(json_string)
-        if not isinstance(json_obj, dict):
-            raise TypeError(
+
+        decoded_json = _Info_JSONDecoder().decode(json_string)
+
+        if not isinstance(decoded_json, dict):
+            raise ValueError(
                 "The outermost layer of the passed `json_string` must be a JavaScript `object`, that is, " +
                 f"a Python `dict`. The outermost layer of the passed `json_string` is: " +
-                f"`{json_obj.__class__.__name__}`."
+                f"`{decoded_json.__class__.__name__}`."
             )
-        return cls(**replace_lists_with_tuples(json_obj))
+
+        return cls(**decoded_json)
 
     def to_json(self):
-        kwargs = replace_tuples_with_lists(self.__dict__)
+
+        kwargs = copy(self.__dict__)
         for kw in self._reserved_kws:
             kwargs.pop(kw,None)
         kwargs = order_json_obj(kwargs)
+
         try:
-            ret = json.dumps(kwargs,
+            json_rep = _Info_JSONEncoder(
+
                 ensure_ascii = True,
                 allow_nan = True,
                 indent = None,
                 separators = (',', ':')
-            )
+
+            ).encode(kwargs)
+
         except (TypeError, ValueError):
-            raise Keyword_Argument_Error(
+            raise ValueError(
                 "One of the keyword arguments used to construct this instance cannot be encoded into " +
                 "JSON. Use different keyword arguments, or override the " +
                 f"classmethod `{self.__class__.__name__}.from_json` and the instancemethod " +
-                f"`{self.__class__.__name__}.to_json`." # TODO change
+                f"`{self.__class__.__name__}.to_json`."
             )
-        if "\0" in ret:
-            raise Keyword_Argument_Error(
+
+        if "\0" in json_rep:
+            raise ValueError(
                 "One of the keyword arguments used to construct this instance contains the null character " +
-                "'\\0'. Use different keyword arguments, or blah blah" # TODO change
+                "'\\0'."
             )
-        return ret
+
+        return json_rep
 
     def _add_reserved_kw(self, kw):
         self._reserved_kws.append(kw)
 
     def _check_reserved_kws(self, kwargs):
         if any(kw in kwargs for kw in self._reserved_kws):
-            raise Keyword_Argument_Error(
+            raise ValueError(
                 "The following keyword-argument keys are reserved. Choose a different key.\n" +
                 f"{', '.join(self._reserved_kws)}"
             )
@@ -119,7 +174,7 @@ class Apri_Info(_Info):
             try:
                 self._hash += hash(val)
             except (TypeError, AttributeError):
-                raise Keyword_Argument_Error(
+                raise ValueError(
                     f"All keyword arguments must be hashable types. The keyword argument given by \"{key}\" "+
                     f"not a hashable type. The type of that argument is `{val.__class__.__name__}`."
                 )
