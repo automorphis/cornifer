@@ -18,7 +18,6 @@ import random
 import re
 import zipfile
 from collections import OrderedDict
-from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -152,31 +151,57 @@ def order_json_obj(json_obj):
     else:
         return json_obj
 
-def leveldb_has_key(db, key):
-    return db.get(key,default = None) is not None
-
-@contextmanager
-def leveldb_prefix_iterator(db, prefix):
-    it = db.iterator(prefix=prefix)
-    try:
-        yield it
-    finally:
-        it.close()
-
-def leveldb_count_keys(db, prefix):
-    count = 0
-    with leveldb_prefix_iterator(db, prefix) as it:
-         for _ in it:
-            count += 1
-    return count
-
-def is_int(num):
-    return isinstance(num, (int, np.int32, np.int64))
+def is_signed_int(num):
+    return isinstance(num, (int, np.int8, np.int16, np.int32, np.int64))
 
 def zip_archive_is_empty(path):
 
     with zipfile.ZipFile(path, "r") as zip_fh:
         return len(zip_fh.infolist()) == 0
+
+def resolve_path(path):
+    """
+    :param path: (type `pathlib.Path`)
+    :raise FileNotFoundError: If the path could not be resolved.
+    :return: (type `pathlib.Path`) Resolved.
+    """
+
+    try:
+        resolved = path.resolve(True)
+
+    except FileNotFoundError:
+        raise_error = True
+
+    else:
+        return resolved
+
+    if raise_error:
+
+        resolved = path.resolve(False)
+
+        for parent in reversed(resolved.parents):
+
+            if not parent.exists():
+                raise FileNotFoundError(
+                    f"Resolved path : `{resolved}`\n" +
+                    f"The file or directory `{str(parent)}` could not be found."
+                )
+
+        else:
+            raise FileNotFoundError(f"The file or directory `{path}` could not be found.")
+
+def is_deletable(path):
+
+    try:
+
+        with path.open("a") as _: pass
+        return True
+
+    except OSError:
+        return False
+
+    except Exception as e:
+        raise e
 
 # def get_leftmost_layer(s, begin = 0):
 #

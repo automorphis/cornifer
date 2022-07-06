@@ -14,12 +14,15 @@
 """
 
 import re
+import warnings
 from pathlib import Path, PurePath
 
 from cornifer.file_metadata import File_Metadata
 from cornifer.errors import Register_Error
 from cornifer.registers import Register, _BLK_KEY_PREFIX, _BLK_KEY_PREFIX_LEN
-from cornifer.register_file_structure import REGISTER_LEVELDB_FILENAME, LOCAL_DIR_CHARS
+from cornifer.register_file_structure import LOCAL_DIR_CHARS, check_register_structure
+from cornifer.utilities import resolve_path
+from cornifer.version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _ARGS_TYPES = {
     "reg_limit" : int,
@@ -86,7 +89,6 @@ def set_search_args(**kwargs):
 
         _args[key] = val
 
-
 def load(identifier, saves_directory = None):
 
     if not isinstance(identifier, str):
@@ -98,28 +100,10 @@ def load(identifier, saves_directory = None):
     elif isinstance(saves_directory, str):
         saves_directory = Path(saves_directory)
 
-    elif not isinstance(saves_directory, PurePath):
+    elif not isinstance(saves_directory, Path):
         raise TypeError("`saves_directory` must be either `None`, a `pathlib.Path`, or a string.")
 
-    try:
-        resolved = saves_directory.resolve(True)
-
-    except FileNotFoundError:
-        raise_error = True
-
-    else:
-        raise_error = False
-
-    if raise_error:
-        resolved = saves_directory.resolve(False)
-        for parent in reversed(resolved.parents):
-            if not parent.exists():
-                raise FileNotFoundError(
-                    f"Resolved `saves_directory` : {resolved}\n" +
-                    f"The file or directory `{str(parent)}` could not be found."
-                )
-        else:
-            raise FileNotFoundError(f"The file or directory `{str(saves_directory)}` could not be found.")
+    saves_directory = resolve_path(saves_directory)
 
     if "(" in identifier or ")" in identifier:
         raise ValueError("You don't need to include the parentheses for the `identifier` when you call `load`.")
@@ -128,7 +112,17 @@ def load(identifier, saves_directory = None):
     if len(bad_symbs) > 0:
         raise ValueError("An identifier cannot contain any of the following symbols: " + "".join(bad_symbs))
 
-    return Register._from_local_dir(saves_directory / identifier)
+    reg = Register._from_local_dir(saves_directory / identifier)
+
+    if not reg._has_compatible_version():
+        warnings.warn(
+            f"The register at `{reg._local_dir}` has an incompatible version.\n"
+            f"Current Cornifer version: {CURRENT_VERSION}\n"
+            f"Compatible versions:      {str(COMPATIBLE_VERSIONS)}\n"
+            f"Loaded register version:  {reg._version}"
+        )
+
+    return reg
 
 def search(apri = None, saves_directory = None, **kwargs):
 
@@ -136,7 +130,7 @@ def search(apri = None, saves_directory = None, **kwargs):
     # 1. Test to make sure parameters have the correct types.
     # 2. Iterate over all `Register`s located in `saves_directory` and do each of the following three subphases on each
     #    `Register`:
-    #    2a. Test to make sure the `Register` has a compatible version and load it.
+    #    2a. Load the `Register` and check that it has a compatible version.
     #    2b. Create two dictionaries `combined` and `uncombined`, whose keys are tuples of all registers and their
     #    corresponding apris. The values of `combined` are the return values of
     #    `reg.get_all_intervals(apri, combine = True)` and those of `uncombined` are the return values of
@@ -153,7 +147,7 @@ def search(apri = None, saves_directory = None, **kwargs):
     elif not isinstance(saves_directory, (Path, str)):
         raise TypeError("`saves_directory` must be either a string or of type `pathlib.Path`.")
 
-    saves_directory = Path(saves_directory)
+    saves_directory = resolve_path(Path(saves_directory))
 
     # test that kwargs are hashable
     for key, val in kwargs.items():
@@ -179,25 +173,19 @@ def search(apri = None, saves_directory = None, **kwargs):
     relevant = []
     for local_dir in saves_directory.iterdir():
 
-        leveldb_path = local_dir / REGISTER_LEVELDB_FILENAME
-        if local_dir.is_dir() and leveldb_path.is_dir():
+        try:
+            check_register_structure(local_dir)
+
+        except FileNotFoundError:
+            is_register = False
+
+        else:
+            is_register = True
+
+        if is_register:
 
             ####################
             #     PHASE 2a     #
-
-            # test if compatible register
-            try:
-                is_compatible_version = Register._is_compatible_version(local_dir)
-
-            except FileNotFoundError:
-                warnings_.append(f"`Register` at `{str(local_dir)}` does not have a version file.")
-                continue
-
-            if not is_compatible_version:
-                if _args["print_incompatible_registers"]:
-                    warnings_.append(f"`Register` at `{str(local_dir)}` has an incompatible version.")
-                else:
-                    continue
 
             # load register
             try:
@@ -206,6 +194,14 @@ def search(apri = None, saves_directory = None, **kwargs):
             except (Register_Error, TypeError) as m:
                 warnings_.append(f"`Register` at `{str(local_dir)}` not loaded. Error text: {str(m)}")
                 continue
+
+            # test if compatible register
+            if not reg._has_compatible_version():
+                if _args["print_incompatible_registers"]:
+                    warnings_.append(f"`Register` at `{str(local_dir)}` has an incompatible version.")
+                else:
+                    continue
+
 
             ####################
             #     PHASE 2b     #

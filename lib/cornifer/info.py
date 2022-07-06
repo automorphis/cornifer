@@ -48,11 +48,16 @@ class _Info_JSONDecoder(json.JSONDecoder):
 
                 json_str = obj[20:-1].strip(" \t")
 
-                if obj[:9] == "Apri_Info":
-                    return Apri_Info.from_json(json_str)
+                try:
 
-                else:
-                    return Apos_Info.from_json(json_str)
+                    if obj[:9] == "Apri_Info":
+                        return Apri_Info.from_json(json_str)
+
+                    else:
+                        return Apos_Info.from_json(json_str)
+
+                except json.JSONDecodeError:
+                    return obj
 
             else:
                 return obj
@@ -66,11 +71,35 @@ class _Info_JSONDecoder(json.JSONDecoder):
         else:
             return obj
 
-class _Info( ABC):
+class _Info(ABC):
+
+    _reserved_kws = ["_json"]
 
     def __init__(self, **kwargs):
+
+        if len(kwargs) == 0:
+            raise ValueError("must pass at least one keyword argument.")
+
+        type(self)._check_reserved_kws(kwargs)
+
         self.__dict__.update(kwargs)
-        self._reserved_kws = ["_reserved_kws"]
+
+        self._json = None
+
+    @classmethod
+    def _check_reserved_kws(cls, kwargs):
+
+        if any(kw in kwargs for kw in cls._reserved_kws):
+
+            raise ValueError(
+
+                "The following keyword-argument keys are reserved. Choose a different key.\n" +
+                f"{', '.join(cls._reserved_kws)}"
+            )
+
+    def get_wrapped_string(self):
+
+        return _Info_JSONEncoder().encode(self)
 
     @classmethod
     def from_json(cls, json_string):
@@ -88,46 +117,83 @@ class _Info( ABC):
 
     def to_json(self):
 
-        kwargs = copy(self.__dict__)
-        for kw in self._reserved_kws:
-            kwargs.pop(kw,None)
-        kwargs = order_json_obj(kwargs)
+        if self._json is not None:
+            return self._json
 
-        try:
-            json_rep = _Info_JSONEncoder(
+        else:
 
-                ensure_ascii = True,
-                allow_nan = True,
-                indent = None,
-                separators = (',', ':')
+            kwargs = copy(self.__dict__)
 
-            ).encode(kwargs)
+            for kw in self._reserved_kws:
+                kwargs.pop(kw,None)
 
-        except (TypeError, ValueError):
-            raise ValueError(
-                "One of the keyword arguments used to construct this instance cannot be encoded into " +
-                "JSON. Use different keyword arguments, or override the " +
-                f"classmethod `{self.__class__.__name__}.from_json` and the instancemethod " +
-                f"`{self.__class__.__name__}.to_json`."
-            )
+            kwargs = order_json_obj(kwargs)
 
-        if "\0" in json_rep:
-            raise ValueError(
-                "One of the keyword arguments used to construct this instance contains the null character " +
-                "'\\0'."
-            )
+            try:
+                json_rep = _Info_JSONEncoder(
 
-        return json_rep
+                    ensure_ascii = True,
+                    allow_nan = True,
+                    indent = None,
+                    separators = (',', ':')
 
-    def _add_reserved_kw(self, kw):
-        self._reserved_kws.append(kw)
+                ).encode(kwargs)
 
-    def _check_reserved_kws(self, kwargs):
-        if any(kw in kwargs for kw in self._reserved_kws):
-            raise ValueError(
-                "The following keyword-argument keys are reserved. Choose a different key.\n" +
-                f"{', '.join(self._reserved_kws)}"
-            )
+            except (TypeError, ValueError):
+
+                raise ValueError(
+                    "One of the keyword arguments used to construct this instance cannot be encoded into " +
+                    "JSON. Use different keyword arguments, or override the " +
+                    f"classmethod `{self.__class__.__name__}.from_json` and the instancemethod " +
+                    f"`{self.__class__.__name__}.to_json`."
+                )
+
+            if "\0" in json_rep:
+
+                raise ValueError(
+                    "One of the keyword arguments used to construct this instance contains the null character " +
+                    "'\\0'."
+                )
+
+            self._json = json_rep
+
+            return json_rep
+
+    def iter_inner_info(self):
+
+        yield self
+
+        for key, val in self.__dict__.items():
+
+            if isinstance(val, _Info):
+
+                yield val
+
+                for inner in val.iter_inner_info():
+                    yield inner
+
+    def __contains__(self, apri):
+
+        if not isinstance(apri, Apri_Info):
+            raise TypeError("`apri` must be of type `Apri_Info`.")
+
+        return any(inner == apri for inner in self.iter_inner_info())
+
+    def __lt__(self, other):
+
+        if type(self) != type(other):
+            return False
+
+        else:
+            return str(self) < str(other)
+
+    def __gt__(self, other):
+
+        if type(self) != type(other):
+            return False
+
+        else:
+            return not(self < other)
 
     @abstractmethod
     def __hash__(self):pass
@@ -151,40 +217,38 @@ class _Info( ABC):
         return str(self)
 
     def __copy__(self):
-        info = type(self)()
+        info = type(self)(placeholder = "placeholder")
+        del info.placeholder
         info.__dict__.update(self.__dict__)
         return info
 
     def __deepcopy__(self, memo):
         return self.__copy__()
 
-
 class Apri_Info(_Info):
 
+    _reserved_kws = ["_json", "_hash"]
+
     def __init__(self, **kwargs):
+
         super().__init__(**kwargs)
 
-        self._add_reserved_kw("_json")
-        self._add_reserved_kw("_hash")
-        self._check_reserved_kws(kwargs)
-
-        self._json = super().to_json()
         self._hash = hash(type(self))
+
         for key,val in kwargs.items():
+
             try:
                 self._hash += hash(val)
+
             except (TypeError, AttributeError):
+
                 raise ValueError(
                     f"All keyword arguments must be hashable types. The keyword argument given by \"{key}\" "+
                     f"not a hashable type. The type of that argument is `{val.__class__.__name__}`."
                 )
 
-    def to_json(self):
-        return self._json
-
     def __hash__(self):
         return self._hash
-
 
 class Apos_Info(_Info):
 

@@ -474,9 +474,3 @@ class Test___init__(TestCase):
             order_json_obj([{"xyz":1, "abc":2}]),
             [{"abc":2, "xyz":1}]
         )
-
-    # def test_justify_slice(self):
-    #
-    #     inp = [
-    #         ( slice(None, ))
-    #     ]

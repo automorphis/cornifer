@@ -2,11 +2,15 @@ import json
 from copy import copy
 from unittest import TestCase
 
-from cornifer import Apri_Info
+from cornifer import Apri_Info, Apos_Info
+
 
 class Test__Info(TestCase):
 
     def test___init__(self):
+
+        with self.assertRaises(ValueError):
+            Apri_Info()
 
         with self.assertRaises(ValueError):
             Apri_Info(_json ="sup")
@@ -81,35 +85,49 @@ class Test__Info(TestCase):
         apri = Apri_Info(msg = "primes", primes = (2,3,5), respective = Apri_Info(lol = "haha"))
         self.assertEqual(apri, Apri_Info.from_json(apri.to_json()))
 
-
     def test___hash__(self):
+
         self.assertEqual(
             hash(Apri_Info(msg ="primes", mod4 = 1)),
             hash(Apri_Info(mod4 = 1, msg ="primes"))
         )
+
         self.assertNotEqual(
             hash(Apri_Info(msg ="primes", mod4 = 1)),
             hash(Apri_Info(mod4 = 1))
         )
 
     def test___eq__(self):
+
         self.assertEqual(
             Apri_Info(msg ="primes", mod4 = 1),
             Apri_Info(mod4 = 1, msg ="primes")
         )
+
         self.assertNotEqual(
             Apri_Info(msg ="primes", mod4 = 1),
             Apri_Info(mod4 = 1)
         )
+
         self.assertNotEqual(
             Apri_Info(mod4 = 1),
             Apri_Info(msg ="primes", mod4 = 1)
         )
 
+        self.assertEqual(
+            Apri_Info(msg = "primes", respective = Apri_Info(hello = "hi", num = 7)),
+            Apri_Info(respective = Apri_Info(num = 7, hello = "hi"), msg = "primes")
+        )
+
+        self.assertNotEqual(
+            Apri_Info(msg = "primes", respective = Apri_Info(hello = "hi", num = 8)),
+            Apri_Info(respective = Apri_Info(num = 7, hello = "hi"), msg = "primes")
+        )
+
     def test___copy__(self):
         self.assertEqual(
-            Apri_Info(),
-            copy(Apri_Info())
+            Apri_Info(no = "no"),
+            copy(Apri_Info(no = "no"))
         )
         apri = Apri_Info(msg ="primes")
         self.assertEqual(
@@ -128,4 +146,53 @@ class Test__Info(TestCase):
         self.assertEqual(
             hash(apri),
             hash(copy(apri))
+        )
+
+    def test_iter_inner_info(self):
+
+        apri = Apri_Info(descr = "descr")
+
+        self.assertEqual(
+            {Apri_Info(descr = "descr")},
+            set(apri.iter_inner_info())
+        )
+
+        apri = Apri_Info(descr = Apri_Info(num = 7))
+
+        self.assertEqual(
+            {Apri_Info(descr = Apri_Info(num = 7)), Apri_Info(num = 7)},
+            set(apri.iter_inner_info())
+        )
+
+        apri = Apri_Info(descr = Apri_Info(blub = Apri_Info(hi = "hello")))
+
+        self.assertEqual(
+            {
+                Apri_Info(descr = Apri_Info(blub = Apri_Info(hi = "hello"))),
+                Apri_Info(blub = Apri_Info(hi = "hello")),
+                Apri_Info(hi = "hello")
+            },
+            set(apri.iter_inner_info())
+        )
+
+        apri = Apri_Info(num = 7, descr = Apri_Info(blub = Apri_Info(hi = "hello")))
+
+        self.assertEqual(
+            {
+                Apri_Info(num = 7, descr = Apri_Info(blub = Apri_Info(hi = "hello"))),
+                Apri_Info(blub = Apri_Info(hi = "hello")),
+                Apri_Info(hi = "hello")
+            },
+            set(apri.iter_inner_info())
+        )
+
+        apri = Apri_Info(num = 7, descr = Apri_Info(no = "yes", blub = Apri_Info(hi = "hello")))
+
+        self.assertEqual(
+            {
+                Apri_Info(num = 7, descr = Apri_Info(no = "yes", blub = Apri_Info(hi = "hello"))),
+                Apri_Info(no = "yes", blub = Apri_Info(hi = "hello")),
+                Apri_Info(hi = "hello")
+            },
+            set(apri.iter_inner_info())
         )

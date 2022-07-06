@@ -13,6 +13,10 @@
     GNU General Public License for more details.
 """
 
+NOT_ABSOLUTE_ERROR_MESSAGE = (
+    "The path `{0}` is not absolute."
+)
+
 class Register_Error(RuntimeError):pass
 
 class Register_Already_Open_Error(Register_Error):
