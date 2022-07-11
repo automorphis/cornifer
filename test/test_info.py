@@ -153,46 +153,210 @@ class Test__Info(TestCase):
         apri = Apri_Info(descr = "descr")
 
         self.assertEqual(
-            {Apri_Info(descr = "descr")},
+            {(None, Apri_Info(descr = "descr"))},
             set(apri.iter_inner_info())
+        )
+
+        self.assertEqual(
+            1,
+            sum(1 for _ in apri.iter_inner_info())
         )
 
         apri = Apri_Info(descr = Apri_Info(num = 7))
 
         self.assertEqual(
-            {Apri_Info(descr = Apri_Info(num = 7)), Apri_Info(num = 7)},
+            {
+                (None, Apri_Info(descr = Apri_Info(num = 7))),
+                ("descr", Apri_Info(num = 7))
+            },
             set(apri.iter_inner_info())
+        )
+
+        self.assertEqual(
+            2,
+            sum(1 for _ in apri.iter_inner_info())
         )
 
         apri = Apri_Info(descr = Apri_Info(blub = Apri_Info(hi = "hello")))
 
         self.assertEqual(
             {
-                Apri_Info(descr = Apri_Info(blub = Apri_Info(hi = "hello"))),
-                Apri_Info(blub = Apri_Info(hi = "hello")),
-                Apri_Info(hi = "hello")
+                (None, Apri_Info(descr = Apri_Info(blub = Apri_Info(hi = "hello")))),
+                ("descr", Apri_Info(blub = Apri_Info(hi = "hello"))),
+                ("blub", Apri_Info(hi = "hello"))
             },
             set(apri.iter_inner_info())
+        )
+
+        self.assertEqual(
+            3,
+            sum(1 for _ in apri.iter_inner_info())
         )
 
         apri = Apri_Info(num = 7, descr = Apri_Info(blub = Apri_Info(hi = "hello")))
 
         self.assertEqual(
             {
-                Apri_Info(num = 7, descr = Apri_Info(blub = Apri_Info(hi = "hello"))),
-                Apri_Info(blub = Apri_Info(hi = "hello")),
-                Apri_Info(hi = "hello")
+                (None, Apri_Info(num = 7, descr = Apri_Info(blub = Apri_Info(hi = "hello")))),
+                ("descr", Apri_Info(blub = Apri_Info(hi = "hello"))),
+                ("blub", Apri_Info(hi = "hello"))
             },
             set(apri.iter_inner_info())
+        )
+
+        self.assertEqual(
+            3,
+            sum(1 for _ in apri.iter_inner_info())
         )
 
         apri = Apri_Info(num = 7, descr = Apri_Info(no = "yes", blub = Apri_Info(hi = "hello")))
 
         self.assertEqual(
             {
-                Apri_Info(num = 7, descr = Apri_Info(no = "yes", blub = Apri_Info(hi = "hello"))),
-                Apri_Info(no = "yes", blub = Apri_Info(hi = "hello")),
-                Apri_Info(hi = "hello")
+                (None, Apri_Info(num = 7, descr = Apri_Info(no = "yes", blub = Apri_Info(hi = "hello")))),
+                ("descr", Apri_Info(no = "yes", blub = Apri_Info(hi = "hello"))),
+                ("blub", Apri_Info(hi = "hello"))
             },
             set(apri.iter_inner_info())
+        )
+
+        self.assertEqual(
+            3,
+            sum(1 for _ in apri.iter_inner_info())
+        )
+
+        apri = Apri_Info(num = Apri_Info(descr = "hi"), two = Apri_Info(descr = "hi"))
+
+        self.assertEqual(
+            {
+                (None, Apri_Info(num = Apri_Info(descr = "hi"), two = Apri_Info(descr = "hi"))),
+                ("num", Apri_Info(descr = "hi")),
+                ("two", Apri_Info(descr = "hi"))
+            },
+            set(apri.iter_inner_info())
+        )
+
+        self.assertEqual(
+            3,
+            sum(1 for _ in apri.iter_inner_info())
+        )
+
+        apri = Apri_Info(num = Apri_Info(descr = "hey"), two = Apri_Info(descr = "hi"))
+
+        self.assertEqual(
+            {
+                (None, Apri_Info(num = Apri_Info(descr = "hey"), two = Apri_Info(descr = "hi"))),
+                ("num", Apri_Info(descr = "hey")),
+                ("two", Apri_Info(descr = "hi"))
+            },
+            set(apri.iter_inner_info())
+        )
+
+        self.assertEqual(
+            3,
+            sum(1 for _ in apri.iter_inner_info())
+        )
+
+    def test_change_info(self):
+
+        apri = Apri_Info(descr = "descr")
+
+        with self.assertRaises(TypeError):
+            apri.change_info(apri, 0)
+
+        with self.assertRaises(TypeError):
+            apri.change_info(0, apri)
+
+        replaced = apri.change_info(Apri_Info(no = "yes"), Apri_Info(maybe = "maybe"))
+
+        self.assertEqual(
+            Apri_Info(descr = "descr"),
+            replaced
+        )
+
+        replaced = apri.change_info(apri, Apri_Info(no = "yes"))
+
+        self.assertEqual(
+            Apri_Info(no = "yes"),
+            replaced
+        )
+
+        apri = Apri_Info(descr = Apri_Info(num = 7))
+
+        replaced = apri.change_info(Apri_Info(num = 7), Apri_Info(_num = 8))
+
+        self.assertEqual(
+            Apri_Info(descr = Apri_Info(_num = 8)),
+            replaced
+        )
+
+        replaced = apri.change_info(apri, Apri_Info(hello = "hi"))
+
+        self.assertEqual(
+            Apri_Info(hello = "hi"),
+            replaced
+        )
+
+        apri = Apri_Info(descr = Apri_Info(blub = Apri_Info(hi = "hello")))
+
+        replaced = apri.change_info(Apri_Info(hi = "hello"), Apri_Info(hi = "hellox"))
+
+        self.assertEqual(
+            Apri_Info(descr = Apri_Info(blub = Apri_Info(hi = "hellox"))),
+            replaced
+        )
+
+        replaced = apri.change_info(Apri_Info(blub = Apri_Info(hi = "hello")), Apri_Info(bloob = Apri_Info(hi = "hello")))
+
+        self.assertEqual(
+            Apri_Info(descr = Apri_Info(bloob = Apri_Info(hi = "hello"))),
+            replaced
+        )
+
+        replaced = apri.change_info(Apri_Info(descr = Apri_Info(blub = Apri_Info(hi = "hello"))), Apri_Info(descr = "yes"))
+
+        self.assertEqual(
+            Apri_Info(descr = "yes"),
+            replaced
+        )
+
+        apri = Apri_Info(num = 7, descr = Apri_Info(blub = Apri_Info(hi = "hello")))
+
+        replaced = apri.change_info(Apri_Info(blub = Apri_Info(hi = "hello")), Apri_Info(bloob = Apri_Info(hi = "hello")))
+
+        self.assertEqual(
+            Apri_Info(num = 7, descr = Apri_Info(bloob = Apri_Info(hi = "hello"))),
+            replaced
+        )
+
+        replaced = apri.change_info(Apri_Info(descr = Apri_Info(blub = Apri_Info(hi = "hello"))), Apri_Info(descr = "yes"))
+
+        self.assertEqual(
+            Apri_Info(num = 7, descr = Apri_Info(blub = Apri_Info(hi = "hello"))),
+            replaced
+        )
+
+        replaced = apri.change_info(Apri_Info(num = 7, descr = Apri_Info(blub = Apri_Info(hi = "hello"))), Apri_Info(loot = "chest"))
+
+        self.assertEqual(
+            Apri_Info(loot = "chest"),
+            replaced
+        )
+
+        apri = Apri_Info(num = Apri_Info(descr = "hi"), two = Apri_Info(descr = "hi"))
+
+        replaced = apri.change_info(Apri_Info(descr = "hi") , Apri_Info(num = Apri_Info(descr = "hi")))
+
+        self.assertEqual(
+            Apri_Info(num = Apri_Info(num = Apri_Info(descr = "hi")), two = Apri_Info(num = Apri_Info(descr = "hi"))),
+            replaced
+        )
+
+        apri = Apri_Info(num = Apri_Info(descr = "hey"), two = Apri_Info(descr = "hi"))
+
+        replaced = apri.change_info(Apri_Info(descr = "hi") , Apri_Info(num = Apri_Info(descr = "hi")))
+
+        self.assertEqual(
+            Apri_Info(num = Apri_Info(descr = "hey"), two = Apri_Info(num = Apri_Info(descr = "hi"))),
+            replaced
         )

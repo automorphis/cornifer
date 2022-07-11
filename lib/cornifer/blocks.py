@@ -226,10 +226,11 @@ class Memmap_Block (Block):
         will not work if there are references to `self._seg` outside of this instance.
         """
 
-        if sys.getrefcount(self._seg) != 2:
-            raise RuntimeError("Couldn't close the `memmap` handle.")
-
         try:
+
+            if sys.getrefcount(self._seg) != 2:
+                raise RuntimeError("Couldn't close the `memmap` handle.")
+
             del self._seg
 
         except AttributeError:

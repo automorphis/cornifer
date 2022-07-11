@@ -16,10 +16,9 @@
 
 import json
 from abc import ABC, abstractmethod
-from copy import copy
+from copy import copy, deepcopy
 
 from cornifer.utilities import order_json_obj
-
 
 class _Info_JSONEncoder(json.JSONEncoder):
 
@@ -159,25 +158,68 @@ class _Info(ABC):
 
             return json_rep
 
-    def iter_inner_info(self):
+    def iter_inner_info(self, _root_call = True):
 
-        yield self
+        if not isinstance(_root_call, bool):
+            raise TypeError("`_root_call` must be of type `bool`.")
+
+        if _root_call:
+            yield None, self
 
         for key, val in self.__dict__.items():
 
-            if isinstance(val, _Info):
+            if key not in type(self)._reserved_kws and isinstance(val, _Info):
 
-                yield val
+                yield key, val
 
-                for inner in val.iter_inner_info():
+                for inner in val.iter_inner_info(_root_call = False):
                     yield inner
+
+    def change_info(self, old_info, new_info, _root_call = True):
+
+        if not isinstance(old_info, _Info):
+            raise TypeError("`old_info` must be of type `_Info`.")
+
+        if not isinstance(new_info, _Info):
+            raise TypeError("`new_info` must be of type `_Info`.")
+
+        if not isinstance(_root_call, bool):
+            raise TypeError("`_root_call` must be of type `bool`.")
+
+        if _root_call:
+            replaced_info = deepcopy(self)
+
+        else:
+            replaced_info = self
+
+        if self == old_info:
+            return new_info
+
+        else:
+
+            kw = {}
+
+            for key, val in replaced_info.__dict__.items():
+
+                if key not in type(self)._reserved_kws:
+
+                    if val == old_info:
+                        kw[key] = new_info
+
+                    elif isinstance(val, _Info):
+                        kw[key] = val.change_info(old_info, new_info)
+
+                    else:
+                        kw[key] = val
+
+            return type(self)(**kw)
 
     def __contains__(self, apri):
 
         if not isinstance(apri, Apri_Info):
             raise TypeError("`apri` must be of type `Apri_Info`.")
 
-        return any(inner == apri for inner in self.iter_inner_info())
+        return any(inner == apri for _, inner in self.iter_inner_info())
 
     def __lt__(self, other):
 
@@ -202,15 +244,23 @@ class _Info(ABC):
         return type(self) == type(other) and self.to_json() == other.to_json()
 
     def __str__(self):
+
         ret = f"{self.__class__.__name__}("
+
         first = True
-        for key,val in self.__dict__.items():
+
+        for key, val in self.__dict__.items():
+
             if key not in self._reserved_kws:
+
                 if first:
                     first = False
+
                 else:
                     ret += ", "
-                ret += f"{key}=" + repr(val)
+
+                ret += f"{key}={repr(val)}"
+
         return ret + ")"
 
     def __repr__(self):
@@ -254,3 +304,4 @@ class Apos_Info(_Info):
 
     def __hash__(self):
         raise TypeError("`Apos_Info` is not a hashable type.")
+

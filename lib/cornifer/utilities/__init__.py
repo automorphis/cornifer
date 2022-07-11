@@ -26,6 +26,7 @@ import numpy as np
 BYTES_PER_KB = 1024
 BYTES_PER_MB = 1024**2
 BYTES_PER_GB = 1024**3
+BYTES_PER_CHAR = 1
 BASE54 = "2346789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRTUVWXYZ"
 
 NAME_REGEX = re.compile("[_a-zA-Z]\w*")

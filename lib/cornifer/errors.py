@@ -19,6 +19,8 @@ NOT_ABSOLUTE_ERROR_MESSAGE = (
 
 class Register_Error(RuntimeError):pass
 
+class Register_Recovery_Error(Register_Error):pass
+
 class Register_Already_Open_Error(Register_Error):
     def __init__(self):
         super().__init__("This register is already opened.")
