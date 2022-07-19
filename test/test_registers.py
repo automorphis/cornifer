@@ -21,6 +21,29 @@ from cornifer.utilities.lmdb import lmdb_has_key, lmdb_prefix_iterator, lmdb_cou
 from cornifer.version import CURRENT_VERSION
 
 """
+PUBLIC READ-WRITE METHODS FOR LMDB:
+ - set_start_n_info
+ - open
+ - change_apri_info
+ - remove_apri_info
+ - set_apos_info
+ - remove_apos_info
+ - add_subregister
+ - remove_subregister
+ - add_disk_block
+ - remove_disk_block
+ - compress
+ - decompress
+ - Numpy_Register.concatenate_disk_blocks
+ 
+PROTECTED READ-WRITE METHODS FOR LMDB:
+ - _get_id_by_apri
+ - _get_apos_key
+ - _get_disk_block_key
+
+"""
+
+"""
 - LEVEL 0
     - __init__
     - add_subclass
@@ -2881,41 +2904,41 @@ class Test_Register(TestCase):
                 reg.get_disk_block(apri1, 1, 100).get_segment() == np.arange(100)
             ))
 
-    # def test_get_all_apri_info(self):
-    #
-    #     reg = Testy_Register(SAVES_DIR, "test")
-    #
-    #     with self.assertRaisesRegex(Register_Error, "open.*get_all_apri_info"):
-    #         reg.get_all_apri_info()
-    #
-    #     for i in range(200):
-    #
-    #         apri1 = Apri_Info(name = i)
-    #         apri2 = Apri_Info(name = f"{i}")
-    #
-    #         with reg.open() as reg:
-    #
-    #             reg.add_disk_block(Block([1], apri1))
-    #             reg.add_ram_block(Block([1], apri2))
-    #
-    #             get = reg.get_all_apri_info()
-    #
-    #         self.assertEqual(
-    #             2*(i+1),
-    #             len(get)
-    #         )
-    #
-    #         for j in range(i+1):
-    #
-    #             self.assertIn(
-    #                 Apri_Info(name = i),
-    #                 get
-    #             )
-    #
-    #             self.assertIn(
-    #                 Apri_Info(name = f"{i}"),
-    #                 get
-    #             )
+    def test_get_all_apri_info(self):
+
+        reg = Testy_Register(SAVES_DIR, "test")
+
+        with self.assertRaisesRegex(Register_Error, "open.*get_all_apri_info"):
+            reg.get_all_apri_info()
+
+        for i in range(200):
+
+            apri1 = Apri_Info(name = i)
+            apri2 = Apri_Info(name = f"{i}")
+
+            with reg.open() as reg:
+
+                reg.add_disk_block(Block([1], apri1))
+                reg.add_ram_block(Block([1], apri2))
+
+                get = reg.get_all_apri_info()
+
+            self.assertEqual(
+                2*(i+1),
+                len(get)
+            )
+
+            for j in range(i+1):
+
+                self.assertIn(
+                    Apri_Info(name = i),
+                    get
+                )
+
+                self.assertIn(
+                    Apri_Info(name = f"{i}"),
+                    get
+                )
 
     def _is_compressed_helper(self, reg, apri, start_n, length, data_file_bytes = None):
 
