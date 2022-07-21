@@ -1,3 +1,0 @@
-[submodule "lib/cornifer/py-lmdb"]
-	path = lib/cornifer/py-lmdb
-	url = https://github.com/automorphis/py-lmdb
