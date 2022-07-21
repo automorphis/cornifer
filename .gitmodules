@@ -1,3 +1,0 @@
-[submodule "lib/py-lmdb"]
-	path = lib/py-lmdb
-	url = https://github.com/automorphis/py-lmdb
