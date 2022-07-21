@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 from unittest import TestCase
 
-from cornifer.register_file_structure import check_register_structure, REGISTER_FILENAME, VERSION_FILEPATH, \
+from cornifer import check_register_structure, REGISTER_FILENAME, VERSION_FILEPATH, \
     MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH
 
 SAVES_DIR = Path("D:/tmp/tests")

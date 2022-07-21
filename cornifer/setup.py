@@ -28,8 +28,21 @@ setup(
         "cornifer.utilities"
     ],
     install_requires = [
-        'oldest-supported-numpy',
-        'lmdb>=1.0.0'
+        'oldest-supported-numpy'
     ],
+
+    classifiers=[
+        "Programming Language :: Python",
+        "Programming Language :: Python :: Implementation :: CPython",
+        "Programming Language :: Python :: Implementation :: PyPy",
+        "Programming Language :: Python :: 3.5",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Topic :: Database"
+    ],
+
     zip_safe=False
 )

@@ -5,20 +5,18 @@ from itertools import product, chain
 from pathlib import Path
 from unittest import TestCase
 
-import lmdb
 import numpy as np
 
 from cornifer import Numpy_Register, Register, Apri_Info, Block, Apos_Info
-from cornifer.errors import Register_Already_Open_Error, Data_Not_Found_Error, Register_Error, Compression_Error, \
+from cornifer import Register_Already_Open_Error, Data_Not_Found_Error, Register_Error, Compression_Error, \
     Decompression_Error
-from cornifer.register_file_structure import REGISTER_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
+from cornifer import REGISTER_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
     DATABASE_FILEPATH
-from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, _CLS_KEY, _MSG_KEY, _CURR_ID_KEY, \
+from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, _CURR_ID_KEY, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
-    _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, \
-    _COMPRESSED_KEY_PREFIX_LEN
-from cornifer.utilities.lmdb import lmdb_has_key, lmdb_prefix_iterator, lmdb_count_keys, open_lmdb, lmdb_prefix_list
-from cornifer.version import CURRENT_VERSION
+    _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX
+from cornifer import lmdb_has_key, lmdb_prefix_iterator, lmdb_count_keys, open_lmdb
+from cornifer import CURRENT_VERSION
 
 """
 PUBLIC READ-WRITE METHODS FOR LMDB:

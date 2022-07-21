@@ -2,7 +2,7 @@ import json
 from copy import copy
 from unittest import TestCase
 
-from cornifer import Apri_Info, Apos_Info
+from cornifer import Apri_Info
 
 
 class Test__Info(TestCase):
