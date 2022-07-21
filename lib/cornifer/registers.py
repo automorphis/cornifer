@@ -72,8 +72,9 @@ class Register(ABC):
     #################################
     #           CONSTANTS           #
 
-    _START_N_TAIL_LENGTH_DEFAULT = 12
-    _START_N_HEAD_DEFAULT        =  0
+    _START_N_TAIL_LENGTH_DEFAULT   = 12
+    _START_N_HEAD_DEFAULT          =  0
+    _INITIAL_REGISTER_SIZE_DEFAULT = 5 * BYTES_PER_MB
 
     #################################
     #        ERROR MESSAGES         #
@@ -95,27 +96,12 @@ cannot do the following:
 """
     )
 
-    _ADD_DISK_BLOCK_ERROR_MSG = (
-        "The `add_disk_block` failed. The `blk` has not been dumped to disk, nor has it been linked with "
-        "this register."
-    )
-
-    _LOCAL_DIR_ERROR_MSG = "The `Register` database `{0}` could not be found."
-
-    _SET_START_N_INFO_ERROR_MSG = (
-        "`set_start_n_info` failed. Recovered successfully; the database has not been changed or corrupted."
-    )
-
     _DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_FULL = (
         "No disk block found with the following data: {0}, start_n = {1}, length = {2}."
     )
 
     _DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_N = (
         "No disk block found with the following data: {0}, n = {1}."
-    )
-
-    _NO_COMPRESSION_KEY_ERROR_MSG = (
-        "Could not find compression key for the `Block` with the following data: {0}, start_n = {1}, length = {2}."
     )
 
     _NOT_CREATED_ERROR_MESSAGE = (
@@ -130,7 +116,7 @@ cannot do the following:
     #################################
     #     PUBLIC INITIALIZATION     #
 
-    def __init__(self, saves_directory, message, initial_register_size = 5 * BYTES_PER_MB):
+    def __init__(self, saves_directory, message, initial_register_size = None):
         """This constructor neither creates nor opens a `Register` database. That is done by the context manager `open`.
 
         :param saves_directory: (type `str`)
@@ -138,7 +124,8 @@ cannot do the following:
         :param initial_register_size: (type `int`) Size in bytes, the default is 5 MB. You may wish to set this lower
         than 5 MB if you do not expect to add many disk `Block`s to your register and you are concerned about disk
         memory. If your `Register` exceeds `initial_register_size`, then you can adjust the database size later via the
-        method `increase_register_size`.
+        method `increase_register_size`. If you are on a non-Windows system, there is no harm in setting this value
+        to be very large (e.g. 1 TB).
         """
 
         if not isinstance(saves_directory, (str, Path)):
@@ -146,14 +133,16 @@ cannot do the following:
 
 
         if not isinstance(message, str):
-            raise TypeError(
-                f"The `message` argument must be a string. Passed type of `message`: `{str(type(message))}`."
-            )
+            raise TypeError("`message` must be a string.")
 
-        if not is_signed_int(initial_register_size):
+        if initial_register_size is not None and not is_signed_int(initial_register_size):
             raise TypeError("`initial_register_size` must be of type `int`.")
-        else:
+
+        elif initial_register_size is not None:
             initial_register_size = int(initial_register_size)
+
+        else:
+            initial_register_size = Register._INITIAL_REGISTER_SIZE_DEFAULT
 
         if initial_register_size <= 0:
             raise ValueError("`initial_register_size` must be positive.")
@@ -223,7 +212,7 @@ cannot do the following:
             raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(local_dir)))
 
         if not local_dir.exists():
-            raise FileNotFoundError(Register._LOCAL_DIR_ERROR_MSG.format(str(local_dir)))
+            raise FileNotFoundError(f"The `Register` database `{str(local_dir)}` could not be found.")
 
         check_register_structure(local_dir)
 
@@ -855,7 +844,7 @@ cannot do the following:
 
                             else:
 
-                                apri = Apri_Info.from_json(key[_APRI_ID_KEY_PREFIX_LEN:].decode("ASCII"))
+                                apri = Apri_Info.from_json(key[_APRI_ID_KEY_PREFIX_LEN : ].decode("ASCII"))
                                 replaced = apri.change_info(old_apri, new_apri)
                                 new_key = _APRI_ID_KEY_PREFIX + replaced.to_json().encode("ASCII")
 
@@ -1078,7 +1067,7 @@ cannot do the following:
 
                 txn.put(_CURR_ID_KEY, next_id)
                 txn.put(key, _id)
-                txn.put(_ID_APRI_KEY_PREFIX + _id, key[_APRI_ID_KEY_PREFIX_LEN:])
+                txn.put(_ID_APRI_KEY_PREFIX + _id, key[_APRI_ID_KEY_PREFIX_LEN : ])
 
                 return _id
 
@@ -1367,7 +1356,7 @@ cannot do the following:
 
             for key, _ in it:
 
-                local_dir = Path(key[_SUB_KEY_PREFIX_LEN:].decode("ASCII"))
+                local_dir = Path(key[_SUB_KEY_PREFIX_LEN : ].decode("ASCII"))
                 subreg = Register._from_local_dir(local_dir)
                 yield subreg
 

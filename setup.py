@@ -27,5 +27,9 @@ setup(
         "cornifer",
         "cornifer.utilities"
     ],
+    install_requires = [
+        'oldest-supported-numpy',
+        'lmdb>=1.0.0'
+    ],
     zip_safe=False
 )
