@@ -19,30 +19,34 @@ setup(
     name = 'Cornifer',
     version = '0.1',
     description = "An easy-to-use data manager for experimental mathematics.",
+    long_description = "An easy-to-use data manager for experimental mathematics.",
+
     author = "Michael P. Lane",
-    author_email = "lane.662@osu.edu",
+    author_email = "mlanetheta@gmail.com",
     url = "https://github.com/automorphis/cornifer",
+
     package_dir = {"": "lib"},
+
     packages = [
         "cornifer",
         "cornifer.utilities"
     ],
+
     install_requires = [
-        'oldest-supported-numpy'
+        'oldest-supported-numpy',
+        'lmdb>=1.2.1'
     ],
 
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: Implementation :: CPython",
-        "Programming Language :: Python :: Implementation :: PyPy",
-        "Programming Language :: Python :: 3.5",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
-        "Topic :: Database"
+        "Topic :: Database",
+        "Topic :: Database :: Front-Ends",
+        "Topic :: Scientific/Engineering :: Mathematics"
     ],
+
+    test_suite = "tests",
 
     zip_safe=False
 )

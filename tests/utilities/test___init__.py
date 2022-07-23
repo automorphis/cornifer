@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from unittest import TestCase
 
-from cornifer import intervals_overlap, random_unique_filename, check_has_method, \
+from cornifer.utilities import intervals_overlap, random_unique_filename, check_has_method, \
     replace_lists_with_tuples, replace_tuples_with_lists, _justify_slice_start_stop, order_json_obj
 
 """
@@ -35,6 +35,8 @@ from cornifer import intervals_overlap, random_unique_filename, check_has_method
         - input check: `min_index > max_index`
         - edge cases: everything is an edge case lol
 """
+
+SAVES_DIR = Path(__file__).parent.resolve() / "temp"
 
 test__justify_slice_start_tests = {
             (-6, 0, 0) : 0,
@@ -283,14 +285,12 @@ class Test___init__(TestCase):
 
     def test_random_unique_filename(self):
 
-        directory = Path(f"D:/tmp/test_random_unique_filename{int(time.time()*100)}")
+        if SAVES_DIR.is_dir():
+            shutil.rmtree(SAVES_DIR)
 
-        if directory.is_file():
-            directory.unlink()
-        if directory.is_dir():
-            shutil.rmtree(directory)
-
-        Path(directory).mkdir()
+        SAVES_DIR.mkdir()
+        directory = SAVES_DIR / str(int(time.time()*100))
+        directory.mkdir()
 
         exts = ["", ".txt", ".csv", ".pkl", ".npy"]
 

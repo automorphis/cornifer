@@ -15,11 +15,10 @@
 
 import re
 import warnings
-from pathlib import Path, PurePath
+from pathlib import Path
 
-from cornifer.file_metadata import File_Metadata
 from cornifer.errors import Register_Error
-from cornifer.registers import Register, _BLK_KEY_PREFIX, _BLK_KEY_PREFIX_LEN
+from cornifer.registers import Register
 from cornifer.register_file_structure import LOCAL_DIR_CHARS, check_register_structure
 from cornifer.utilities import resolve_path
 from cornifer.version import CURRENT_VERSION, COMPATIBLE_VERSIONS

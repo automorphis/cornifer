@@ -11,7 +11,7 @@ def lmdb_is_closed(db):
         with db.begin() as _:
             pass
 
-    except Exception as e:
+    except BaseException as e:
 
         if isinstance(e, lmdb.Error) and "Attempt to operate on closed/deleted/dropped object." in str(e):
             return True
@@ -51,8 +51,8 @@ def open_lmdb(filepath, map_size, read_only):
 
 def lmdb_has_key(db_or_txn, key):
     """
-    :param db_or_txn: If type `lmdb.Environment`, open a new read-only transaction and close it after this function
-    resolves. If type `lmdb.Transaction`, do not close it after the function resolves.
+    :param db_or_txn: If type `lmdb_cornifer.Environment`, open a new read-only transaction and close it after this function
+    resolves. If type `lmdb_cornifer.Transaction`, do not close it after the function resolves.
     :param key: (type `bytes`)
     :return: (type `bool`)
     """
@@ -69,8 +69,8 @@ def lmdb_prefix_list(db_or_txn, prefix):
 def lmdb_prefix_iterator(db_or_txn, prefix):
     """Iterate over all key-value pairs where they key begins with given prefix.
 
-    :param db_or_txn: If type `lmdb.Environment`, open a new read-only transaction and close it after this function
-    resolves. If type `lmdb.Transaction`, do not close it after the function resolves.
+    :param db_or_txn: If type `lmdb_cornifer.Environment`, open a new read-only transaction and close it after this function
+    resolves. If type `lmdb_cornifer.Transaction`, do not close it after the function resolves.
     :param prefix: (type `bytes`)
     :return: (type `_LMDB_Prefix_Iterator`)
     """

@@ -2,10 +2,10 @@ import shutil
 from pathlib import Path
 from unittest import TestCase
 
-from cornifer import check_register_structure, REGISTER_FILENAME, VERSION_FILEPATH, \
+from cornifer.register_file_structure import check_register_structure, REGISTER_FILENAME, VERSION_FILEPATH, \
     MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH
 
-SAVES_DIR = Path("D:/tmp/tests")
+SAVES_DIR = Path(__file__).parent.resolve() / "temp"
 
 class Test_Register_File_Structure(TestCase):
 
@@ -20,7 +20,7 @@ class Test_Register_File_Structure(TestCase):
 
     def test_check_register_structure(self):
 
-        # test absolute filepath
+        # tests absolute filepath
         with self.assertRaisesRegex(ValueError, "absolute"):
             check_register_structure(Path("sup"))
 

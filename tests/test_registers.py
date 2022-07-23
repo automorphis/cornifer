@@ -8,15 +8,15 @@ from unittest import TestCase
 import numpy as np
 
 from cornifer import Numpy_Register, Register, Apri_Info, Block, Apos_Info
-from cornifer import Register_Already_Open_Error, Data_Not_Found_Error, Register_Error, Compression_Error, \
+from cornifer.errors import Register_Already_Open_Error, Data_Not_Found_Error, Register_Error, Compression_Error, \
     Decompression_Error
-from cornifer import REGISTER_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
+from cornifer.register_file_structure import REGISTER_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
     DATABASE_FILEPATH
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, _CURR_ID_KEY, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
     _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX
-from cornifer import lmdb_has_key, lmdb_prefix_iterator, lmdb_count_keys, open_lmdb
-from cornifer import CURRENT_VERSION
+from cornifer.utilities.lmdb import lmdb_has_key, lmdb_prefix_iterator, lmdb_count_keys, open_lmdb
+from cornifer.version import CURRENT_VERSION
 
 """
 PUBLIC READ-WRITE METHODS FOR LMDB:
@@ -108,7 +108,7 @@ PROTECTED READ-WRITE METHODS FOR LMDB:
     
 """
 
-SAVES_DIR = Path("D:/tmp/tests")
+SAVES_DIR = Path(__file__).parent.resolve() / "temp"
 # SAVES_DIR = Path.home() / "tmp" / "tests"
 
 class Testy_Register(Register):
@@ -161,7 +161,7 @@ class Test_Register(TestCase):
         shutil.rmtree(SAVES_DIR)
 
         with self.assertRaises(FileNotFoundError):
-            Testy_Register(SAVES_DIR, "test")
+            Testy_Register(SAVES_DIR, "tests")
 
         SAVES_DIR.mkdir()
 
@@ -265,25 +265,25 @@ class Test_Register(TestCase):
 
         reg = Testy_Register(SAVES_DIR, "hey")
 
-        with self.assertRaisesRegex(Register_Error, "test"):
-            reg._check_open_raise("test")
+        with self.assertRaisesRegex(Register_Error, "tests"):
+            reg._check_open_raise("tests")
 
     def test__set_local_dir(self):
 
-        # test that error is raised when `local_dir` is not a sub-dir of `saves_directory`
+        # tests that error is raised when `local_dir` is not a sub-dir of `saves_directory`
         local_dir = SAVES_DIR / "bad" / "test_local_dir"
         reg = Testy_Register(SAVES_DIR, "sup")
         with self.assertRaisesRegex(ValueError, "sub-directory"):
             reg._set_local_dir(local_dir)
 
-        # test that error is raised when `Register` has not been created
+        # tests that error is raised when `Register` has not been created
         local_dir = SAVES_DIR / "test_local_dir"
         reg = Testy_Register(SAVES_DIR, "sup")
         with self.assertRaisesRegex(FileNotFoundError, "database"):
             reg._set_local_dir(local_dir)
 
-        # test that newly created register has the correct filestructure and instance attributes
-        # register database must be manually created for this test case
+        # tests that newly created register has the correct filestructure and instance attributes
+        # register database must be manually created for this tests case
         local_dir = SAVES_DIR / "test_local_dir"
         reg = Testy_Register(SAVES_DIR, "sup")
         local_dir.mkdir()
@@ -334,14 +334,14 @@ class Test_Register(TestCase):
     def test_add_ram_block(self):
 
         reg = Testy_Register(SAVES_DIR, "msg")
-        blk = Block([], Apri_Info(name = "test"))
+        blk = Block([], Apri_Info(name = "tests"))
         try:
             reg.add_ram_block(blk)
         except Register_Error:
             self.fail("register doesn't need to be open")
 
         reg = Testy_Register(SAVES_DIR, "msg")
-        blk1 = Block([], Apri_Info(name = "test"))
+        blk1 = Block([], Apri_Info(name = "tests"))
         reg.add_ram_block(blk1)
         self.assertEqual(
             1,
@@ -614,7 +614,7 @@ class Test_Register(TestCase):
             reg1
         )
 
-        # test a different `Register` derived type
+        # tests a different `Register` derived type
         reg2 = Testy_Register2(SAVES_DIR, "msg")
         reg2._set_local_dir(reg1._local_dir)
         self.assertNotEqual(
@@ -622,7 +622,7 @@ class Test_Register(TestCase):
             reg1
         )
 
-        # test that relative paths work as expected
+        # tests that relative paths work as expected
         reg2 = Testy_Register(SAVES_DIR, "msg")
         reg2._set_local_dir(".." / SAVES_DIR / reg1._local_dir)
         self.assertEqual(
@@ -1198,7 +1198,7 @@ class Test_Register(TestCase):
                 with self.assertRaisesRegex(Register_Error, "read-only"):
                     reg.set_start_n_info(head, tail_length)
 
-            # test make sure ValueError is thrown for small smart_n
+            # tests make sure ValueError is thrown for small smart_n
             # 0 and head * 10 ** tail_length - 1 are the two possible extremes of the small start_n
             if head > 0:
                 for start_n in [0, head * 10 ** tail_length - 1]:
@@ -1215,7 +1215,7 @@ class Test_Register(TestCase):
                                 10 ** Register._START_N_TAIL_LENGTH_DEFAULT, 0, Register._START_N_TAIL_LENGTH_DEFAULT
                             )
 
-            # test to make sure a few permissible start_n work
+            # tests to make sure a few permissible start_n work
             smallest = head * 10 ** tail_length
             largest = smallest + 10 ** tail_length  - 1
             for start_n in [smallest, smallest + 1, smallest + 2, largest -2, largest -1, largest]:
@@ -1250,7 +1250,7 @@ class Test_Register(TestCase):
 
                         blk = Block(list(range(50)), apri, start_n)
 
-            # test to make sure `largest + 1` etc do not work
+            # tests to make sure `largest + 1` etc do not work
             for start_n in [largest + 1, largest + 10, largest + 100, largest + 1000]:
                 reg = Testy_Register(SAVES_DIR, "hello")
                 apri = Apri_Info(name="hi")
@@ -2821,7 +2821,7 @@ class Test_Register(TestCase):
 
     def test_get_disk_block_again(self):
 
-        reg = Numpy_Register(SAVES_DIR, "test")
+        reg = Numpy_Register(SAVES_DIR, "tests")
 
         apri1 = Apri_Info(descr = "hey")
 
@@ -2904,7 +2904,7 @@ class Test_Register(TestCase):
 
     def test_get_all_apri_info(self):
 
-        reg = Testy_Register(SAVES_DIR, "test")
+        reg = Testy_Register(SAVES_DIR, "tests")
 
         with self.assertRaisesRegex(Register_Error, "open.*get_all_apri_info"):
             reg.get_all_apri_info()
