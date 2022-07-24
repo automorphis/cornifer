@@ -1,3 +1,3 @@
-CURRENT_VERSION          = "0.1"
-COMPATIBLE_VERSIONS      = ["0.1"]
+CURRENT_VERSION          = "0.1.0"
+COMPATIBLE_VERSIONS      = ["0.1.0"]
 

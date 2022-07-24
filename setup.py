@@ -17,7 +17,7 @@ from setuptools import setup
 
 setup(
     name = 'cornifer',
-    version = '0.1',
+    version = "0.1.0",
     description = "An easy-to-use data manager for experimental mathematics.",
     long_description = "An easy-to-use data manager for experimental mathematics.",
     long_description_content_type="text/plain",
