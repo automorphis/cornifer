@@ -3,7 +3,7 @@ from pathlib import Path
 
 import lmdb
 
-from cornifer.utilities import is_signed_int
+from cornifer._utilities import is_signed_int
 
 def lmdb_is_closed(db):
 

@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from unittest import TestCase
 
-from cornifer.utilities import intervals_overlap, random_unique_filename, check_has_method, \
+from cornifer._utilities import intervals_overlap, random_unique_filename, check_has_method, \
     replace_lists_with_tuples, replace_tuples_with_lists, _justify_slice_start_stop, order_json_obj
 
 """

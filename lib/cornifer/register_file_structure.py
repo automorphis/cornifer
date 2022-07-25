@@ -1,5 +1,5 @@
 from cornifer.errors import NOT_ABSOLUTE_ERROR_MESSAGE
-from cornifer.utilities import BASE54
+from cornifer._utilities import BASE54
 
 REGISTER_FILENAME           = "register"
 VERSION_FILEPATH            = f"{REGISTER_FILENAME}/version.txt"

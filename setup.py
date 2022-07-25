@@ -12,12 +12,18 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
+from pathlib import Path
 
 from setuptools import setup
 
+# get version
+with (Path(__file__).parent / "lib" / "cornifer" / "version.py").open("r") as fh:
+    # hacky way to import `cornifer.version.CURRENT_VERSION`
+    exec(fh.read())
+
 setup(
     name = 'cornifer',
-    version = "0.1.0",
+    version = CURRENT_VERSION,
     description = "An easy-to-use data manager for experimental mathematics.",
     long_description = "An easy-to-use data manager for experimental mathematics.",
     long_description_content_type="text/plain",
@@ -30,7 +36,7 @@ setup(
 
     packages = [
         "cornifer",
-        "cornifer.utilities"
+        "cornifer._utilities"
     ],
 
     install_requires = [

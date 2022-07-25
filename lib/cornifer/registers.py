@@ -31,13 +31,16 @@ from cornifer.errors import Data_Not_Found_Error, Register_Already_Open_Error, R
 from cornifer.info import Apri_Info, Apos_Info
 from cornifer.blocks import Block, Memmap_Block
 from cornifer.file_metadata import File_Metadata
-from cornifer.utilities import intervals_overlap, random_unique_filename, is_signed_int, \
+from cornifer._utilities import intervals_overlap, random_unique_filename, is_signed_int, \
     resolve_path, BYTES_PER_MB, is_deletable
-from cornifer.utilities.lmdb import lmdb_has_key, lmdb_prefix_iterator, open_lmdb, lmdb_is_closed, lmdb_count_keys
+from cornifer._utilities.lmdb import lmdb_has_key, lmdb_prefix_iterator, open_lmdb, lmdb_is_closed, lmdb_count_keys
 from cornifer.register_file_structure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_register_structure, DATABASE_FILEPATH, \
     REGISTER_FILENAME
 from cornifer.version import CURRENT_VERSION, COMPATIBLE_VERSIONS
+
+_NO_DEBUG = 0
+_debug = _NO_DEBUG
 
 #################################
 #            LMDB KEYS          #
@@ -83,10 +86,11 @@ class Register(ABC):
 """
 Acceptable syntax is, for example:
    reg[apri, 5]
-   reg[apri, 10:20]
-   reg[apri, 10:20, True]
-   reg[apri, 10:20:3, True]
-   reg[apri, 10:20:-3, True]
+   reg[apri, 5:]
+   reg[apri, 5:10]
+   reg[apri, 5:10, True]
+   reg[apri, 5:10:3, True]
+   reg[apri, 10:5:-3, True]
 where `apri` is an instance of `Apri_Info`. The optional third parameter tells 
 the register whether to search recursively for the requested data; the default value, 
 `False`, means that the register will not. Negative indices are not permitted, so you 
@@ -355,7 +359,7 @@ cannot do the following:
             with self._msg_filepath.open("w") as fh:
                 fh.write(message)
 
-    def set_start_n_info(self, head = None, tail_length = None, debug = 0):
+    def set_start_n_info(self, head = None, tail_length = None):
         """Set the range of the `start_n` parameters of disk `Block`s belonging to this `Register`.
 
         Reset to default `head` and `tail_length` by omitting the parameters.
@@ -427,7 +431,7 @@ cannot do the following:
                         f"length      : {length}\n"
                     )
 
-        if debug == 1:
+        if _debug == 1:
             raise KeyboardInterrupt
 
         try:
@@ -457,7 +461,7 @@ cannot do the following:
                                 rw_txn.put(new_key, val)
                                 rw_txn.delete(key)
 
-                if debug == 2:
+                if _debug == 2:
                     raise KeyboardInterrupt
 
         except lmdb.MapFullError:
@@ -759,7 +763,7 @@ cannot do the following:
 
         return sorted(ret)
 
-    def change_apri_info(self, old_apri, new_apri, recursively = False, debug = 0):
+    def change_apri_info(self, old_apri, new_apri, recursively = False):
         """Replace an old `Apri_Info`, and all references to it, with a new `Apri_Info`.
 
         If ANY `Block`, `Apri_Info`, or `Apos_Info` references `old_apri`, its entries in this `Register` will be
@@ -823,7 +827,7 @@ cannot do the following:
             new_id_apri_key = None
             has_new_apri_already = False
 
-        if debug == 1:
+        if _debug == 1:
             raise KeyboardInterrupt
 
         try:
@@ -909,10 +913,10 @@ cannot do the following:
                             if val != new_val:
                                 rw_txn.put(new_key, new_val)
 
-                    if debug == 2:
+                    if _debug == 2:
                         raise KeyboardInterrupt
 
-                if debug == 3:
+                if _debug == 3:
                     raise KeyboardInterrupt
 
         except lmdb.MapFullError:
@@ -923,7 +927,7 @@ cannot do the following:
                 with subreg._recursive_open(False) as subreg:
                     subreg.change_apri_info(old_apri, new_apri, True)
 
-    def remove_apri_info(self, apri, debug = 0):
+    def remove_apri_info(self, apri):
         """Remove an `Apri_Info` that is not associated with any other `Apri_Info`, `Block`, nor `Apos_Info`.
 
         :param apri: (type `Apri_Info`)
@@ -947,7 +951,7 @@ cannot do the following:
                 "`remove_apri_info` again."
             )
 
-        if debug == 1:
+        if _debug == 1:
             raise KeyboardInterrupt
 
         with lmdb_prefix_iterator(self._db, _ID_APRI_KEY_PREFIX) as it:
@@ -963,7 +967,7 @@ cannot do the following:
                         "the latter."
                     )
 
-        if debug == 2:
+        if _debug == 2:
             raise KeyboardInterrupt
 
         try:
@@ -978,7 +982,7 @@ cannot do the following:
                 "`remove_apri_info` again."
             )
 
-        if debug == 3:
+        if _debug == 3:
             raise KeyboardInterrupt
 
         try:
@@ -988,12 +992,11 @@ cannot do the following:
                 txn.delete(_ID_APRI_KEY_PREFIX + _id)
                 txn.delete(_APRI_ID_KEY_PREFIX + apri.to_json().encode("ASCII"))
 
-                if debug == 4:
+                if _debug == 4:
                     raise KeyboardInterrupt
 
         except lmdb.MapFullError:
             raise Register_Error(Register._MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size))
-
 
     #################################
     #      PROTEC APRI METHODS      #
@@ -1091,7 +1094,7 @@ cannot do the following:
     #################################
     #      PUBLIC APOS METHODS      #
 
-    def set_apos_info(self, apri, apos, debug = 0):
+    def set_apos_info(self, apri, apos):
         """Set some `Apos_Info` for corresponding `Apri_Info`.
 
         WARNING: This method will OVERWRITE any previous saved `Apos_Info`. If you do not want to lose any previously
@@ -1120,7 +1123,7 @@ cannot do the following:
         key = self._get_apos_key(apri, None, True)
         apos_json = apos.to_json().encode("ASCII")
 
-        if debug == 1:
+        if _debug == 1:
             raise KeyboardInterrupt
 
         try:
@@ -1129,7 +1132,7 @@ cannot do the following:
 
                 txn.put(key, apos_json)
 
-                if debug == 2:
+                if _debug == 2:
                     raise KeyboardInterrupt
 
         except lmdb.MapFullError:
@@ -1160,7 +1163,7 @@ cannot do the following:
         else:
             raise Data_Not_Found_Error(f"No `Apos_Info` associated with `{str(apri)}`.")
 
-    def remove_apos_info(self, apri, debug = 0):
+    def remove_apos_info(self, apri):
 
         # DEBUG : 1, 2
 
@@ -1173,7 +1176,7 @@ cannot do the following:
 
         key = self._get_apos_key(apri, None, False)
 
-        if debug == 1:
+        if _debug == 1:
             raise KeyboardInterrupt
 
         if lmdb_has_key(self._db, key):
@@ -1184,7 +1187,7 @@ cannot do the following:
 
                     txn.delete(key)
 
-                    if debug == 2:
+                    if _debug == 2:
                         raise KeyboardInterrupt
 
             except lmdb.MapFullError:
@@ -1221,7 +1224,7 @@ cannot do the following:
     #################################
     #  PUBLIC SUB-REGISTER METHODS  #
 
-    def add_subregister(self, subreg, debug = 0):
+    def add_subregister(self, subreg):
 
         # DEBUG : 1, 2
 
@@ -1237,7 +1240,7 @@ cannot do the following:
 
         key = subreg._get_subregister_key()
 
-        if debug == 1:
+        if _debug == 1:
             raise KeyboardInterrupt
 
         if not lmdb_has_key(self._db, key):
@@ -1250,7 +1253,7 @@ cannot do the following:
 
                         txn.put(key, _SUB_VAL)
 
-                        if debug == 2:
+                        if _debug == 2:
                             raise KeyboardInterrupt
 
                 except lmdb.MapFullError:
@@ -1268,7 +1271,7 @@ cannot do the following:
         else:
             raise Register_Error("`Register` already added as subregister.")
 
-    def remove_subregister(self, subreg, debug = 0):
+    def remove_subregister(self, subreg):
         """
         :param subreg: (type `Register`)
         """
@@ -1284,7 +1287,7 @@ cannot do the following:
 
         key = subreg._get_subregister_key()
 
-        if debug == 1:
+        if _debug == 1:
             raise KeyboardInterrupt
 
         if lmdb_has_key(self._db, key):
@@ -1295,7 +1298,7 @@ cannot do the following:
 
                     txn.delete(key)
 
-                    if debug == 2:
+                    if _debug == 2:
                         raise KeyboardInterrupt
 
             except lmdb.MapFullError:
@@ -1409,7 +1412,7 @@ cannot do the following:
         :return:
         """
 
-    def add_disk_block(self, blk, return_metadata = False, debug = 0, **kwargs):
+    def add_disk_block(self, blk, return_metadata = False, **kwargs):
         """Save a `Block` to disk and link it with this `Register`.
 
         :param blk: (type `Block`)
@@ -1449,7 +1452,7 @@ cannot do the following:
 
         filename = None
 
-        if debug == 1:
+        if _debug == 1:
             raise KeyboardInterrupt
 
         try:
@@ -1473,12 +1476,12 @@ cannot do the following:
 
                         filename = random_unique_filename(self._local_dir, length=6)
 
-                        if debug == 2:
+                        if _debug == 2:
                             raise KeyboardInterrupt
 
                         filename = type(self).dump_disk_data(blk.get_segment(), filename, **kwargs)
 
-                        if debug == 3:
+                        if _debug == 3:
                             raise KeyboardInterrupt
 
                         filename_bytes = str(filename.name).encode("ASCII")
@@ -1506,7 +1509,7 @@ cannot do the following:
                             f"{str(blk.get_apri())}, start_n = {blk.get_start_n()}, length = {len(blk)}."
                         )
 
-                if debug == 4:
+                if _debug == 4:
                     raise KeyboardInterrupt
 
         except BaseException as e:
@@ -1528,7 +1531,7 @@ cannot do the following:
                 else:
                     raise e
 
-    def remove_disk_block(self, apri, start_n = None, length = None, recursively = False, debug = 0):
+    def remove_disk_block(self, apri, start_n = None, length = None, recursively = False, **kwargs):
         """Delete a disk `Block` and unlink it with this `Register`.
 
         :param apri: (type `Apri_Info`)
@@ -1553,7 +1556,7 @@ cannot do the following:
 
             blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, start_n, length)
 
-            if debug == 1:
+            if _debug == 1:
                 raise KeyboardInterrupt
 
         except Data_Not_Found_Error:
@@ -1583,20 +1586,20 @@ cannot do the following:
                     txn.delete(compressed_key)
                     txn.delete(blk_key)
 
-                if debug == 2:
+                if _debug == 2:
                     raise KeyboardInterrupt
 
                 if compressed_filename is not None:
 
                     blk_filename.unlink(missing_ok = False)
 
-                    if debug == 3:
+                    if _debug == 3:
                         raise KeyboardInterrupt
 
                     compressed_filename.unlink(missing_ok = False)
 
                 else:
-                    type(self).clean_disk_data(blk_filename)
+                    type(self).clean_disk_data(blk_filename, **kwargs)
 
             except BaseException as e:
 
@@ -1651,7 +1654,7 @@ cannot do the following:
                 with subreg._recursive_open(False) as subreg:
 
                     try:
-                        subreg.remove_disk_block(apri, start_n, length, True)
+                        subreg.remove_disk_block(apri, start_n, length, True, **kwargs)
 
                     except Data_Not_Found_Error:
                         pass
@@ -1717,7 +1720,7 @@ cannot do the following:
             Register._DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_FULL.format(str(apri), start_n, length)
         )
 
-    def get_disk_block_by_n(self, apri, n, return_metadata = False, recursively = False):
+    def get_disk_block_by_n(self, apri, n, return_metadata = False, recursively = False, **kwargs):
 
         self._check_open_raise("get_disk_block_by_n")
 
@@ -1741,7 +1744,7 @@ cannot do the following:
         try:
             for start_n, length in self.disk_intervals(apri):
                 if start_n <= n < start_n + length:
-                    return self.get_disk_block(apri, start_n, length, return_metadata, False)
+                    return self.get_disk_block(apri, start_n, length, return_metadata, False, **kwargs)
 
         except Data_Not_Found_Error:
             pass
@@ -1750,14 +1753,14 @@ cannot do the following:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open(True) as subreg:
                     try:
-                        return subreg.get_disk_block_by_n(apri, n, return_metadata, True)
+                        return subreg.get_disk_block_by_n(apri, n, return_metadata, True, **kwargs)
 
                     except Data_Not_Found_Error:
                         pass
 
         raise Data_Not_Found_Error(Register._DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_N.format(str(apri), n))
 
-    def get_all_disk_blocks(self, apri, return_metadata = False, recursively = False):
+    def get_all_disk_blocks(self, apri, return_metadata = False, recursively = False, **kwargs):
 
         self._check_open_raise("get_all_disk_blocks")
 
@@ -1773,7 +1776,7 @@ cannot do the following:
 
         for start_n, length in self.disk_intervals(apri):
             try:
-                yield self.get_disk_block(apri, start_n, length, return_metadata, False)
+                yield self.get_disk_block(apri, start_n, length, return_metadata, False, **kwargs)
 
             except Data_Not_Found_Error:
                 pass
@@ -1781,7 +1784,7 @@ cannot do the following:
         if recursively:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open(True) as subreg:
-                    for blk in subreg.get_all_disk_blocks(apri, return_metadata, True):
+                    for blk in subreg.get_all_disk_blocks(apri, return_metadata, True, **kwargs):
                         yield blk
 
     def get_disk_block_metadata(self, apri, start_n = None, length = None, recursively = False):
@@ -1853,7 +1856,7 @@ cannot do the following:
             _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False) + _KEY_SEP
         )
 
-    def compress(self, apri, start_n = None, length = None, compression_level = 6, return_metadata = False, debug = 0):
+    def compress(self, apri, start_n = None, length = None, compression_level = 6, return_metadata = False):
         """Compress a `Block`.
 
         :param apri: (type `Apri_Info`)
@@ -1917,7 +1920,7 @@ cannot do the following:
 
         cleaned = False
 
-        if debug == 1:
+        if _debug == 1:
             raise KeyboardInterrupt
 
         try:
@@ -1926,7 +1929,7 @@ cannot do the following:
 
                 txn.put(compressed_key, compressed_val)
 
-                if debug == 2:
+                if _debug == 2:
                     raise KeyboardInterrupt
 
             with zipfile.ZipFile(
@@ -1942,10 +1945,10 @@ cannot do the following:
 
                 compressed_fh.write(blk_filename, blk_filename.name)
 
-                if debug == 3:
+                if _debug == 3:
                     raise KeyboardInterrupt
 
-            if debug == 4:
+            if _debug == 4:
                 raise KeyboardInterrupt
 
             type(self).clean_disk_data(blk_filename)
@@ -2067,7 +2070,7 @@ cannot do the following:
     #     # else:
     #     #     return None
 
-    def decompress(self, apri, start_n = None, length = None, return_metadata = False, debug = 0):
+    def decompress(self, apri, start_n = None, length = None, return_metadata = False):
         """Decompress a `Block`.
 
         :param apri: (type `Apri_Info`)
@@ -2119,7 +2122,7 @@ cannot do the following:
         if not is_deletable(compressed_filename):
             raise OSError(f"Cannot delete compressed file `{str(compressed_filename)}`.")
 
-        if debug == 1:
+        if _debug == 1:
             raise KeyboardInterrupt
 
         try:
@@ -2130,19 +2133,19 @@ cannot do the following:
                 blk_filename.unlink(missing_ok = False)
                 deleted = True
 
-                if debug == 2:
+                if _debug == 2:
                     raise KeyboardInterrupt
 
                 with zipfile.ZipFile(compressed_filename, "r") as compressed_fh:
 
                     compressed_fh.extract(blk_filename.name, self._local_dir)
 
-                    if debug == 3:
+                    if _debug == 3:
                         raise KeyboardInterrupt
 
                 txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
 
-                if debug == 4:
+                if _debug == 4:
                     raise KeyboardInterrupt
 
                 compressed_filename.unlink(missing_ok = False)
@@ -2264,6 +2267,7 @@ cannot do the following:
         :param apri_json: (type `bytes`)
         :param txn: (type `lmbd.Transaction`, default `None`) The transaction to query. If `None`, then use open a new
         transaction and commit it after this method resolves.
+        :raise Data_Not_Found_Error: If `apri` is not a disk `Apri_Info`.
         :return: (type `bytes`) key
         :return: (type `bytes`) val
         """
@@ -2640,7 +2644,9 @@ cannot do the following:
             raise TypeError("`blk` must be of type `Block`.")
 
         for i, ram_blk in enumerate(self._ram_blks):
+
             if ram_blk is blk:
+
                 del self._ram_blks[i]
                 return
 
@@ -2804,8 +2810,16 @@ cannot do the following:
             if blk.get_apri() == apri:
                 yield apri, blk.get_start_n(), len(blk)
 
-        for key, _ in self._iter_disk_block_pairs(_BLK_KEY_PREFIX, apri, None):
-            yield self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri)
+        try:
+            self._get_id_by_apri(apri, None, False)
+
+        except Data_Not_Found_Error:
+            pass
+
+        else:
+
+            for key, _ in self._iter_disk_block_pairs(_BLK_KEY_PREFIX, apri, None):
+                yield self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri)
 
         if recursively:
             for subreg in self._iter_subregisters():
@@ -2892,14 +2906,15 @@ class Numpy_Register(Register):
         """
         :param apri: (type `Apri_Info`)
         :param start_n: (type `int`)
-        :param length: (type `length`) non-negative/
+        :param length: (type `length`) non-negative
         :param return_metadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
         contains file creation date/time and size of dumped saved on the disk.
         :param recursively: (type `bool`, default `False`) Search all subregisters for the `Block`.
-        :param mmap_mode: (type `str`, default `None`) Load the Numpy file using memory mapping, see
+        :param mmap_mode: (type `str`, optional) Load the Numpy file using memory mapping, see
         https://numpy.org/doc/stable/reference/generated/numpy.memmap.html#numpy.memmap for more information.
         :return: (type `File_Metadata`) If `return_metadata is True`.
         """
+
         ret = super().get_disk_block(apri, start_n, length, return_metadata, recursively, **kwargs)
 
         if return_metadata:
@@ -2917,7 +2932,7 @@ class Numpy_Register(Register):
         else:
             return blk
 
-    def concatenate_disk_blocks(self, apri, start_n = None, length = None, delete = False, return_metadata = False, debug = 0):
+    def concatenate_disk_blocks(self, apri, start_n = None, length = None, delete = False, return_metadata = False):
         """Concatenate several `Block`s into a single `Block` along axis 0 and save the new one to the disk.
 
         If `delete = True`, then the smaller `Block`s are deleted automatically.
@@ -3130,7 +3145,7 @@ class Numpy_Register(Register):
             combined_blk = Block(combined_blk, apri, start_n)
             ret = self.add_disk_block(combined_blk, return_metadata)
 
-            if debug == 1:
+            if _debug == 1:
                 raise KeyboardInterrupt
 
             if delete:
@@ -3143,7 +3158,7 @@ class Numpy_Register(Register):
                     self.remove_disk_block(apri, _start_n, _length, False)
                     failure_reinsert_indices.append((_start_n, _length))
 
-                    if debug == 2:
+                    if _debug == 2:
                         raise KeyboardInterrupt
 
         except BaseException as e:
@@ -3199,11 +3214,13 @@ class _Element_Iter:
         self.curr_n = slc.start if slc.start else 0
 
     def update_sequences_calculated(self):
-        self.intervals = dict(self.reg.list_intervals_calculated(self.apri, self.recursively))
+        self.intervals = dict(self.reg.all_intervals(self.apri, False, self.recursively))
 
     def get_next_block(self):
+
         try:
             return self.reg.get_ram_block_by_n(self.apri, self.curr_n, self.recursively)
+
         except Data_Not_Found_Error:
             return self.reg.get_disk_block_by_n(self.apri, self.curr_n, self.recursively)
 
@@ -3216,24 +3233,35 @@ class _Element_Iter:
             raise StopIteration
 
         elif self.curr_blk is None:
-            self.update_sequences_calculated()
+
+            self.intervals = self.reg.all_intervals(self.apri, False, self.recursively)
             self.curr_n = max( self.intervals[0][0] , self.curr_n )
+
             try:
                 self.curr_blk = self.get_next_block()
+
             except Data_Not_Found_Error:
                 raise StopIteration
 
         elif self.curr_n not in self.curr_blk:
+
             try:
                 self.curr_blk = self.get_next_block()
+
             except Data_Not_Found_Error:
-                self.update_sequences_calculated()
-                for start, length in self.intervals:
-                    if start > self.curr_n:
-                        self.curr_n += math.ceil( (start - self.curr_n) / self.step ) * self.step
+
+                self.intervals = self.reg.all_intervals(self.apri, False, self.recursively)
+
+                for start_n, length in self.intervals:
+
+                    if start_n > self.curr_n:
+
+                        self.curr_n += math.ceil( (start_n - self.curr_n) / self.step ) * self.step
                         break
+
                 else:
                     raise StopIteration
+
                 self.curr_blk = self.get_next_block()
 
         ret = self.curr_blk[self.curr_n]

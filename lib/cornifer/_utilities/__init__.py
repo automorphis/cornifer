@@ -33,6 +33,7 @@ NAME_REGEX = re.compile("[_a-zA-Z]\w*")
 
 try:
     LOCAL_TIMEZONE = datetime.now(timezone(timedelta(0))).astimezone().tzinfo
+
 except RuntimeError:
     LOCAL_TIMEZONE = timezone.utc
 

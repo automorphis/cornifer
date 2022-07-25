@@ -20,7 +20,7 @@ from pathlib import Path
 from cornifer.errors import Register_Error
 from cornifer.registers import Register
 from cornifer.register_file_structure import LOCAL_DIR_CHARS, check_register_structure
-from cornifer.utilities import resolve_path
+from cornifer._utilities import resolve_path
 from cornifer.version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _ARGS_TYPES = {

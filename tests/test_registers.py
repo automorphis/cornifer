@@ -5,6 +5,7 @@ from itertools import product, chain
 from pathlib import Path
 from unittest import TestCase
 
+import cornifer
 import numpy as np
 
 from cornifer import Numpy_Register, Register, Apri_Info, Block, Apos_Info
@@ -14,8 +15,8 @@ from cornifer.register_file_structure import REGISTER_FILENAME, VERSION_FILEPATH
     DATABASE_FILEPATH
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, _CURR_ID_KEY, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
-    _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX
-from cornifer.utilities.lmdb import lmdb_has_key, lmdb_prefix_iterator, lmdb_count_keys, open_lmdb
+    _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG
+from cornifer._utilities.lmdb import lmdb_has_key, lmdb_prefix_iterator, lmdb_count_keys, open_lmdb
 from cornifer.version import CURRENT_VERSION
 
 """
@@ -870,8 +871,12 @@ class Test_Register(TestCase):
                 apri = Apri_Info(none = "all")
                 blk = Block(np.arange(14), apri, 0)
 
+                cornifer.registers._debug = debug
+
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.add_disk_block(blk, debug = debug)
+                    reg.add_disk_block(blk)
+
+                cornifer.registers._debug = _NO_DEBUG
 
                 self.assertEqual(
                     1,
@@ -1227,12 +1232,17 @@ class Test_Register(TestCase):
 
                     for debug in [0, 1, 2]:
 
-                        if debug == 0:
+                        if debug == _NO_DEBUG:
                             reg.set_start_n_info(head, tail_length)
 
                         else:
+
+                            cornifer.registers._debug = debug
+
                             with self.assertRaises(KeyboardInterrupt):
-                                reg.set_start_n_info(head // 10, tail_length + 1, debug)
+                                reg.set_start_n_info(head // 10, tail_length + 1)
+
+                            cornifer.registers._debug = _NO_DEBUG
 
                         self.check_reg_set_start_n_info(
                             reg,
@@ -1246,9 +1256,6 @@ class Test_Register(TestCase):
                             reg, curr_key,
                             apri, start_n, 0
                         )
-                        old_keys = {curr_key}
-
-                        blk = Block(list(range(50)), apri, start_n)
 
             # tests to make sure `largest + 1` etc do not work
             for start_n in [largest + 1, largest + 10, largest + 100, largest + 1000]:
@@ -1653,8 +1660,12 @@ class Test_Register(TestCase):
                 if debug == 3:
                     reg.compress(Apri_Info(maybe = "maybe"), 0, 20)
 
+                cornifer.registers._debug = debug
+
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.remove_disk_block(Apri_Info(maybe = "maybe"), 0, 20, debug = debug)
+                    reg.remove_disk_block(Apri_Info(maybe = "maybe"), 0, 20)
+
+                cornifer.registers._debug = _NO_DEBUG
 
                 self.assertEqual(
                     2,
@@ -1740,8 +1751,12 @@ class Test_Register(TestCase):
 
             for debug in [1,2]:
 
+                cornifer.registers._debug = debug
+
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.set_apos_info(Apri_Info(__ = "____"), Apos_Info(eight = 9), debug)
+                    reg.set_apos_info(Apri_Info(__ = "____"), Apos_Info(eight = 9))
+
+                cornifer.registers._debug = _NO_DEBUG
 
                 self.assertEqual(
                     2,
@@ -1818,7 +1833,6 @@ class Test_Register(TestCase):
             apri2 = Apri_Info(maam = "sir")
             apos2 = Apos_Info(sir = "maam", restart = apos1)
 
-
             reg.set_apos_info(apri1, apos1)
 
             reg.remove_apos_info(apri1)
@@ -1851,8 +1865,12 @@ class Test_Register(TestCase):
 
             for debug in [1,2]:
 
+                cornifer.registers._debug = debug
+
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.remove_apos_info(apri1, debug)
+                    reg.remove_apos_info(apri1)
+
+                cornifer.registers._debug = _NO_DEBUG
 
                 self.assertEqual(
                     1,
@@ -2530,8 +2548,12 @@ class Test_Register(TestCase):
 
             for debug in [1,2]:
 
+                cornifer.registers._debug = debug
+
                 with self.assertRaises(KeyboardInterrupt):
-                        reg1.add_subregister(reg2, debug)
+                        reg1.add_subregister(reg2)
+
+                cornifer.registers._debug = _NO_DEBUG
 
                 self.assertEqual(
                     0,
@@ -2581,8 +2603,12 @@ class Test_Register(TestCase):
 
             for debug in [1,2]:
 
+                cornifer.registers._debug = debug
+
                 with self.assertRaises(KeyboardInterrupt):
-                    reg1.remove_subregister(reg3, debug)
+                    reg1.remove_subregister(reg3)
+
+                cornifer.registers._debug = _NO_DEBUG
 
                 self.assertEqual(
                     1,
@@ -3037,8 +3063,12 @@ class Test_Register(TestCase):
 
             for debug in [1,2,3,4]:
 
+                cornifer.registers._debug = debug
+
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.compress(apri, debug = debug)
+                    reg.compress(apri)
+
+                cornifer.registers._debug = _NO_DEBUG
 
                 self._is_not_compressed_helper(reg, apri, 0, 40)
 
@@ -3108,8 +3138,12 @@ class Test_Register(TestCase):
 
             for debug in [1, 2, 3, 4]:
 
+                cornifer.registers._debug = debug
+
                 with self.assertRaises(KeyboardInterrupt):
-                    reg2.decompress(apri, 15, 15, False, debug)
+                    reg2.decompress(apri, 15, 15, False)
+
+                cornifer.registers._debug = _NO_DEBUG
 
                 with reg2._db.begin() as txn:
 
@@ -3567,8 +3601,12 @@ class Test_Register(TestCase):
 
             for debug in [1,2,3]:
 
+                cornifer.registers._debug = debug
+
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.change_apri_info(apri1, Apri_Info(sup = "hey"), False, debug)
+                    reg.change_apri_info(apri1, Apri_Info(sup = "hey"), False)
+
+                cornifer.registers._debug = _NO_DEBUG
 
                 self.assertEqual(
                     Apos_Info(no = "yes"),
@@ -4300,8 +4338,12 @@ class Test_Register(TestCase):
 
             for debug in [1,2,3,4]:
 
+                cornifer.registers._debug = debug
+
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.remove_apri_info(apri2, debug)
+                    reg.remove_apri_info(apri2)
+
+                cornifer.registers._debug = _NO_DEBUG
 
                 for i in [1, 3]:
 

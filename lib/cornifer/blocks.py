@@ -18,7 +18,7 @@ import warnings
 import numpy as np
 
 from cornifer import Apri_Info
-from cornifer.utilities import check_has_method, justify_slice, is_signed_int
+from cornifer._utilities import check_has_method, justify_slice, is_signed_int
 
 
 class Block:
@@ -127,7 +127,7 @@ class Block:
 
         if isinstance(item, tuple):
             raise IndexError(
-                "`blk[]` cannot take more than one dimension of indices."
+                "`blk[]` cannot take more than one index."
             )
 
         elif isinstance(item, slice):
