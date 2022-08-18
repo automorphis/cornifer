@@ -88,30 +88,27 @@ def set_search_args(**kwargs):
 
         _args[key] = val
 
-def load(identifier, saves_directory = None):
+def load(identifier):
 
-    if not isinstance(identifier, str):
-        raise TypeError("`identifier` must be a string.")
+    if not isinstance(identifier, (str, Path)):
+        raise TypeError("`identifier` must be a string or a `pathlib.Path`.")
 
-    if saves_directory is None:
-        saves_directory = Path.cwd()
+    identifier = Path(identifier)
 
-    elif isinstance(saves_directory, str):
-        saves_directory = Path(saves_directory)
+    if not identifier.is_absolute():
+        resolved = Path.cwd() / identifier
 
-    elif not isinstance(saves_directory, Path):
-        raise TypeError("`saves_directory` must be either `None`, a `pathlib.Path`, or a string.")
+    else:
+        resolved = identifier
 
-    saves_directory = resolve_path(saves_directory)
-
-    if "(" in identifier or ")" in identifier:
+    if "(" in resolved.name or ")" in resolved.name:
         raise ValueError("You don't need to include the parentheses for the `identifier` when you call `load`.")
 
-    bad_symbs = [symb for symb in identifier if symb not in LOCAL_DIR_CHARS]
+    bad_symbs = [symb for symb in resolved.name if symb not in LOCAL_DIR_CHARS]
     if len(bad_symbs) > 0:
         raise ValueError("An identifier cannot contain any of the following symbols: " + "".join(bad_symbs))
 
-    reg = Register._from_local_dir(saves_directory / identifier)
+    reg = Register._from_local_dir(resolved)
 
     if not reg._has_compatible_version():
         warnings.warn(

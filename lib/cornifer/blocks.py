@@ -18,7 +18,7 @@ import warnings
 import numpy as np
 
 from cornifer import Apri_Info
-from cornifer._utilities import check_has_method, justify_slice, is_signed_int
+from cornifer._utilities import check_has_method, justify_slice, is_int
 
 
 class Block:
@@ -28,7 +28,7 @@ class Block:
         if not isinstance(apri, Apri_Info):
             raise TypeError("`apri` must be of type `Apri_Info`.")
 
-        if not is_signed_int(start_n):
+        if not is_int(start_n):
             raise TypeError("`start_n` must be of type `int`.")
 
         else:
@@ -97,7 +97,7 @@ class Block:
 
     def set_start_n(self, start_n):
 
-        if not is_signed_int(start_n):
+        if not is_int(start_n):
             raise TypeError("`start_n` must be of type `int`")
         else:
             start_n = int(start_n)
@@ -109,7 +109,7 @@ class Block:
 
     def subdivide(self, subinterval_length):
 
-        if not is_signed_int(subinterval_length):
+        if not is_int(subinterval_length):
             raise TypeError("`subinterval_length` must be an integer")
         else:
             subinterval_length = int(subinterval_length)

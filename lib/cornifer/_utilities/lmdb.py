@@ -3,7 +3,7 @@ from pathlib import Path
 
 import lmdb
 
-from cornifer._utilities import is_signed_int
+from cornifer._utilities import is_int
 
 def lmdb_is_closed(db):
 
@@ -27,7 +27,7 @@ def open_lmdb(filepath, map_size, read_only):
     if not isinstance(filepath, Path):
         raise TypeError("`filepath` must be of type `pathlib.Path`.")
 
-    if not is_signed_int(map_size):
+    if not is_int(map_size):
         raise TypeError("`map_size` must be of type `int`.")
     else:
         map_size = int(map_size)

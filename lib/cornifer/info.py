@@ -18,7 +18,8 @@ import json
 from abc import ABC, abstractmethod
 from copy import copy, deepcopy
 
-from cornifer._utilities import order_json_obj
+from cornifer._utilities import order_json_obj, is_int
+
 
 class _Info_JSONEncoder(json.JSONEncoder):
 
@@ -26,6 +27,9 @@ class _Info_JSONEncoder(json.JSONEncoder):
 
         if isinstance(obj, _Info):
             return obj.__class__.__name__ + ".from_json(" + obj.to_json() + ")"
+
+        elif is_int(obj):
+            return int(obj)
 
         elif isinstance(obj, tuple):
             return list(obj)
@@ -72,7 +76,7 @@ class _Info_JSONDecoder(json.JSONDecoder):
 
 class _Info(ABC):
 
-    _reserved_kws = ["_json"]
+    _reserved_kws = ["_json", "_str"]
 
     def __init__(self, **kwargs):
 
@@ -84,6 +88,8 @@ class _Info(ABC):
         self.__dict__.update(kwargs)
 
         self._json = None
+
+        self._str = None
 
     @classmethod
     def _check_reserved_kws(cls, kwargs):
@@ -123,7 +129,7 @@ class _Info(ABC):
 
             kwargs = copy(self.__dict__)
 
-            for kw in self._reserved_kws:
+            for kw in type(self)._reserved_kws:
                 kwargs.pop(kw,None)
 
             kwargs = order_json_obj(kwargs)
@@ -138,14 +144,14 @@ class _Info(ABC):
 
                 ).encode(kwargs)
 
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as e:
 
                 raise ValueError(
                     "One of the keyword arguments used to construct this instance cannot be encoded into " +
                     "JSON. Use different keyword arguments, or override the " +
                     f"classmethod `{self.__class__.__name__}.from_json` and the instancemethod " +
                     f"`{self.__class__.__name__}.to_json`."
-                )
+                ) from e
 
             if "\0" in json_rep:
 
@@ -245,23 +251,20 @@ class _Info(ABC):
 
     def __str__(self):
 
-        ret = f"{self.__class__.__name__}("
+        if self._str is not None:
+            return self._str
 
-        first = True
+        else:
 
-        for key, val in self.__dict__.items():
-
-            if key not in self._reserved_kws:
-
-                if first:
-                    first = False
-
-                else:
-                    ret += ", "
-
-                ret += f"{key}={repr(val)}"
-
-        return ret + ")"
+            ret = f"{self.__class__.__name__}("
+            ordered = sorted(
+                [(key, val) for key, val in self.__dict__.items() if key not in type(self)._reserved_kws],
+                key = lambda t: t[0]
+            )
+            ret += ", ".join(f"{key}={repr(val)}" for key, val in ordered)
+            ret += ")"
+            self._str = ret
+            return self._str
 
     def __repr__(self):
         return str(self)
@@ -277,7 +280,7 @@ class _Info(ABC):
 
 class Apri_Info(_Info):
 
-    _reserved_kws = ["_json", "_hash"]
+    _reserved_kws = ["_json", "_hash", "_str"]
 
     def __init__(self, **kwargs):
 

@@ -156,6 +156,9 @@ def order_json_obj(json_obj):
 def is_signed_int(num):
     return isinstance(num, (int, np.int8, np.int16, np.int32, np.int64))
 
+def is_int(num):
+    return isinstance(num, (int, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64))
+
 def zip_archive_is_empty(path):
 
     with zipfile.ZipFile(path, "r") as zip_fh:

@@ -15,7 +15,8 @@ from cornifer.register_file_structure import REGISTER_FILENAME, VERSION_FILEPATH
     DATABASE_FILEPATH
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, _CURR_ID_KEY, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
-    _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG
+    _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG, \
+    _START_N_TAIL_LENGTH_DEFAULT
 from cornifer._utilities.lmdb import lmdb_has_key, lmdb_prefix_iterator, lmdb_count_keys, open_lmdb
 from cornifer.version import CURRENT_VERSION
 
@@ -381,7 +382,7 @@ class Test_Register(TestCase):
 
         keyvals = {
             _START_N_HEAD_KEY : b"0",
-            _START_N_TAIL_LENGTH_KEY : str(Register._START_N_TAIL_LENGTH_DEFAULT).encode("ASCII"),
+            _START_N_TAIL_LENGTH_KEY : str(_START_N_TAIL_LENGTH_DEFAULT).encode("ASCII"),
             _CURR_ID_KEY: b"0"
         }
 
@@ -1217,7 +1218,7 @@ class Test_Register(TestCase):
                             # make sure it exits safely
                             self.check_reg_set_start_n_info(
                                 reg,
-                                10 ** Register._START_N_TAIL_LENGTH_DEFAULT, 0, Register._START_N_TAIL_LENGTH_DEFAULT
+                                10 ** _START_N_TAIL_LENGTH_DEFAULT, 0, _START_N_TAIL_LENGTH_DEFAULT
                             )
 
             # tests to make sure a few permissible start_n work
@@ -1270,7 +1271,7 @@ class Test_Register(TestCase):
                     # make sure it exits safely
                     self.check_reg_set_start_n_info(
                         reg,
-                        10 ** Register._START_N_TAIL_LENGTH_DEFAULT, 0, Register._START_N_TAIL_LENGTH_DEFAULT
+                        10 ** _START_N_TAIL_LENGTH_DEFAULT, 0, _START_N_TAIL_LENGTH_DEFAULT
                     )
 
     def check__iter_disk_block_pairs(self, t, apri, start_n, length):

@@ -34,7 +34,7 @@ From a terminal, run
 
 To test Cornifer, run
 
-`python setup.py test`
+`python -m unittest discover ./tests`
 
 in the top-level project directory.
 
