@@ -44,7 +44,7 @@ class Test_Block(TestCase):
             Block([], descr, 0.5)
 
         self.assertEqual(
-            Block([], descr).get_start_n(),
+            Block([], descr).start_n(),
             0
         )
 
@@ -63,7 +63,7 @@ class Test_Block(TestCase):
         seq = Block([], descr)
         seq.set_start_n(15)
         self.assertEqual(
-            seq.get_start_n(),
+            seq.start_n(),
             15
         )
 

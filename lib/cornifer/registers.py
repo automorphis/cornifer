@@ -318,7 +318,7 @@ class Register(ABC):
 
         self._check_open_raise("__contains__")
 
-        if any(blk.get_apri() == apri for blk in self._ram_blks):
+        if any(blk.apri() == apri for blk in self._ram_blks):
             return True
 
         else:
@@ -552,7 +552,7 @@ class Register(ABC):
         self._db.set_mapsize(num_bytes)
         self._db_map_size = num_bytes
 
-    def get_register_size(self):
+    def register_size(self):
         return self._db_map_size
 
     #################################
@@ -687,16 +687,16 @@ class Register(ABC):
     #################################
     #      PUBLIC APRI METHODS      #
 
-    def get_all_apri_info(self, recursively = False):
+    def apri_infos(self, recursively = False):
 
         if not isinstance(recursively, bool):
             raise TypeError("`recursively` must be of type `bool`")
 
         ret = []
         for blk in self._ram_blks:
-            ret.append(blk.get_apri())
+            ret.append(blk.apri())
 
-        self._check_open_raise("get_all_apri_info")
+        self._check_open_raise("apri_infos")
 
         with lmdb_prefix_iterator(self._db, _ID_APRI_KEY_PREFIX) as it:
             for _, val in it:
@@ -706,7 +706,7 @@ class Register(ABC):
         if recursively:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open(True) as subreg:
-                    ret.append(subreg.get_all_apri_info())
+                    ret.append(subreg.apri_infos())
 
         return sorted(list(set(ret)))
 
@@ -892,7 +892,7 @@ class Register(ABC):
 
         _id = self._get_id_by_apri(apri, None, False)
 
-        if self.get_num_disk_blocks(apri) != 0:
+        if self.num_disk_blocks(apri) != 0:
             raise ValueError(
                 f"There are disk `Block`s saved with `{str(apri)}`. Please remove them first and call "
                 "`remove_apri_info` again."
@@ -918,7 +918,7 @@ class Register(ABC):
             raise KeyboardInterrupt
 
         try:
-            self.get_apos_info(apri)
+            self.apos_info(apri)
 
         except Data_Not_Found_Error:
             pass
@@ -1047,7 +1047,7 @@ class Register(ABC):
         WARNING: This method will OVERWRITE any previous saved `Apos_Info`. If you do not want to lose any previously
         saved data, then you should do something like the following:
 
-            apos = reg.get_apos_info(apri)
+            apos = reg.apos_info(apri)
             apos.period_length = 5
             reg.set_apos_info(apos)
 
@@ -1085,7 +1085,7 @@ class Register(ABC):
         except lmdb.MapFullError as e:
             raise Register_Error(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
-    def get_apos_info(self, apri):
+    def apos_info(self, apri):
         """Get some `Apos_Info` associated with a given `Apri_Info`.
 
         :param apri: (type `Apri_Info`)
@@ -1093,7 +1093,7 @@ class Register(ABC):
         :return: (type `Apos_Info`)
         """
 
-        self._check_open_raise("get_apos_info")
+        self._check_open_raise("apos_info")
 
         if not isinstance(apri, Apri_Info):
             raise TypeError("`apri` must be of type `Apri_Info`")
@@ -1339,7 +1339,7 @@ class Register(ABC):
         This method should not change any properties of any `Register`, which is why it is a classmethod and
         not an instancemethod. It merely loads the data saved on the disk, processes it, and returns it.
 
-        Most use-cases prefer the method `get_disk_block`.
+        Most use-cases prefer the method `disk_block`.
 
         :param filename: (type `pathlib.Path`) Where to load the block from. You may need to edit this
         filename if necessary, such as by adding a suffix, but you must return the edited filename.
@@ -1397,7 +1397,7 @@ class Register(ABC):
         if not isinstance(return_metadata, bool):
             raise TypeError("`return_metadata` must be of type `bool`.")
 
-        start_n_head = blk.get_start_n() // self._start_n_tail_mod
+        start_n_head = blk.start_n() // self._start_n_tail_mod
 
         if start_n_head != self._start_n_head :
 
@@ -1405,12 +1405,12 @@ class Register(ABC):
                 "The `start_n` for the passed `Block` does not have the correct head:\n" +
                 f"`tail_length`   : {self._start_n_tail_length}\n" +
                 f"expected `head` : {self._start_n_head}\n"
-                f"`start_n`       : {blk.get_start_n()}\n" +
+                f"`start_n`       : {blk.start_n()}\n" +
                 f"`start_n` head  : {start_n_head}\n" +
                 "Please see the method `set_start_n_info` to troubleshoot this error."
             )
 
-        apris = [apri for _, apri in blk.get_apri().iter_inner_info() if isinstance(apri, Apri_Info)]
+        apris = [apri for _, apri in blk.apri().iter_inner_info() if isinstance(apri, Apri_Info)]
 
         filename = None
 
@@ -1430,7 +1430,7 @@ class Register(ABC):
                     blk_key = self._get_disk_block_key(
 
                         _BLK_KEY_PREFIX,
-                        blk.get_apri(), None, blk.get_start_n(), len(blk),
+                        blk.apri(), None, blk.start_n(), len(blk),
                         False, rw_txn
                     )
 
@@ -1441,7 +1441,7 @@ class Register(ABC):
                         if _debug == 2:
                             raise KeyboardInterrupt
 
-                        filename = type(self).dump_disk_data(blk.get_segment(), filename, **kwargs)
+                        filename = type(self).dump_disk_data(blk.segment(), filename, **kwargs)
 
                         if _debug == 3:
                             raise KeyboardInterrupt
@@ -1468,7 +1468,7 @@ class Register(ABC):
 
                         raise Register_Error(
                             f"Duplicate `Block` with the following data already exists in this `Register`: " +
-                            f"{str(blk.get_apri())}, start_n = {blk.get_start_n()}, length = {len(blk)}."
+                            f"{str(blk.apri())}, start_n = {blk.start_n()}, length = {len(blk)}."
                         )
 
                 if _debug == 4:
@@ -1512,7 +1512,7 @@ class Register(ABC):
         if not isinstance(return_metadata, bool):
             raise TypeError("`return_metadata` must be of type `bool`.")
 
-        if self.get_num_disk_blocks(blk.get_apri()) == 0:
+        if self.num_disk_blocks(blk.apri()) == 0:
 
             blk.set_start_n(0)
             self.add_disk_block(blk, **kwargs)
@@ -1521,7 +1521,7 @@ class Register(ABC):
 
             start_n = 0
 
-            for key, _ in self._iter_disk_block_pairs(_BLK_KEY_PREFIX, blk.get_apri(), None):
+            for key, _ in self._iter_disk_block_pairs(_BLK_KEY_PREFIX, blk.apri(), None):
 
                 _, _start_n, _length = self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
 
@@ -1666,9 +1666,9 @@ class Register(ABC):
             _DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_FULL.format(str(apri), start_n, length)
         )
 
-    def get_disk_block(self, apri, start_n = None, length = None, return_metadata = False, recursively = False, **kwargs):
+    def disk_block(self, apri, start_n = None, length = None, return_metadata = False, recursively = False, **kwargs):
 
-        self._check_open_raise("get_disk_block")
+        self._check_open_raise("disk_block")
 
         start_n, length = Register._check_apri_start_n_length_raise(apri, start_n, length)
 
@@ -1711,7 +1711,7 @@ class Register(ABC):
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open(True) as subreg:
                     try:
-                        return subreg.get_disk_block(apri, start_n, length, return_metadata, True)
+                        return subreg.disk_block(apri, start_n, length, return_metadata, True)
 
                     except Data_Not_Found_Error:
                         pass
@@ -1720,9 +1720,9 @@ class Register(ABC):
             _DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_FULL.format(str(apri), start_n, length)
         )
 
-    def get_disk_block_by_n(self, apri, n, return_metadata = False, recursively = False, **kwargs):
+    def disk_block_by_n(self, apri, n, return_metadata = False, recursively = False, **kwargs):
 
-        self._check_open_raise("get_disk_block_by_n")
+        self._check_open_raise("disk_block_by_n")
 
         if not isinstance(apri, Apri_Info):
             raise TypeError("`apri` must be of type `Apri_Info`.")
@@ -1744,7 +1744,7 @@ class Register(ABC):
         try:
             for start_n, length in self.disk_intervals(apri):
                 if start_n <= n < start_n + length:
-                    return self.get_disk_block(apri, start_n, length, return_metadata, False, **kwargs)
+                    return self.disk_block(apri, start_n, length, return_metadata, False, **kwargs)
 
         except Data_Not_Found_Error:
             pass
@@ -1753,16 +1753,16 @@ class Register(ABC):
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open(True) as subreg:
                     try:
-                        return subreg.get_disk_block_by_n(apri, n, return_metadata, True, **kwargs)
+                        return subreg.disk_block_by_n(apri, n, return_metadata, True, **kwargs)
 
                     except Data_Not_Found_Error:
                         pass
 
         raise Data_Not_Found_Error(_DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_N.format(str(apri), n))
 
-    def get_all_disk_blocks(self, apri, return_metadata = False, recursively = False, **kwargs):
+    def disk_blocks(self, apri, return_metadata = False, recursively = False, **kwargs):
 
-        self._check_open_raise("get_all_disk_blocks")
+        self._check_open_raise("disk_blocks")
 
         if not isinstance(apri, Apri_Info):
             raise TypeError("`apri` must be of type `Apri_Info`.")
@@ -1776,7 +1776,7 @@ class Register(ABC):
 
         for start_n, length in self.disk_intervals(apri):
             try:
-                yield self.get_disk_block(apri, start_n, length, return_metadata, False, **kwargs)
+                yield self.disk_block(apri, start_n, length, return_metadata, False, **kwargs)
 
             except Data_Not_Found_Error:
                 pass
@@ -1784,12 +1784,12 @@ class Register(ABC):
         if recursively:
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open(True) as subreg:
-                    for blk in subreg.get_all_disk_blocks(apri, return_metadata, True, **kwargs):
+                    for blk in subreg.disk_blocks(apri, return_metadata, True, **kwargs):
                         yield blk
 
-    def get_disk_block_metadata(self, apri, start_n = None, length = None, recursively = False):
+    def disk_block_metadata(self, apri, start_n = None, length = None, recursively = False):
 
-        self._check_open_raise("get_disk_block_metadata")
+        self._check_open_raise("disk_block_metadata")
 
         start_n, length = Register._check_apri_start_n_length_raise(apri, start_n, length)
 
@@ -1819,7 +1819,7 @@ class Register(ABC):
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open(True) as subreg:
                     try:
-                        return subreg.get_disk_block_metadata(apri, start_n, length, True)
+                        return subreg.disk_block_metadata(apri, start_n, length, True)
 
                     except Data_Not_Found_Error:
                         pass
@@ -1847,9 +1847,9 @@ class Register(ABC):
             for key, _ in self._iter_disk_block_pairs(_BLK_KEY_PREFIX, apri, None)
         ], key = lambda t: (t[0], -t[1]))
 
-    def get_num_disk_blocks(self, apri):
+    def num_disk_blocks(self, apri):
 
-        self._check_open_raise("get_num_disk_blocks")
+        self._check_open_raise("num_disk_blocks")
 
         try:
 
@@ -2118,8 +2118,6 @@ class Register(ABC):
 
         :param hashing: (type `bool`)
         """
-
-
 
     #################################
     #    PROTEC DISK BLK METHODS    #
@@ -2414,7 +2412,7 @@ class Register(ABC):
 
         raise Data_Not_Found_Error(f"No RAM disk block found.")
 
-    def get_ram_block_by_n(self, apri, n, recursively = False):
+    def ram_block_by_n(self, apri, n, recursively = False):
 
         if not isinstance(apri, Apri_Info):
             raise TypeError("`apri` must be of type `Apri_Info`.")
@@ -2431,16 +2429,16 @@ class Register(ABC):
             raise IndexError("`n` must be non-negative")
 
         for blk in self._ram_blks:
-            start_n = blk.get_start_n()
-            if blk.get_apri() == apri and start_n <= n < start_n + len(blk):
+            start_n = blk.start_n()
+            if blk.apri() == apri and start_n <= n < start_n + len(blk):
                 return blk
 
         if recursively:
-            self._check_open_raise("get_ram_block_by_n")
+            self._check_open_raise("ram_block_by_n")
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open(True) as subreg:
                     try:
-                        return subreg.get_disk_block_by_n(apri, n, True)
+                        return subreg.disk_block_by_n(apri, n, True)
                     except Data_Not_Found_Error:
                         pass
 
@@ -2448,7 +2446,7 @@ class Register(ABC):
             _RAM_BLOCK_DATA_NOT_FOUND_ERROR_MSG_N.format(str(apri), n)
         )
 
-    def get_all_ram_blocks(self, apri, recursively = False):
+    def ram_blocks(self, apri, recursively = False):
 
         if not isinstance(apri, Apri_Info):
             raise TypeError("`apri` must be of type `Apri_Info`.")
@@ -2457,14 +2455,14 @@ class Register(ABC):
             raise TypeError("`recursively` must be of type `bool`.")
 
         for blk in self._ram_blks:
-            if blk.get_apri() == apri:
+            if blk.apri() == apri:
                 yield blk
 
         if recursively:
-            self._check_open_raise("get_all_ram_blocks")
+            self._check_open_raise("ram_blocks")
             for subreg in self._iter_subregisters():
                 with subreg._recursive_open(True) as subreg:
-                    for blk in subreg.get_all_ram_blocks(apri, True):
+                    for blk in subreg.ram_blocks(apri, True):
                         yield blk
 
     #################################
@@ -2544,19 +2542,19 @@ class Register(ABC):
         else:
 
             try:
-                return self.get_ram_block_by_n(apri, n)[n]
+                return self.ram_block_by_n(apri, n)[n]
 
             except Data_Not_Found_Error:
 
                 try:
-                    return self.get_disk_block_by_n(apri, n, **kwargs)[n]
+                    return self.disk_block_by_n(apri, n, **kwargs)[n]
 
                 except Data_Not_Found_Error:
                     pass
 
             raise Data_Not_Found_Error(_DISK_RAM_BLOCK_DATA_NOT_FOUND_ERROR_MSG_N.format(str(apri), n))
 
-    def all_intervals(self, apri, combine = True, recursively = False):
+    def intervals(self, apri, combine = True, recursively = False):
 
         if not isinstance(apri, Apri_Info):
             raise TypeError("`apri` must be of type `Apri_Info`.")
@@ -2606,14 +2604,24 @@ class Register(ABC):
 
             return intervals_sorted
 
+    def total_length(self, apri, recursively = False):
+
+        self._check_open_raise("total_length")
+
+        if apri in self:
+            return sum(length for _, length in self.intervals(apri, True, recursively))
+
+        else:
+            return 0
+
     #################################
     # PROTEC RAM & DISK BLK METHODS #
 
     def _iter_converted_ram_and_disk_block_datas(self, apri, recursively = False):
 
         for blk in self._ram_blks:
-            if blk.get_apri() == apri:
-                yield apri, blk.get_start_n(), len(blk)
+            if blk.apri() == apri:
+                yield apri, blk.start_n(), len(blk)
 
         try:
             self._get_id_by_apri(apri, None, False)
@@ -2651,7 +2659,7 @@ class Pickle_Register(Register):
     def load_disk_data(cls, filename, **kwargs):
 
         if len(kwargs) > 0:
-            raise KeyError("`Pickle_Register.get_disk_block` accepts no keyword-arguments.")
+            raise KeyError("`Pickle_Register.disk_block` accepts no keyword-arguments.")
 
         with filename.open("rb") as fh:
             return pickle.load(fh), filename
@@ -2688,7 +2696,7 @@ class Numpy_Register(Register):
 
         if mmap_mode not in [None, "r+", "r", "w+", "c"]:
             raise ValueError(
-                "The keyword-argument `mmap_mode` for `Numpy_Register.get_disk_block` can only have the values " +
+                "The keyword-argument `mmap_mode` for `Numpy_Register.disk_block` can only have the values " +
                 "`None`, 'r+', 'r', 'w+', 'c'. Please see " +
                 "https://numpy.org/doc/stable/reference/generated/numpy.memmap.html#numpy.memmap for more information."
             )
@@ -2704,7 +2712,7 @@ class Numpy_Register(Register):
         filename = filename.with_suffix(".npy")
         return Register.clean_disk_data(filename)
 
-    def get_disk_block(self, apri, start_n = None, length = None, return_metadata = False, recursively = False, **kwargs):
+    def disk_block(self, apri, start_n = None, length = None, return_metadata = False, recursively = False, **kwargs):
         """
         :param apri: (type `Apri_Info`)
         :param start_n: (type `int`)
@@ -2717,7 +2725,7 @@ class Numpy_Register(Register):
         :return: (type `File_Metadata`) If `return_metadata is True`.
         """
 
-        ret = super().get_disk_block(apri, start_n, length, return_metadata, recursively, **kwargs)
+        ret = super().disk_block(apri, start_n, length, return_metadata, recursively, **kwargs)
 
         if return_metadata:
             blk = ret[0]
@@ -2725,8 +2733,8 @@ class Numpy_Register(Register):
         else:
             blk = ret
 
-        if isinstance(blk.get_segment(), np.memmap):
-            blk = Memmap_Block(blk.get_segment(), blk.get_apri(), blk.get_start_n())
+        if isinstance(blk.segment(), np.memmap):
+            blk = Memmap_Block(blk.segment(), blk.apri(), blk.start_n())
 
         if return_metadata:
             return blk, ret[1]
@@ -2740,7 +2748,7 @@ class Numpy_Register(Register):
         If `delete = True`, then the smaller `Block`s are deleted automatically.
 
         The interval `range(start_n, start_n + length)` must be the disjoint union of intervals of the form
-        `range(blk.get_start_n(), blk.get_start_n() + len(blk))`, where `blk` is a disk `Block` with `Apri_Info`
+        `range(blk.start_n(), blk.start_n() + len(blk))`, where `blk` is a disk `Block` with `Apri_Info`
         given by `apri`.
 
         Length-0 `Block`s are ignored.
@@ -2907,7 +2915,7 @@ class Numpy_Register(Register):
         if len(intervals_to_get) == 1:
 
             if return_metadata:
-                return self.get_disk_block_metadata(apri, *intervals_to_get)
+                return self.disk_block_metadata(apri, *intervals_to_get)
 
             else:
                 return None
@@ -2923,27 +2931,27 @@ class Numpy_Register(Register):
             for _start_n, _length in intervals_to_get:
                 # check that blocks have the correct shape
 
-                blk = self.get_disk_block(apri, _start_n, _length, False, False, mmap_mode = "r")
+                blk = self.disk_block(apri, _start_n, _length, False, False, mmap_mode = "r")
                 blks.append(blk)
 
                 if fixed_shape is None:
 
-                    fixed_shape = blk.get_segment().shape[1:]
+                    fixed_shape = blk.segment().shape[1:]
                     ref_blk = blk
 
-                elif fixed_shape != blk.get_segment().shape[1:]:
+                elif fixed_shape != blk.segment().shape[1:]:
 
                     raise ValueError(
                         "Cannot combine the following two `Block`s because all axes other than axis 0 must have the same " +
                         "shape:\n" +
-                        f"{str(apri)}, start_n = {ref_blk.get_start_n()}, length = {len(ref_blk)}\n, shape = " +
+                        f"{str(apri)}, start_n = {ref_blk.start_n()}, length = {len(ref_blk)}\n, shape = " +
                         f"{str(fixed_shape)}\n" +
                         f"{str(apri)}, start_n = {_start_n}, length = {_length}\n, shape = " +
-                        f"{str(blk.get_segment().shape)}\n"
+                        f"{str(blk.segment().shape)}\n"
 
                     )
 
-            combined_blk = np.concatenate([blk.get_segment() for blk in blks], axis=0)
+            combined_blk = np.concatenate([blk.segment() for blk in blks], axis=0)
             combined_blk = Block(combined_blk, apri, start_n)
             ret = self.add_disk_block(combined_blk, return_metadata)
 
@@ -2954,7 +2962,7 @@ class Numpy_Register(Register):
 
                 for blk in blks:
 
-                    _start_n = blk.get_start_n()
+                    _start_n = blk.start_n()
                     _length = len(blk)
                     blk.close()
                     self.remove_disk_block(apri, _start_n, _length, False)
@@ -3018,15 +3026,15 @@ class _Element_Iter:
         self.curr_n = slc.start if slc.start else 0
 
     def update_sequences_calculated(self):
-        self.intervals = dict(self.reg.all_intervals(self.apri, False, self.recursively))
+        self.intervals = dict(self.reg.intervals(self.apri, False, self.recursively))
 
     def get_next_block(self):
 
         try:
-            return self.reg.get_ram_block_by_n(self.apri, self.curr_n, self.recursively)
+            return self.reg.ram_block_by_n(self.apri, self.curr_n, self.recursively)
 
         except Data_Not_Found_Error:
-            return self.reg.get_disk_block_by_n(self.apri, self.curr_n, self.recursively, **self.kwargs)
+            return self.reg.disk_block_by_n(self.apri, self.curr_n, self.recursively, **self.kwargs)
 
     def __iter__(self):
         return self
@@ -3038,7 +3046,7 @@ class _Element_Iter:
 
         elif self.curr_blk is None:
 
-            self.intervals = self.reg.all_intervals(self.apri, False, self.recursively)
+            self.intervals = self.reg.intervals(self.apri, False, self.recursively)
             self.curr_n = max( self.intervals[0][0] , self.curr_n )
 
             try:
@@ -3054,7 +3062,7 @@ class _Element_Iter:
 
             except Data_Not_Found_Error:
 
-                self.intervals = self.reg.all_intervals(self.apri, False, self.recursively)
+                self.intervals = self.reg.intervals(self.apri, False, self.recursively)
 
                 for start_n, length in self.intervals:
 

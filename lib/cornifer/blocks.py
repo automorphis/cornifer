@@ -86,13 +86,13 @@ class Block:
         else:
             return True
 
-    def get_segment(self):
+    def segment(self):
         return self._seg
 
-    def get_apri(self):
+    def apri(self):
         return self._apri
 
-    def get_start_n(self):
+    def start_n(self):
         return self._start_n
 
     def set_start_n(self, start_n):
@@ -117,7 +117,7 @@ class Block:
         if subinterval_length <= 1:
             raise ValueError("`subinterval_length` must be at least 2")
 
-        start_n = self.get_start_n()
+        start_n = self.start_n()
         return [
             self[i : i + subinterval_length]
             for i in range(start_n, start_n + len(self), subinterval_length)
@@ -132,8 +132,8 @@ class Block:
 
         elif isinstance(item, slice):
 
-            apri = self.get_apri()
-            start_n = self.get_start_n()
+            apri = self.apri()
+            start_n = self.start_n()
             length = len(self)
             item = justify_slice(item, start_n, start_n + length - 1)
 
@@ -150,11 +150,11 @@ class Block:
 
             if item not in self:
                 raise IndexError(
-                    f"Indices must be between {self.get_start_n()} and {self.get_start_n() + len(self) - 1}" +
+                    f"Indices must be between {self.start_n()} and {self.start_n() + len(self) - 1}" +
                     ", inclusive."
                 )
 
-            item -= self.get_start_n()
+            item -= self.start_n()
 
             if not self._check_and_warn_custom_get_ndarray("__getitem__"):
                 return self._seg_ndarray[item]
@@ -171,13 +171,13 @@ class Block:
             return len(self._seg)
 
     def __contains__(self, n):
-        start_n = self.get_start_n()
+        start_n = self.start_n()
         return start_n <= n < start_n + len(self)
 
     def __hash__(self):
         raise TypeError(
             f"The type `{self.__class__.__name__}` is not hashable. Please instead hash " +
-            f"`(blk.get_apri(), blk.get_start_n(), len(blk))`."
+            f"`(blk.apri(), blk.start_n(), len(blk))`."
         )
 
     def __str__(self):
@@ -194,7 +194,7 @@ class Block:
 
         if (
             type(self) != type(other) or self._dtype != other._dtype or
-            self.get_apri() != other.get_apri() or self.get_start_n() != other.get_start_n() or
+            self.apri() != other.apri() or self.start_n() != other.start_n() or
             len(self) != len(other)
         ):
             return False

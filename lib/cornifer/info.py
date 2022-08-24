@@ -102,7 +102,7 @@ class _Info(ABC):
                 f"{', '.join(cls._reserved_kws)}"
             )
 
-    def get_wrapped_string(self):
+    def wrapped_string(self):
 
         return _Info_JSONEncoder().encode(self)
 
