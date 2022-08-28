@@ -18,17 +18,16 @@ import json
 from abc import ABC, abstractmethod
 from copy import copy, deepcopy
 
-from cornifer._utilities import order_json_obj, is_int
+from cornifer._utilities import orderJsonObj, isInt
 
-
-class _Info_JSONEncoder(json.JSONEncoder):
+class _InfoJsonEncoder(json.JSONEncoder):
 
     def default(self, obj):
 
         if isinstance(obj, _Info):
-            return obj.__class__.__name__ + ".from_json(" + obj.to_json() + ")"
+            return obj.__class__.__name__ + ".fromJson(" + obj.toJson() + ")"
 
-        elif is_int(obj):
+        elif isInt(obj):
             return int(obj)
 
         elif isinstance(obj, tuple):
@@ -37,7 +36,7 @@ class _Info_JSONEncoder(json.JSONEncoder):
         else:
             return super().default(obj)
 
-class _Info_JSONDecoder(json.JSONDecoder):
+class _InfoJsonDecoder(json.JSONDecoder):
 
     def __init__(self, *args, **kwargs):
         super().__init__(object_hook=self.object_hook, *args, **kwargs)
@@ -47,17 +46,17 @@ class _Info_JSONDecoder(json.JSONDecoder):
         if isinstance(obj, str):
 
             obj = obj.strip(" \t")
-            if (obj[:9] == "Apri_Info" or obj[:9] == "Apos_Info") and obj[9:20] == ".from_json(" and obj[-1] == ")":
+            if (obj[:8] == "ApriInfo" or obj[:8] == "AposInfo") and obj[8:18] == ".fromJson(" and obj[-1] == ")":
 
-                json_str = obj[20:-1].strip(" \t")
+                json_str = obj[18:-1].strip(" \t")
 
                 try:
 
-                    if obj[:9] == "Apri_Info":
-                        return Apri_Info.from_json(json_str)
+                    if obj[:8] == "ApriInfo":
+                        return ApriInfo.fromJson(json_str)
 
                     else:
-                        return Apos_Info.from_json(json_str)
+                        return AposInfo.fromJson(json_str)
 
                 except json.JSONDecodeError:
                     return obj
@@ -76,14 +75,14 @@ class _Info_JSONDecoder(json.JSONDecoder):
 
 class _Info(ABC):
 
-    _reserved_kws = ["_json", "_str"]
+    _reservedKws = ["_json", "_str"]
 
     def __init__(self, **kwargs):
 
         if len(kwargs) == 0:
             raise ValueError("must pass at least one keyword argument.")
 
-        type(self)._check_reserved_kws(kwargs)
+        type(self)._checkReservedKws(kwargs)
 
         self.__dict__.update(kwargs)
 
@@ -92,24 +91,20 @@ class _Info(ABC):
         self._str = None
 
     @classmethod
-    def _check_reserved_kws(cls, kwargs):
+    def _checkReservedKws(cls, kwargs):
 
-        if any(kw in kwargs for kw in cls._reserved_kws):
+        if any(kw in kwargs for kw in cls._reservedKws):
 
             raise ValueError(
 
                 "The following keyword-argument keys are reserved. Choose a different key.\n" +
-                f"{', '.join(cls._reserved_kws)}"
+                f"{', '.join(cls._reservedKws)}"
             )
 
-    def wrapped_string(self):
-
-        return _Info_JSONEncoder().encode(self)
-
     @classmethod
-    def from_json(cls, json_string):
+    def fromJson(cls, jsonStr):
 
-        decoded_json = _Info_JSONDecoder().decode(json_string)
+        decoded_json = _InfoJsonDecoder().decode(jsonStr)
 
         if not isinstance(decoded_json, dict):
             raise ValueError(
@@ -120,7 +115,7 @@ class _Info(ABC):
 
         return cls(**decoded_json)
 
-    def to_json(self):
+    def toJson(self):
 
         if self._json is not None:
             return self._json
@@ -129,13 +124,13 @@ class _Info(ABC):
 
             kwargs = copy(self.__dict__)
 
-            for kw in type(self)._reserved_kws:
+            for kw in type(self)._reservedKws:
                 kwargs.pop(kw,None)
 
-            kwargs = order_json_obj(kwargs)
+            kwargs = orderJsonObj(kwargs)
 
             try:
-                json_rep = _Info_JSONEncoder(
+                json_rep = _InfoJsonEncoder(
 
                     ensure_ascii = True,
                     allow_nan = True,
@@ -149,8 +144,8 @@ class _Info(ABC):
                 raise ValueError(
                     "One of the keyword arguments used to construct this instance cannot be encoded into " +
                     "JSON. Use different keyword arguments, or override the " +
-                    f"classmethod `{self.__class__.__name__}.from_json` and the instancemethod " +
-                    f"`{self.__class__.__name__}.to_json`."
+                    f"classmethod `{self.__class__.__name__}.fromJson` and the instancemethod " +
+                    f"`{self.__class__.__name__}.toJson`."
                 ) from e
 
             if "\0" in json_rep:
@@ -164,42 +159,42 @@ class _Info(ABC):
 
             return json_rep
 
-    def iter_inner_info(self, _root_call = True):
+    def iterInnerInfo(self, _rootCall = True):
 
-        if not isinstance(_root_call, bool):
-            raise TypeError("`_root_call` must be of type `bool`.")
+        if not isinstance(_rootCall, bool):
+            raise TypeError("`_rootCall` must be of type `bool`.")
 
-        if _root_call:
+        if _rootCall:
             yield None, self
 
         for key, val in self.__dict__.items():
 
-            if key not in type(self)._reserved_kws and isinstance(val, _Info):
+            if key not in type(self)._reservedKws and isinstance(val, _Info):
 
                 yield key, val
 
-                for inner in val.iter_inner_info(_root_call = False):
+                for inner in val.iterInnerInfo(_rootCall= False):
                     yield inner
 
-    def change_info(self, old_info, new_info, _root_call = True):
+    def changeInfo(self, oldInfo, newInfo, _rootCall = True):
 
-        if not isinstance(old_info, _Info):
-            raise TypeError("`old_info` must be of type `_Info`.")
+        if not isinstance(oldInfo, _Info):
+            raise TypeError("`oldInfo` must be of type `_Info`.")
 
-        if not isinstance(new_info, _Info):
-            raise TypeError("`new_info` must be of type `_Info`.")
+        if not isinstance(newInfo, _Info):
+            raise TypeError("`newInfo` must be of type `_Info`.")
 
-        if not isinstance(_root_call, bool):
-            raise TypeError("`_root_call` must be of type `bool`.")
+        if not isinstance(_rootCall, bool):
+            raise TypeError("`_rootCall` must be of type `bool`.")
 
-        if _root_call:
+        if _rootCall:
             replaced_info = deepcopy(self)
 
         else:
             replaced_info = self
 
-        if self == old_info:
-            return new_info
+        if self == oldInfo:
+            return newInfo
 
         else:
 
@@ -207,13 +202,13 @@ class _Info(ABC):
 
             for key, val in replaced_info.__dict__.items():
 
-                if key not in type(self)._reserved_kws:
+                if key not in type(self)._reservedKws:
 
-                    if val == old_info:
-                        kw[key] = new_info
+                    if val == oldInfo:
+                        kw[key] = newInfo
 
                     elif isinstance(val, _Info):
-                        kw[key] = val.change_info(old_info, new_info)
+                        kw[key] = val.changeInfo(oldInfo, newInfo)
 
                     else:
                         kw[key] = val
@@ -222,10 +217,10 @@ class _Info(ABC):
 
     def __contains__(self, apri):
 
-        if not isinstance(apri, Apri_Info):
-            raise TypeError("`apri` must be of type `Apri_Info`.")
+        if not isinstance(apri, ApriInfo):
+            raise TypeError("`apri` must be of type `ApriInfo`.")
 
-        return any(inner == apri for _, inner in self.iter_inner_info())
+        return any(inner == apri for _, inner in self.iterInnerInfo())
 
     def __lt__(self, other):
 
@@ -233,7 +228,29 @@ class _Info(ABC):
             return False
 
         else:
-            return str(self) < str(other)
+
+            self_kwargs = sorted([key for key in self.__dict__.keys() if key not in type(self)._reservedKws])
+            other_kwargs = sorted([key for key in other.__dict__.keys() if key not in type(other)._reservedKws])
+
+            for self_kw, other_kw in zip(self_kwargs, other_kwargs):
+
+                if self_kw != other_kw:
+                    return self_kw < other_kw
+
+            else:
+
+                for kw in self_kwargs:
+
+                    if self.__dict__[kw] != other.__dict__[kw]:
+
+                        try:
+                            return self.__dict__[kw] < other.__dict__[kw]
+
+                        except TypeError:
+                            return True # :shrug:
+
+                else:
+                    return False # they are equal
 
     def __gt__(self, other):
 
@@ -247,7 +264,7 @@ class _Info(ABC):
     def __hash__(self):pass
 
     def __eq__(self, other):
-        return type(self) == type(other) and self.to_json() == other.to_json()
+        return type(self) == type(other) and self.toJson() == other.toJson()
 
     def __str__(self):
 
@@ -258,7 +275,7 @@ class _Info(ABC):
 
             ret = f"{self.__class__.__name__}("
             ordered = sorted(
-                [(key, val) for key, val in self.__dict__.items() if key not in type(self)._reserved_kws],
+                [(key, val) for key, val in self.__dict__.items() if key not in type(self)._reservedKws],
                 key = lambda t: t[0]
             )
             ret += ", ".join(f"{key}={repr(val)}" for key, val in ordered)
@@ -278,9 +295,9 @@ class _Info(ABC):
     def __deepcopy__(self, memo):
         return self.__copy__()
 
-class Apri_Info(_Info):
+class ApriInfo(_Info):
 
-    _reserved_kws = ["_json", "_hash", "_str"]
+    _reservedKws = ["_json", "_hash", "_str"]
 
     def __init__(self, **kwargs):
 
@@ -303,7 +320,7 @@ class Apri_Info(_Info):
     def __hash__(self):
         return self._hash
 
-class Apos_Info(_Info):
+class AposInfo(_Info):
 
     def __hash__(self):
         raise TypeError("`Apos_Info` is not a hashable type.")

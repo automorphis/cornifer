@@ -4,7 +4,7 @@ from datetime import datetime
 from cornifer._utilities import BYTES_PER_MB, BYTES_PER_KB, LOCAL_TIMEZONE, BYTES_PER_GB
 
 
-class File_Metadata:
+class FileMetadata:
 
     def __init__(self, created, modified, size):
         self.created = created
@@ -16,7 +16,7 @@ class File_Metadata:
         self.size_B  = self.size % BYTES_PER_KB
 
     @staticmethod
-    def from_path(path):
+    def fromPath(path):
 
         stat = path.stat()
 
@@ -38,7 +38,7 @@ class File_Metadata:
 
         size = int(stat.st_size)
 
-        return File_Metadata(created, modified, size)
+        return FileMetadata(created, modified, size)
 
     def __str__(self):
         smaller = False

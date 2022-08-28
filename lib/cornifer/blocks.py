@@ -17,25 +17,25 @@ import warnings
 
 import numpy as np
 
-from cornifer import Apri_Info
-from cornifer._utilities import check_has_method, justify_slice, is_int
+from cornifer import ApriInfo
+from cornifer._utilities import checkHasMethod, justifySlice, isInt
 
 
 class Block:
 
-    def __init__(self, segment, apri, start_n = 0):
+    def __init__(self, segment, apri, startn = 0):
 
-        if not isinstance(apri, Apri_Info):
+        if not isinstance(apri, ApriInfo):
             raise TypeError("`apri` must be of type `Apri_Info`.")
 
-        if not is_int(start_n):
-            raise TypeError("`start_n` must be of type `int`.")
+        if not isInt(startn):
+            raise TypeError("`startn` must be of type `int`.")
 
         else:
-            start_n = int(start_n)
+            startn = int(startn)
 
-        if start_n < 0:
-            raise ValueError("`start_n` must be non-negative.")
+        if startn < 0:
+            raise ValueError("`startn` must be non-negative.")
 
         self._custom_dtype = False
 
@@ -45,7 +45,7 @@ class Block:
         elif isinstance(segment, np.ndarray):
             self._dtype = "ndarray"
 
-        elif not check_has_method(segment, "__len__"):
+        elif not checkHasMethod(segment, "__len__"):
             raise ValueError(
                 f"`len(segment)` must be defined. Please define the method `__len__` for the type " +
                 f"`{segment.__class__.__name__}`."
@@ -56,28 +56,28 @@ class Block:
             self._dtype = str(type(segment))
             self._custom_dtype = True
 
-        self._start_n = start_n
+        self._startn = startn
         self._apri = apri
         self._seg = segment
         self._seg_ndarray = None
 
-    def _check_and_warn_custom_get_ndarray(self, method_name):
+    def _check_and_warn_custom_get_ndarray(self, methodName):
 
-        if self._custom_dtype and not self._seg_ndarray and not check_has_method(self._seg, method_name):
+        if self._custom_dtype and not self._seg_ndarray and not checkHasMethod(self._seg, methodName):
 
             try:
                 self._seg_ndarray = self._seg.get_ndarray()
 
             except NameError:
                 raise NotImplementedError(
-                    f"If you have not implemented `{method_name}` for the type" +
+                    f"If you have not implemented `{methodName}` for the type" +
                     f" `{self._seg.__class__.__name__}`, then you must implement the method " +
                     f"`get_ndarray()` for the type `{self._seg.__class__.__name__}`."
                 )
 
             warnings.warn(
                 f"The custom type `{self._seg.__class__.__name__}` has not defined the method" +
-                f" `{method_name}`. Cornifer is calling the method `get_ndarray`, which may slow down the " +
+                f" `{methodName}`. Cornifer is calling the method `get_ndarray`, which may slow down the " +
                 f"program or lead to unexpected behavior."
             )
 
@@ -92,35 +92,35 @@ class Block:
     def apri(self):
         return self._apri
 
-    def start_n(self):
-        return self._start_n
+    def startn(self):
+        return self._startn
 
-    def set_start_n(self, start_n):
+    def setStartn(self, startn):
 
-        if not is_int(start_n):
-            raise TypeError("`start_n` must be of type `int`")
+        if not isInt(startn):
+            raise TypeError("`startn` must be of type `int`")
         else:
-            start_n = int(start_n)
+            startn = int(startn)
 
-        if start_n < 0:
-            raise ValueError("`start_n` must be positive")
+        if startn < 0:
+            raise ValueError("`startn` must be positive")
 
-        self._start_n = start_n
+        self._startn = startn
 
-    def subdivide(self, subinterval_length):
+    def subdivide(self, subintervalLen):
 
-        if not is_int(subinterval_length):
-            raise TypeError("`subinterval_length` must be an integer")
+        if not isInt(subintervalLen):
+            raise TypeError("`subintervalLen` must be an integer")
         else:
-            subinterval_length = int(subinterval_length)
+            subintervalLen = int(subintervalLen)
 
-        if subinterval_length <= 1:
-            raise ValueError("`subinterval_length` must be at least 2")
+        if subintervalLen <= 1:
+            raise ValueError("`subintervalLen` must be at least 2")
 
-        start_n = self.start_n()
+        startn = self.startn()
         return [
-            self[i : i + subinterval_length]
-            for i in range(start_n, start_n + len(self), subinterval_length)
+            self[i : i + subintervalLen]
+            for i in range(startn, startn + len(self), subintervalLen)
         ]
 
     def __getitem__(self, item):
@@ -133,28 +133,28 @@ class Block:
         elif isinstance(item, slice):
 
             apri = self.apri()
-            start_n = self.start_n()
+            startn = self.startn()
             length = len(self)
-            item = justify_slice(item, start_n, start_n + length - 1)
+            item = justifySlice(item, startn, startn + length - 1)
 
             if not self._check_and_warn_custom_get_ndarray("__getitem__"):
-                return Block(self._seg_ndarray[item, ...], apri, start_n)
+                return Block(self._seg_ndarray[item, ...], apri, startn)
 
             elif self._dtype == "ndarray":
-                return Block(self._seg[item, ...], apri, start_n)
+                return Block(self._seg[item, ...], apri, startn)
 
             else:
-                return Block(self._seg[item], apri, start_n)
+                return Block(self._seg[item], apri, startn)
 
         else:
 
             if item not in self:
                 raise IndexError(
-                    f"Indices must be between {self.start_n()} and {self.start_n() + len(self) - 1}" +
+                    f"Indices must be between {self.startn()} and {self.startn() + len(self) - 1}" +
                     ", inclusive."
                 )
 
-            item -= self.start_n()
+            item -= self.startn()
 
             if not self._check_and_warn_custom_get_ndarray("__getitem__"):
                 return self._seg_ndarray[item]
@@ -171,20 +171,20 @@ class Block:
             return len(self._seg)
 
     def __contains__(self, n):
-        start_n = self.start_n()
-        return start_n <= n < start_n + len(self)
+        startn = self.startn()
+        return startn <= n < startn + len(self)
 
     def __hash__(self):
         raise TypeError(
             f"The type `{self.__class__.__name__}` is not hashable. Please instead hash " +
-            f"`(blk.apri(), blk.start_n(), len(blk))`."
+            f"`(blk.apri(), blk.startn(), len(blk))`."
         )
 
     def __str__(self):
         ret = self.__class__.__name__ + "("
         ret += f"<{self._dtype}>:{len(self)}, "
         ret += repr(self._apri) + ", "
-        ret += str(self._start_n) + ")"
+        ret += str(self._startn) + ")"
         return ret
 
     def __repr__(self):
@@ -194,7 +194,7 @@ class Block:
 
         if (
             type(self) != type(other) or self._dtype != other._dtype or
-            self.apri() != other.apri() or self.start_n() != other.start_n() or
+            self.apri() != other.apri() or self.startn() != other.startn() or
             len(self) != len(other)
         ):
             return False
@@ -209,14 +209,14 @@ class Block:
         else:
             return self._seg == other._seg
 
-class Memmap_Block (Block):
+class MemmapBlock (Block):
 
-    def __init__(self, segment, apri, start_n = 0):
+    def __init__(self, segment, apri, startn = 0):
 
         if not isinstance(segment, np.memmap):
             raise TypeError("`segment` must be of type `np.memmap`.")
 
-        super().__init__(segment, apri, start_n)
+        super().__init__(segment, apri, startn)
 
     def close(self):
         """Close NumPy `memmap` handle.

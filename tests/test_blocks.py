@@ -4,14 +4,14 @@ from unittest import TestCase
 
 import numpy as np
 
-from cornifer import Apri_Info, Block
+from cornifer import ApriInfo, Block
 
 
 class Test_Block(TestCase):
 
     def test___init__(self):
 
-        descr = Apri_Info(name ="primes")
+        descr = ApriInfo(name ="primes")
 
         with self.assertRaises(TypeError):
             Block([], "primes", 0)
@@ -44,31 +44,31 @@ class Test_Block(TestCase):
             Block([], descr, 0.5)
 
         self.assertEqual(
-            Block([], descr).start_n(),
+            Block([], descr).startN(),
             0
         )
 
     def test_set_start_n(self):
 
-        descr = Apri_Info(name ="primes")
+        descr = ApriInfo(name ="primes")
 
         seq = Block([], descr, 0)
         with self.assertRaises(TypeError):
-            seq.set_start_n(0.5)
+            seq.setStartN(0.5)
 
         seq = Block([], descr, 0)
         with self.assertRaises(ValueError):
-            seq.set_start_n(-1)
+            seq.setStartN(-1)
 
         seq = Block([], descr)
-        seq.set_start_n(15)
+        seq.setStartN(15)
         self.assertEqual(
-            seq.start_n(),
+            seq.startN(),
             15
         )
 
     def test_subdivide(self):
-        descr = Apri_Info(name ="primes")
+        descr = ApriInfo(name ="primes")
 
         with self.assertRaises(TypeError):
             Block([], descr).subdivide(3.5)
@@ -105,7 +105,7 @@ class Test_Block(TestCase):
             )
 
     def test___getitem__(self):
-        descr = Apri_Info(name="primes")
+        descr = ApriInfo(name="primes")
 
         with self.assertRaises(IndexError):
             Block(np.empty((50, 50)), descr)[25, 25]
@@ -272,7 +272,7 @@ class Test_Block(TestCase):
         )
 
     def test___len__(self):
-        descr = Apri_Info(name ="primes")
+        descr = ApriInfo(name ="primes")
 
         lst = []
         seq = Block(lst, descr)
@@ -317,7 +317,7 @@ class Test_Block(TestCase):
         )
 
     def test___contains__(self):
-        descr = Apri_Info(name ="primes")
+        descr = ApriInfo(name ="primes")
         for n, start_n in product(range(50), repeat = 2):
             self.assertIn(
                 n + start_n,
@@ -326,8 +326,8 @@ class Test_Block(TestCase):
 
     def test___eq__(self):
 
-        descr1 = Apri_Info(name ="primes")
-        descr2 = Apri_Info(name ="primes", mod4 = 1)
+        descr1 = ApriInfo(name ="primes")
+        descr2 = ApriInfo(name ="primes", mod4 = 1)
 
         self.assertEqual(
             Block(np.arange(50), descr1),
@@ -368,4 +368,4 @@ class Test_Block(TestCase):
     def test___hash__(self):
 
         with self.assertRaises(TypeError):
-            hash(Block(np.arange(50), Apri_Info(name ="primes")))
+            hash(Block(np.arange(50), ApriInfo(name ="primes")))

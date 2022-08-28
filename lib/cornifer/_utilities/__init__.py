@@ -13,10 +13,8 @@
     GNU General Public License for more details.
 """
 
-import logging
 import random
 import re
-import zipfile
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -37,7 +35,7 @@ try:
 except RuntimeError:
     LOCAL_TIMEZONE = timezone.utc
 
-def intervals_overlap(int1,int2):
+def intervalsOverlap(int1, int2):
     """Check if the half-open interval [int1[0], int1[0] + int1[1]) has a non-empty intersection with
     [int2[0], int2[0] + int2[1])"""
 
@@ -50,17 +48,9 @@ def intervals_overlap(int1,int2):
     a2,l2 = int2
     return a1 <= a2 < a1 + l1 or a1 < a2 + l2 <= a1 + l1 or a2 <= a1 < a2 + l2 or a2 < a1 + l1 <= a2 + l2
 
-def log_raise_error(error, verbose, suppress_errors):
-    if verbose:
-        logging.warning(f"Error raised: {str(error)}")
-        if suppress_errors:
-            logging.warning("Error suppressed.")
-    if not suppress_errors:
-        raise error
-
-def random_unique_filename(directory, suffix = "", length = 6, alphabet = BASE54, num_attempts = 10):
+def randomUniqueFilename(directory, suffix ="", length = 6, alphabet = BASE54, numAttempts = 10):
     directory = Path(directory)
-    for n in range(num_attempts):
+    for n in range(numAttempts):
         filename =  directory / "".join(random.choices(alphabet, k=length + n))
         if suffix != "":
             filename = filename.with_suffix(suffix)
@@ -68,11 +58,11 @@ def random_unique_filename(directory, suffix = "", length = 6, alphabet = BASE54
             return filename
     raise RuntimeError("buy a lottery ticket fr")
 
-def check_has_method(instance, method_name):
-    return hasattr(instance.__class__, method_name) and callable(getattr(instance.__class__, method_name))
+def checkHasMethod(instance, methodName):
+    return hasattr(instance.__class__, methodName) and callable(getattr(instance.__class__, methodName))
 
 # def safe_overwrite_file(filename, new_content):
-#     tempfile = random_unique_filename(filename.parent)
+#     tempfile = randomUniqueFilename(filename.parent)
 #     try:
 #         with tempfile.open("w") as fh:
 #             fh.write(new_content)
@@ -84,87 +74,82 @@ def check_has_method(instance, method_name):
 #             f"file `{str(filename)}` or the file `{str(tempfile)}`."
 #         )
 
-def replace_lists_with_tuples(obj):
+def replaceListsWithTuples(obj):
     if isinstance(obj, dict):
-        return {key: replace_lists_with_tuples(val) for key,val in obj.items()}
+        return {key: replaceListsWithTuples(val) for key, val in obj.items()}
     elif isinstance(obj, list) or isinstance(obj, tuple):
-        return tuple([replace_lists_with_tuples(x) for x in obj])
+        return tuple([replaceListsWithTuples(x) for x in obj])
     else:
         return obj
 
-def replace_tuples_with_lists(obj):
+def replaceTuplesWithLists(obj):
     if isinstance(obj, dict):
-        return {key: replace_tuples_with_lists(val) for key,val in obj.items()}
+        return {key: replaceTuplesWithLists(val) for key, val in obj.items()}
     elif isinstance(obj, tuple) or isinstance(obj, list):
-        return [replace_tuples_with_lists(x) for x in obj]
+        return [replaceTuplesWithLists(x) for x in obj]
     else:
         return obj
 
-def justify_slice(slc, min_index, max_index):
+def justifySlice(slc, minIndex, maxIndex):
     """If a slice has negative or `None` indices, then this function will return a new slice with equivalent,
     non-`None`, positive indices.
 
     :param slc: (type `slice`) The `slice` to justify.
-    :param min_index: (type non-negative `int`) The minimum index of the justified slice.
-    :param max_index: (type non-negative `int`) The maximum index of the justified slice.
+    :param minIndex: (type non-negative `int`) The minimum index of the justified slice.
+    :param maxIndex: (type non-negative `int`) The maximum index of the justified slice.
     :return: The justified `slice`.
     """
 
-    if max_index < min_index:
-        raise ValueError("max_index < min_index")
-    if max_index < 0:
-        raise ValueError("max_index < 0")
-    if min_index < 0:
-        raise ValueError("min_index < 0")
+    if maxIndex < minIndex:
+        raise ValueError("maxIndex < minIndex")
+    if maxIndex < 0:
+        raise ValueError("maxIndex < 0")
+    if minIndex < 0:
+        raise ValueError("minIndex < 0")
 
-    start = slc.start   if slc.start    else min_index
-    stop =  slc.stop    if slc.stop     else max_index + 1
+    start = slc.start   if slc.start    else minIndex
+    stop =  slc.stop    if slc.stop     else maxIndex + 1
     step =  slc.step    if slc.step     else 1
 
-    start = _justify_slice_start_stop(start, min_index, max_index)
-    stop =  _justify_slice_start_stop(stop, min_index, max_index)
+    start = _justifySliceStartStop(start, minIndex, maxIndex)
+    stop =  _justifySliceStartStop(stop, minIndex, maxIndex)
 
     return slice(start, stop, step)
 
-def _justify_slice_start_stop(num, min_index, max_index):
-    mod = max_index - min_index + 1
+def _justifySliceStartStop(num, minIndex, maxIndex):
+    mod = maxIndex - minIndex + 1
     if num < 0:
-        num += mod + min_index
-    if num < min_index:
+        num += mod + minIndex
+    if num < minIndex:
         return 0
-    elif num > max_index:
+    elif num > maxIndex:
         return mod
     else:
-        return num - min_index
+        return num - minIndex
 
-def order_json_obj(json_obj):
+def orderJsonObj(jsonObj):
 
-    if isinstance(json_obj, dict):
+    if isinstance(jsonObj, dict):
 
-        ordered_items = sorted(list(json_obj.items()), key=lambda t: t[0])
+        ordered_items = sorted(list(jsonObj.items()), key=lambda t: t[0])
         return OrderedDict([
-            (key, order_json_obj(val))
+            (key, orderJsonObj(val))
             for key, val in ordered_items
         ])
 
-    elif isinstance(json_obj, list):
-        return list(map(order_json_obj, json_obj))
+    elif isinstance(jsonObj, list):
+        return list(map(orderJsonObj, jsonObj))
 
     else:
-        return json_obj
+        return jsonObj
 
-def is_signed_int(num):
+def isSignedInt(num):
     return isinstance(num, (int, np.int8, np.int16, np.int32, np.int64))
 
-def is_int(num):
+def isInt(num):
     return isinstance(num, (int, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64))
 
-def zip_archive_is_empty(path):
-
-    with zipfile.ZipFile(path, "r") as zip_fh:
-        return len(zip_fh.infolist()) == 0
-
-def resolve_path(path):
+def resolvePath(path):
     """
     :param path: (type `pathlib.Path`)
     :raise FileNotFoundError: If the path could not be resolved.
@@ -195,7 +180,7 @@ def resolve_path(path):
         else:
             raise FileNotFoundError(f"The file or directory `{path}` could not be found.")
 
-def is_deletable(path):
+def isDeletable(path):
 
     try:
 

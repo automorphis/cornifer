@@ -1,7 +1,7 @@
 from math import floor, sqrt
 from pathlib import Path
 
-from cornifer import Apri_Info, Numpy_Register, Block
+from cornifer import ApriInfo, NumpyRegister, Block
 
 my_saves_dir = Path.home() / "my_cornifer_saves"
 
@@ -15,10 +15,10 @@ def is_prime(m):
     return True
 
 lst = []
-descr = Apri_Info(name ="primes")
+descr = ApriInfo(name ="primes")
 blk = Block(lst, descr, 1)
-register = Numpy_Register(my_saves_dir, "primes example")
-register.add_ram_block(blk)
+register = NumpyRegister(my_saves_dir, "primes example")
+register.addRamBlk(blk)
 
 length = 100000
 total_primes = 0
@@ -32,6 +32,6 @@ with register.open() as register:
             lst.append(m)
 
         if (total_primes % length == 0 and total_primes > 0) or m == max_m:
-            register.add_disk_block(blk)
-            blk.set_start_n(total_primes+1)
+            register.addDiskBlk(blk)
+            blk.setStartN(total_primes + 1)
             lst.clear()

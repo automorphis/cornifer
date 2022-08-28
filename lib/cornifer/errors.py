@@ -17,16 +17,16 @@ NOT_ABSOLUTE_ERROR_MESSAGE = (
     "The path `{0}` is not absolute."
 )
 
-class Register_Error(RuntimeError):pass
+class RegisterError(RuntimeError):pass
 
-class Register_Recovery_Error(Register_Error):pass
+class RegisterRecoveryError(RegisterError):pass
 
-class Register_Already_Open_Error(Register_Error):
+class RegisterAlreadyOpenError(RegisterError):
     def __init__(self):
         super().__init__("This register is already opened.")
 
-class Compression_Error(RuntimeError):pass
+class CompressionError(RuntimeError):pass
 
-class Decompression_Error(RuntimeError):pass
+class DecompressionError(RuntimeError):pass
 
-class Data_Not_Found_Error(RuntimeError):pass
+class DataNotFoundError(RuntimeError):pass
