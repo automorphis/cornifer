@@ -25,7 +25,7 @@ BYTES_PER_KB = 1024
 BYTES_PER_MB = 1024**2
 BYTES_PER_GB = 1024**3
 BYTES_PER_CHAR = 1
-BASE54 = "2346789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRTUVWXYZ"
+BASE52 = "2346789abcdefghijmnpqrstuvwxyzABCDEFGHJLMNPQRTUVWXYZ"
 
 NAME_REGEX = re.compile("[_a-zA-Z]\w*")
 
@@ -48,7 +48,7 @@ def intervalsOverlap(int1, int2):
     a2,l2 = int2
     return a1 <= a2 < a1 + l1 or a1 < a2 + l2 <= a1 + l1 or a2 <= a1 < a2 + l2 or a2 < a1 + l1 <= a2 + l2
 
-def randomUniqueFilename(directory, suffix ="", length = 6, alphabet = BASE54, numAttempts = 10):
+def randomUniqueFilename(directory, suffix ="", length = 6, alphabet = BASE52, numAttempts = 10):
     directory = Path(directory)
     for n in range(numAttempts):
         filename =  directory / "".join(random.choices(alphabet, k=length + n))

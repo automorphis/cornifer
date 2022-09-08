@@ -22,7 +22,7 @@ from cornifer.version import CURRENT_VERSION
 
 """
 PUBLIC READ-WRITE METHODS FOR LMDB:
- - setStartNInfo
+ - setStartnInfo
  - open
  - changeApriInfo
  - rmvApriInfo
@@ -61,7 +61,7 @@ PROTECTED READ-WRITE METHODS FOR LMDB:
 
 - LEVEL 2
     - open (uncreated)
-    - removeRamBlk
+    - rmvRamBlk
     - ramBlkByN (no recursive)
     - ramBlks (no recursive)
     - _iter_ram_block_metadatas 
@@ -84,7 +84,7 @@ PROTECTED READ-WRITE METHODS FOR LMDB:
     - _openCreated
     - _getIdByApri
     - _convertDiskBlockKey (no head)
-    - setStartNInfo
+    - setStartnInfo
 
 - LEVEL 6
     - _iter_disk_block_metadatas
@@ -416,21 +416,21 @@ class Test_Register(TestCase):
         blk = Block([], ApriInfo(name ="name"))
         reg.addRamBlk(blk)
         try:
-            reg.removeRamBlk(blk)
+            reg.rmvRamBlk(blk)
         except RegisterError:
             self.fail("removing ram blocks doesn't need reg to be open")
 
         reg = NumpyRegister(SAVES_DIR, "msg")
         blk1 = Block([], ApriInfo(name ="name1"))
         reg.addRamBlk(blk1)
-        reg.removeRamBlk(blk1)
+        reg.rmvRamBlk(blk1)
         self.assertEqual(
             0,
             len(reg._ramBlks)
         )
 
         reg.addRamBlk(blk1)
-        reg.removeRamBlk(blk1)
+        reg.rmvRamBlk(blk1)
         self.assertEqual(
             0,
             len(reg._ramBlks)
@@ -439,13 +439,13 @@ class Test_Register(TestCase):
         reg.addRamBlk(blk1)
         blk2 = Block([], ApriInfo(name ="name2"))
         reg.addRamBlk(blk2)
-        reg.removeRamBlk(blk1)
+        reg.rmvRamBlk(blk1)
         self.assertEqual(
             1,
             len(reg._ramBlks)
         )
 
-        reg.removeRamBlk(blk2)
+        reg.rmvRamBlk(blk2)
         self.assertEqual(
             0,
             len(reg._ramBlks)
@@ -1140,40 +1140,40 @@ class Test_Register(TestCase):
     def test_set_start_n_info(self):
 
         reg = Testy_Register(SAVES_DIR, "hello")
-        with self.assertRaisesRegex(RegisterError, "setStartNInfo"):
-            reg.setStartNInfo(10, 3)
+        with self.assertRaisesRegex(RegisterError, "setStartnInfo"):
+            reg.setStartnInfo(10, 3)
 
         reg = Testy_Register(SAVES_DIR, "hello")
         with reg.open() as reg:
             with self.assertRaisesRegex(TypeError, "int"):
-                reg.setStartNInfo(10, 3.5)
+                reg.setStartnInfo(10, 3.5)
 
         reg = Testy_Register(SAVES_DIR, "hello")
         with reg.open() as reg:
             with self.assertRaisesRegex(TypeError, "int"):
-                reg.setStartNInfo(10.5, 3)
+                reg.setStartnInfo(10.5, 3)
 
         reg = Testy_Register(SAVES_DIR, "hello")
         with reg.open() as reg:
             with self.assertRaisesRegex(ValueError, "non-negative"):
-                reg.setStartNInfo(-1, 3)
+                reg.setStartnInfo(-1, 3)
 
         reg = Testy_Register(SAVES_DIR, "hello")
         with reg.open() as reg:
             try:
-                reg.setStartNInfo(0, 3)
+                reg.setStartnInfo(0, 3)
             except ValueError:
                 self.fail("head can be 0")
 
         reg = Testy_Register(SAVES_DIR, "hello")
         with reg.open() as reg:
             with self.assertRaisesRegex(ValueError, "positive"):
-                reg.setStartNInfo(0, -1)
+                reg.setStartnInfo(0, -1)
 
         reg = Testy_Register(SAVES_DIR, "hello")
         with reg.open() as reg:
             with self.assertRaisesRegex(ValueError, "positive"):
-                reg.setStartNInfo(0, 0)
+                reg.setStartnInfo(0, 0)
 
 
         for head, tail_length in product([0, 1, 10, 100, 1100, 450], [1,2,3,4,5]):
@@ -1183,7 +1183,7 @@ class Test_Register(TestCase):
             with reg.open() as reg:
 
                 try:
-                    reg.setStartNInfo(head, tail_length)
+                    reg.setStartnInfo(head, tail_length)
 
                 except ValueError:
                     self.fail(f"head = {head}, tail_length = {tail_length} are okay")
@@ -1202,7 +1202,7 @@ class Test_Register(TestCase):
             # check read-only mode doesn't work
             with reg.open(readonly= True) as reg:
                 with self.assertRaisesRegex(RegisterError, "read-only"):
-                    reg.setStartNInfo(head, tail_length)
+                    reg.setStartnInfo(head, tail_length)
 
             # tests make sure ValueError is thrown for small smart_n
             # 0 and head * 10 ** tailLen - 1 are the two possible extremes of the small start_n
@@ -1213,7 +1213,7 @@ class Test_Register(TestCase):
                             blk = Block([], ApriInfo(name ="hi"), start_n)
                             reg.addDiskBlk(blk)
                             with self.assertRaisesRegex(ValueError, "correct head"):
-                                reg.setStartNInfo(head, tail_length)
+                                reg.setStartnInfo(head, tail_length)
 
                             # make sure it exits safely
                             self.check_reg_set_start_n_info(
@@ -1234,14 +1234,14 @@ class Test_Register(TestCase):
                     for debug in [0, 1, 2]:
 
                         if debug == _NO_DEBUG:
-                            reg.setStartNInfo(head, tail_length)
+                            reg.setStartnInfo(head, tail_length)
 
                         else:
 
                             cornifer.registers._debug = debug
 
                             with self.assertRaises(KeyboardInterrupt):
-                                reg.setStartNInfo(head // 10, tail_length + 1)
+                                reg.setStartnInfo(head // 10, tail_length + 1)
 
                             cornifer.registers._debug = _NO_DEBUG
 
@@ -1266,7 +1266,7 @@ class Test_Register(TestCase):
                     blk = Block([], apri, start_n)
                     reg.addDiskBlk(blk)
                     with self.assertRaisesRegex(ValueError, "correct head"):
-                        reg.setStartNInfo(head, tail_length)
+                        reg.setStartnInfo(head, tail_length)
 
                     # make sure it exits safely
                     self.check_reg_set_start_n_info(
@@ -4048,7 +4048,7 @@ class Test_Register(TestCase):
         # remove some data
         # combine disk blocks
         # compress it
-        # setStartNInfo
+        # setStartnInfo
         # increase register size
         # move Register to a different savesDir
         # change apri info
@@ -4218,7 +4218,7 @@ class Test_Register(TestCase):
 
             self._composite_helper(reg, block_datas, apris)
 
-            reg.setStartNInfo(10 ** 13, 4)
+            reg.setStartnInfo(10 ** 13, 4)
 
             start_n = 10 ** 17
 
@@ -4234,7 +4234,7 @@ class Test_Register(TestCase):
             for start_n, length in reg.diskIntervals(apri):
                 reg.rmvDiskBlk(apri, start_n, length)
 
-            reg.setStartNInfo()
+            reg.setStartnInfo()
 
             reg.increaseRegSize(reg.regSize() + 1)
 

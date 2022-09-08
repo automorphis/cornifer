@@ -1,13 +1,14 @@
 from cornifer.errors import NOT_ABSOLUTE_ERROR_MESSAGE
-from cornifer._utilities import BASE54
+from cornifer._utilities import BASE52
 
 REG_FILENAME           = "register"
 VERSION_FILEPATH       = f"{REG_FILENAME}/version.txt"
 MSG_FILEPATH           = f"{REG_FILENAME}/message.txt"
 CLS_FILEPATH           = f"{REG_FILENAME}/class.txt"
 DATABASE_FILEPATH      = f"{REG_FILENAME}/database"
+MAP_SIZE_FILEPATH      = f"{REG_FILENAME}/mapsize.txt"
 
-LOCAL_DIR_CHARS        = BASE54
+LOCAL_DIR_CHARS        = BASE52
 COMPRESSED_FILE_SUFFIX = ".zip"
 
 
@@ -25,7 +26,7 @@ def checkRegStructure(localDir):
     if not localDir.is_dir():
         problems.append(str(localDir))
 
-    for path in [VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH]:
+    for path in [VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, MAP_SIZE_FILEPATH]:
         if not (localDir / path).is_file():
             problems.append(str(localDir / path))
 
