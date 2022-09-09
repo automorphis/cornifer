@@ -39,7 +39,7 @@ PUBLIC READ-WRITE METHODS FOR LMDB:
 PROTECTED READ-WRITE METHODS FOR LMDB:
  - _getIdByApri
  - _getAposKey
- - _getDiskBlockKey
+ - _getDiskBlkKey
 
 """
 
@@ -1585,7 +1585,7 @@ class Test_Register(TestCase):
         )
 
         for apri, start_n, length in block_data:
-            key = reg._getDiskBlockKey(_BLK_KEY_PREFIX, apri, None, start_n, length, False)
+            key = reg._getDiskBlkKey(_BLK_KEY_PREFIX, apri, None, start_n, length, False)
             with reg._db.begin() as txn:
                 filename = Path(txn.get(key).decode("ASCII"))
             self.assertTrue((reg._localDir / filename).exists())
@@ -2967,7 +2967,7 @@ class Test_Register(TestCase):
 
     def _is_compressed_helper(self, reg, apri, start_n, length, data_file_bytes = None):
 
-        compressed_key = reg._getDiskBlockKey(_COMPRESSED_KEY_PREFIX, apri, None, start_n, length, False)
+        compressed_key = reg._getDiskBlkKey(_COMPRESSED_KEY_PREFIX, apri, None, start_n, length, False)
 
         self.assertTrue(lmdbHasKey(reg._db, compressed_key))
 
@@ -2982,7 +2982,7 @@ class Test_Register(TestCase):
 
         self.assertEqual(zip_filename.suffix, ".zip")
 
-        data_key = reg._getDiskBlockKey(_BLK_KEY_PREFIX, apri, None, start_n, length, False)
+        data_key = reg._getDiskBlkKey(_BLK_KEY_PREFIX, apri, None, start_n, length, False)
 
         self.assertTrue(lmdbHasKey(reg._db, data_key))
 
@@ -2999,14 +2999,14 @@ class Test_Register(TestCase):
 
     def _is_not_compressed_helper(self, reg, apri, start_n, length):
 
-        compressed_key = reg._getDiskBlockKey(_COMPRESSED_KEY_PREFIX, apri, None, start_n, length, False)
+        compressed_key = reg._getDiskBlkKey(_COMPRESSED_KEY_PREFIX, apri, None, start_n, length, False)
 
         self.assertTrue(lmdbHasKey(reg._db, compressed_key))
 
         with reg._db.begin() as txn:
             self.assertEqual(txn.get(compressed_key), _IS_NOT_COMPRESSED_VAL)
 
-        data_key = reg._getDiskBlockKey(_BLK_KEY_PREFIX, apri, None, start_n, length, False)
+        data_key = reg._getDiskBlkKey(_BLK_KEY_PREFIX, apri, None, start_n, length, False)
 
         with reg._db.begin() as txn:
             return txn.get(data_key)
@@ -3148,8 +3148,8 @@ class Test_Register(TestCase):
 
                 with reg2._db.begin() as txn:
 
-                    blk_filename1 = txn.get(reg2._getDiskBlockKey(_BLK_KEY_PREFIX, apri, None, 0, 15, False))
-                    blk_filename2 = txn.get(reg2._getDiskBlockKey(_BLK_KEY_PREFIX, apri, None, 15, 15, False))
+                    blk_filename1 = txn.get(reg2._getDiskBlkKey(_BLK_KEY_PREFIX, apri, None, 0, 15, False))
+                    blk_filename2 = txn.get(reg2._getDiskBlkKey(_BLK_KEY_PREFIX, apri, None, 15, 15, False))
 
                     self._is_compressed_helper(reg2, apri, 0, 15, blk_filename1)
                     self._is_compressed_helper(reg2, apri, 15, 15, blk_filename2)
@@ -3946,7 +3946,7 @@ class Test_Register(TestCase):
             for data, (seg, compressed) in block_datas.items():
 
                 filename = (txn
-                            .get(reg._getDiskBlockKey(_BLK_KEY_PREFIX, data[0], None, data[1], data[2], False))
+                            .get(reg._getDiskBlkKey(_BLK_KEY_PREFIX, data[0], None, data[1], data[2], False))
                             .decode("ASCII")
                 )
 
@@ -3954,7 +3954,7 @@ class Test_Register(TestCase):
 
                 self.assertTrue(filename.is_file())
 
-                val = txn.get(reg._getDiskBlockKey(_COMPRESSED_KEY_PREFIX, data[0], None, data[1], data[2], False))
+                val = txn.get(reg._getDiskBlkKey(_COMPRESSED_KEY_PREFIX, data[0], None, data[1], data[2], False))
 
                 self.assertEqual(
                     compressed,
