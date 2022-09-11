@@ -33,7 +33,8 @@ from cornifer.blocks import Block, MemmapBlock
 from cornifer.filemetadata import FileMetadata
 from cornifer._utilities import intervalsOverlap, randomUniqueFilename, isInt, \
     resolvePath, BYTES_PER_MB, isDeletable
-from cornifer._utilities.lmdb import lmdbHasKey, lmdbPrefixIter, openLmdb, lmdbIsClosed, lmdbCountKeys
+from cornifer._utilities.lmdb import lmdbHasKey, lmdbPrefixIter, openLmdb, lmdbIsClosed, lmdbCountKeys, \
+    ReversibleTransaction
 from cornifer.regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, checkRegStructure, DATABASE_FILEPATH, \
     REG_FILENAME, MAP_SIZE_FILEPATH
@@ -376,9 +377,9 @@ class Register(ABC):
 
         # DEBUG : 1, 2
 
-        self._checkOpenRaise("setstartnInfo")
+        self._checkOpenRaise("setStartnInfo")
 
-        self._checkReadwriteRaise("setstartnInfo")
+        self._checkReadwriteRaise("setStartnInfo")
 
         if head is not None and not isInt(head):
             raise TypeError("`head` must be of type `int`.")
@@ -1505,6 +1506,15 @@ class Register(ABC):
 
         return filename
 
+    @classmethod
+    @abstractmethod
+    def withSuffix(cls, filename):
+        """Adds a suffix to a filename and returns it.
+
+        :param filename: (type `pathlib.Path`)
+        :return: (type `pathlib.Path`)
+        """
+
     def addDiskBlk(self, blk, existsOk = False, retMetadata = False, **kwargs):
         """Save a `Block` to disk and link it with this `Register`.
 
@@ -1514,7 +1524,7 @@ class Register(ABC):
         :raises RegisterError: If a duplicate `Block` already exists in this `Register`.
         """
 
-        #DEBUG : 1, 2, 3, 4
+        #DEBUG : 1, 2, 3, 4, 5
 
         self._checkOpenRaise("addDiskBlk")
         self._checkReadwriteRaise("addDiskBlk")
@@ -1528,23 +1538,76 @@ class Register(ABC):
         if not isinstance(retMetadata, bool):
             raise TypeError("`retMetadata` must be of type `bool`.")
 
+        startnHead = blk.startn() // self._startnTailMod
+
+        if startnHead != self._startnHead :
+
+            raise IndexError(
+                "The `startn` for the passed `Block` does not have the correct head:\n"
+                f"`tailLen`       : {self._startnTailLength}\n"
+                f"expected `head` : {self._startnHead}\n"
+                f"`startn`        : {blk.startn()}\n"
+                f"`startn` head   : {startnHead}\n"
+                "Please see the method `setStartnInfo` to troubleshoot this error."
+            )
+
+        if _debug == 1:
+            raise KeyboardInterrupt
+
+
+        txn = None
+        filename = None
+
+        if _debug == 2:
+            raise KeyboardInterrupt
+
         try:
 
-            with self._db.begin(write = True) as txn:
-                filename = self._addDiskBlkTxn(blk, kwargs, txn)
+            with ReversibleTransaction(self._db).begin(write = True) as txn:
 
-        except RegisterError as e:
+                filename = self._addDiskBlkTxn(blk, txn)
 
-            if "exists" in str(e) and not existsOk:
-                raise e
+                if _debug == 3:
+                    raise KeyboardInterrupt
+
+            if _debug == 4:
+                raise KeyboardInterrupt
+
+            type(self).dumpDiskData(blk.segment(), filename, **kwargs)
+
+            if _debug == 5:
+                raise KeyboardInterrupt
+
+        except BaseException as e:
+
+            if not isinstance(e, RegisterError) or not existsOk or not "exist" in str(e):
+
+                try:
+
+                    if filename is not None:
+                        filename.unlink(missing_ok = True)
+
+                    if txn is not None:
+
+                        with self._db.begin(write = True) as txn_:
+                            txn.reverse(txn_)
+
+                except:
+                    raise RegisterRecoveryError("Could not successfully recover from a failed disk `Block` add!") from e
+
+                else:
+
+                    if isinstance(e, lmdb.MapFullError):
+                        raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+
+                    else:
+                        raise e
+
+        if retMetadata:
+            return self.diskBlkMetadata(blk.apri(), blk.startn(), len(blk), False)
 
         else:
-
-            if retMetadata:
-                return FileMetadata.fromPath(filename)
-
-            else:
-                return None
+            return None
 
     def appendDiskBlk(self, blk, existsOk = False, retMetadata = False, **kwargs):
         """Add a `Block` to disk and link it with this `Register`.
@@ -1596,38 +1659,120 @@ class Register(ABC):
         :param recursively: (type `bool`)
         """
 
-        # DEBUG : 1, 2, 3
+        # DEBUG : 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
 
         self._checkOpenRaise("rmvDiskBlk")
         self._checkReadwriteRaise("rmvDiskBlk")
         startn, length = Register._checkApriStartnLengthRaise(apri, startn, length)
         startn, length = self._resolveStartnLength(apri, startn, length)
-        self._getIdByApri(apri, None, False)
+
+        if _debug == 1:
+            raise KeyboardInterrupt
+
+        txn = None
+        blkFilename = None
+        comprFilename = None
+
+        if _debug == 2:
+            raise KeyboardInterrupt
 
         try:
 
-            with self._db.begin(write = True) as txn:
-                self._rmvDiskBlkTxn(apri, startn, length, kwargs, txn)
+            if _debug == 3:
+                raise KeyboardInterrupt
+
+            with ReversibleTransaction(self._db).begin(write = True) as txn:
+
+                if _debug == 4:
+                    raise KeyboardInterrupt
+
+                blkFilename, comprFilename = self._rmvDiskBlkTxn(apri, startn, length, txn)
+
+                if _debug == 5:
+                    raise KeyboardInterrupt
+
+            if _debug == 6:
+                raise KeyboardInterrupt
+
+            if not isDeletable(blkFilename):
+                raise OSError(f"Cannot delete `Block` file `{str(blkFilename)}`.")
+
+            if _debug == 7:
+                raise KeyboardInterrupt
+
+            if comprFilename is not None and not isDeletable(comprFilename):
+                raise OSError(f"Cannot delete compressed `Block` file `{str(comprFilename)}`.")
+
+            if _debug == 8:
+                raise KeyboardInterrupt
+
+            if comprFilename is not None:
+
+                blkFilename.unlink(missing_ok = False)
+
+                if _debug == 9:
+                    raise KeyboardInterrupt
+
+                comprFilename.unlink(missing_ok = False)
+
+            else:
+                type(self).cleanDiskData(blkFilename, **kwargs)
+
+            return
 
         except DataNotFoundError:
             pass
 
-        else:
+        except BaseException as e:
 
-            if recursively:
+            _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not successfully recover from a failed disk `Block` remove!"
 
-                for subreg in self._iterSubregs():
+            try:
 
-                    with subreg._recursiveOpen(False) as subreg:
+                if comprFilename is not None:
 
-                        try:
-                            subreg.rmvDiskBlk(apri, startn, length, False, True, **kwargs)
+                    if blkFilename is not None and comprFilename.exists():
+                        blkFilename.touch(exist_ok=True)
 
-                        except DataNotFoundError:
-                            pass
+                    else:
+                        raise RegisterRecoveryError(_FAIL_NO_RECOVER_ERROR_MESSAGE) from e
 
-                        else:
-                            return
+                elif blkFilename is not None and not blkFilename.exists():
+                    raise RegisterRecoveryError(_FAIL_NO_RECOVER_ERROR_MESSAGE) from e
+
+                if txn is not None:
+
+                    with self._db.begin(write = True) as txn_:
+                        txn.reverse(txn_)
+
+            except RegisterRecoveryError:
+                raise
+
+            except:
+                raise RegisterRecoveryError(_FAIL_NO_RECOVER_ERROR_MESSAGE) from e
+
+            else:
+
+                if isinstance(e, lmdb.MapFullError):
+                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+
+                else:
+                    raise e
+
+        if recursively:
+
+            for subreg in self._iterSubregs():
+
+                with subreg._recursiveOpen(False) as subreg:
+
+                    try:
+                        subreg.rmvDiskBlk(apri, startn, length, False, True, **kwargs)
+
+                    except DataNotFoundError:
+                        pass
+
+                    else:
+                        return
 
         if not missingOk:
             raise DataNotFoundError(
@@ -2090,162 +2235,102 @@ class Register(ABC):
     #################################
     #    PROTEC DISK BLK METHODS    #
 
-    def _addDiskBlkTxn(self, blk, kwargs, txn):
+    def _addDiskBlkTxn(self, blk, txn):
 
-        startnHead = blk.startn() // self._startnTailMod
-
-        if startnHead != self._startnHead :
-
-            raise IndexError(
-                "The `startn` for the passed `Block` does not have the correct head:\n"
-                f"`tailLen`   : {self._startnTailLength}\n"
-                f"expected `head` : {self._startnHead}\n"
-                f"`startn`       : {blk.startn()}\n"
-                f"`startn` head  : {startnHead}\n"
-                "Please see the method `setStartnInfo` to troubleshoot this error."
-            )
+        # DEBUG : 6,7,8,9, 10
 
         apris = [apri for _, apri in blk.apri().iterInnerInfo() if isinstance(apri, ApriInfo)]
 
-        filename = None
-
-        if _debug == 1:
+        if _debug == 6:
             raise KeyboardInterrupt
 
-        try:
+        # this will create ID's if necessary
+        for i, apri in enumerate(apris):
+            self._getIdByApri(apri, None, True, txn)
 
-            # this will create ID's if necessary
-            for i, apri in enumerate(apris):
-                self._getIdByApri(apri, None, True, txn)
+        if _debug == 7:
+            raise KeyboardInterrupt
 
-            blkKey = self._getDiskBlkKey(
-                _BLK_KEY_PREFIX,
-                blk.apri(), None, blk.startn(), len(blk),
-                False, txn
-            )
+        blkKey = self._getDiskBlkKey(
+            _BLK_KEY_PREFIX,
+            blk.apri(), None, blk.startn(), len(blk),
+            False, txn
+        )
 
-            if not lmdbHasKey(txn, blkKey):
+        if not lmdbHasKey(txn, blkKey):
 
-                filename = randomUniqueFilename(self._localDir, length=6)
+            filename = randomUniqueFilename(self._localDir, length=6)
 
-                if _debug == 2:
-                    raise KeyboardInterrupt
+            if _debug == 8:
+                raise KeyboardInterrupt
 
-                filename = type(self).dumpDiskData(blk.segment(), filename, **kwargs)
+            filename = type(self).withSuffix(filename)
 
-                if _debug == 3:
-                    raise KeyboardInterrupt
+            if _debug == 9:
+                raise KeyboardInterrupt
 
-                filename_bytes = str(filename.name).encode("ASCII")
-                compressed_key = _COMPRESSED_KEY_PREFIX + blkKey[_BLK_KEY_PREFIX_LEN:]
+            filename_bytes = str(filename.name).encode("ASCII")
+            compressed_key = _COMPRESSED_KEY_PREFIX + blkKey[_BLK_KEY_PREFIX_LEN:]
 
-                txn.put(blkKey, filename_bytes)
-                txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
+            txn.put(blkKey, filename_bytes)
+            txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
 
-                if len(blk) == 0:
+            if _debug == 10:
+                raise KeyboardInterrupt
 
-                    warnings.warn(
-                        "Added a length 0 disk `Block` to this `Register`.\n" +
-                        f"`Register` msg: {str(self)}\n" +
-                        f"`Block`: {str(blk)}\n" +
-                        f"`Register` location: {str(self._localDir)}"
-                    )
+            if len(blk) == 0:
 
-                return filename
-
-            else:
-
-                raise RegisterError(
-                    f"Duplicate `Block` with the following data already exists in this `Register`: " +
-                    f"{str(blk.apri())}, startn = {blk.startn()}, length = {len(blk)}."
+                warnings.warn(
+                    "Added a length 0 disk `Block` to this `Register`.\n" +
+                    f"`Register` msg: {str(self)}\n" +
+                    f"`Block`: {str(blk)}\n" +
+                    f"`Register` location: {str(self._localDir)}"
                 )
 
-        except BaseException as e:
+            return filename
 
-            try:
+        else:
 
-                if filename is not None:
-                    filename.unlink(missing_ok = True)
+            raise RegisterError(
+                f"Duplicate `Block` with the following data already exists in this `Register`: " +
+                f"{str(blk.apri())}, startn = {blk.startn()}, length = {len(blk)}."
+            )
 
-            except BaseException:
-                raise RegisterRecoveryError("Could not successfully recover from a failed disk `Block` add!") from e
+    def _rmvDiskBlkTxn(self, apri, startn, length, txn):
 
-            else:
-
-                if isinstance(e, lmdb.MapFullError):
-                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
-
-                else:
-                    raise e
-
-    def _rmvDiskBlkTxn(self, apri, startn, length, kwargs, txn):
-
-        _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not successfully recover from a failed disk `Block` remove!"
+        if _debug == 12:
+            raise KeyboardInterrupt
 
         # raises DataNotFoundError
         self._getIdByApri(apri, None, False, txn)
+
+        if _debug == 13:
+            raise KeyboardInterrupt
+
         # raises DataNotFoundError
         blk_key, compressed_key = self._checkBlkCompressedKeysRaise(None, None, apri, None, startn, length, txn)
 
-        if _debug == 1:
+        if _debug == 14:
             raise KeyboardInterrupt
 
-        blk_filename, compressed_filename = self._checkBlkCompressedFilesRaise(
+        blkFilename, comprFilename = self._checkBlkCompressedFilesRaise(
             blk_key, compressed_key, apri, startn, length, txn
         )
 
-        if not isDeletable(blk_filename):
-            raise OSError(f"Cannot delete `Block` file `{str(blk_filename)}`.")
+        if _debug == 15:
+            raise KeyboardInterrupt
 
-        if compressed_filename is not None and not isDeletable(compressed_filename):
-            raise OSError(f"Cannot delete compressed `Block` file `{str(compressed_filename)}`.")
+        txn.delete(compressed_key)
 
-        try:
+        if _debug == 16:
+            raise KeyboardInterrupt
 
-            txn.delete(compressed_key)
-            txn.delete(blk_key)
+        txn.delete(blk_key)
 
-            if _debug == 2:
-                raise KeyboardInterrupt
+        if _debug == 17:
+            raise KeyboardInterrupt
 
-            if compressed_filename is not None:
-
-                blk_filename.unlink(missing_ok=False)
-
-                if _debug == 3:
-                    raise KeyboardInterrupt
-
-                compressed_filename.unlink(missing_ok=False)
-
-            else:
-                type(self).cleanDiskData(blk_filename, **kwargs)
-
-        except BaseException as e:
-
-            try:
-
-                if compressed_filename is not None:
-
-                    if compressed_filename.exists():
-                        blk_filename.touch(exist_ok=True)
-
-                    else:
-                        raise RegisterRecoveryError(_FAIL_NO_RECOVER_ERROR_MESSAGE) from e
-
-                elif not blk_filename.exists():
-                    raise RegisterRecoveryError(_FAIL_NO_RECOVER_ERROR_MESSAGE) from e
-
-            except RegisterRecoveryError:
-                raise
-
-            except BaseException:
-                raise RegisterRecoveryError(_FAIL_NO_RECOVER_ERROR_MESSAGE) from e
-
-            if isinstance(e, lmdb.MapFullError):
-                raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
-
-            else:
-                raise e
+        return blkFilename, comprFilename
 
     def _getDiskBlkKey(self, prefix, apri, apriJson, startn, length, missingOk, txn = None):
         """Get the database key for a disk `Block`.
@@ -2361,7 +2446,13 @@ class Register(ABC):
         if txn is None:
             txn = self._db
 
-        if not lmdbHasKey(txn, blkKey) or not lmdbHasKey(txn, compressedKey):
+        hasBlkKey = lmdbHasKey(txn, blkKey)
+        hasComprKey = lmdbHasKey(txn, compressedKey)
+
+        if (not hasBlkKey and hasComprKey) or (hasBlkKey and not hasComprKey):
+            raise RegisterError("Uncompressed/compressed `Block` key mismatch.")
+
+        if not hasBlkKey:
             raise DataNotFoundError(
                 _DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_FULL.format(apri, startn, length)
             )
@@ -2387,7 +2478,7 @@ class Register(ABC):
 
                 if not compressed_filename.exists() or not blk_filename.exists():
 
-                    raise DataNotFoundError(
+                    raise RegisterError( # TODO change error message
                         _DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_FULL.format(str(apri), startn, length)
                     )
 
@@ -2397,7 +2488,7 @@ class Register(ABC):
 
                 if not blk_filename.exists():
 
-                    raise DataNotFoundError(
+                    raise RegisterError( # TODO change error message
                         _DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_FULL.format(str(apri), startn, length)
                     )
 
@@ -2758,17 +2849,17 @@ class Register(ABC):
 class PickleRegister(Register):
 
     @classmethod
+    def withSuffix(cls, filename):
+        return filename.with_suffix(".pkl")
+
+    @classmethod
     def dumpDiskData(cls, data, filename, **kwargs):
 
         if len(kwargs) > 0:
-            raise KeyError("`Pickle_Register.addDiskBlk` accepts no keyword-arguments.")
-
-        filename = filename.with_suffix(".pkl")
+            raise KeyError("This method accepts no keyword-arguments.")
 
         with filename.open("wb") as fh:
             pickle.dump(data, fh)
-
-        return filename
 
     @classmethod
     def loadDiskData(cls, filename, **kwargs):
@@ -2789,9 +2880,7 @@ class NumpyRegister(Register):
         if len(kwargs) > 0:
             raise KeyError("This method accepts no keyword-arguments.")
 
-        filename = filename.with_suffix(".npy")
         np.save(filename, data, allow_pickle = False, fix_imports = False)
-        return filename
 
     @classmethod
     def loadDiskData(cls, filename, **kwargs):
@@ -2822,6 +2911,10 @@ class NumpyRegister(Register):
 
         filename = filename.with_suffix(".npy")
         return Register.cleanDiskData(filename)
+
+    @classmethod
+    def withSuffix(cls, filename):
+        return filename.with_suffix(".npy")
 
     def diskBlk(self, apri, startn = None, length = None, retMetadata = False, recursively = False, **kwargs):
         """

@@ -5,6 +5,68 @@ import lmdb
 
 from cornifer._utilities import isInt
 
+class ReversibleTransaction:
+
+    def __init__(self, db):
+
+        self.db = db
+        self.txn = None
+        self.errors = False
+        self.committed = False
+        self.undo = {}
+
+    @contextmanager
+    def begin(self, write = False):
+
+        self.txn = self.db.begin(write = write)
+
+        try:
+            yield self
+
+        except:
+
+            self.errors = True
+            raise
+
+        finally:
+
+            if self.errors:
+                self.txn.abort()
+
+            else:
+
+                self.txn.commit()
+                self.committed = True
+
+    def reverse(self, txn):
+
+        if self.committed:
+
+            for key, val in self.undo.items():
+
+                if val is None:
+                    txn.delete(key)
+
+                else:
+                    txn.put(key, val)
+
+    def put(self, key, val):
+
+        if key not in self.undo.keys():
+            self.undo[key] = self.txn.get(key, default = None)
+
+        self.txn.put(key, val)
+
+    def get(self, key, default = None):
+        return self.txn.get(key, default = default)
+
+    def delete(self, key):
+
+        if key not in self.undo.keys():
+            self.undo[key] = self.txn.get(key, default = None)
+
+        self.txn.delete(key)
+
 def lmdbIsClosed(db):
 
     try:
@@ -107,7 +169,7 @@ def _resolveDbOrTxn(dbOrTxn):
         txn = dbOrTxn.begin()
         abort = True
 
-    elif isinstance(dbOrTxn, lmdb.Transaction):
+    elif isinstance(dbOrTxn, (lmdb.Transaction, ReversibleTransaction)):
 
         txn = dbOrTxn
         abort = False

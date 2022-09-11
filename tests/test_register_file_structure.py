@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest import TestCase
 
 from cornifer.regfilestructure import checkRegStructure, REG_FILENAME, VERSION_FILEPATH, \
-    MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH
+    MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH, MAP_SIZE_FILEPATH
 
 SAVES_DIR = Path(__file__).parent.resolve() / "temp"
 
@@ -45,7 +45,7 @@ class Test_Register_File_Structure(TestCase):
 
         e = str(cm.exception)
 
-        for filepath in [VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH]:
+        for filepath in [VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH, MAP_SIZE_FILEPATH]:
 
             filepath = str(local_dir / filepath)
             self.assertIn(filepath, e)
@@ -59,6 +59,7 @@ class Test_Register_File_Structure(TestCase):
         (local_dir / MSG_FILEPATH).touch(exist_ok = False)
         (local_dir / CLS_FILEPATH).touch(exist_ok = False)
         (local_dir / DATABASE_FILEPATH).mkdir(exist_ok = False)
+        (local_dir / MAP_SIZE_FILEPATH).touch(exist_ok = False)
 
         try:
             checkRegStructure(local_dir)

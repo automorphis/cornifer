@@ -10,9 +10,9 @@ import numpy as np
 
 from cornifer import NumpyRegister, Register, ApriInfo, Block, AposInfo
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
-    DecompressionError
+    DecompressionError, RegisterRecoveryError
 from cornifer.regfilestructure import REG_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
-    DATABASE_FILEPATH
+    DATABASE_FILEPATH, MAP_SIZE_FILEPATH
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, _CURR_ID_KEY, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
     _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG, \
@@ -116,10 +116,12 @@ SAVES_DIR = Path(__file__).parent.resolve() / "temp"
 class Testy_Register(Register):
 
     @classmethod
-    def dumpDiskData(cls, data, filename, **kwargs):
-
-        filename.touch()
+    def withSuffix(cls, filename):
         return filename
+
+    @classmethod
+    def dumpDiskData(cls, data, filename, **kwargs):
+        filename.touch()
 
     @classmethod
     def loadDiskData(cls, filename, **kwargs):
@@ -129,11 +131,20 @@ class Testy_Register(Register):
     def cleanDiskData(cls, filename, **kwargs):
 
         filename = Path(filename)
-        filename.unlink(missing_ok = False)
+
+        try:
+            filename.unlink(missing_ok = False)
+
+        except RegisterError:pass
 
 Register.addSubclass(Testy_Register)
 
 class Testy_Register2(Register):
+
+    @classmethod
+    def withSuffix(cls, filename):
+        return filename
+
     @classmethod
     def dumpDiskData(cls, data, filename, **kwargs): pass
 
@@ -144,7 +155,7 @@ class Testy_Register2(Register):
     def cleanDiskData(cls, filename, **kwargs):pass
 
 def data(blk):
-    return blk.apri(), blk.startN(), len(blk)
+    return blk.apri(), blk.startn(), len(blk)
 
 class Test_Register(TestCase):
 
@@ -294,6 +305,7 @@ class Test_Register(TestCase):
         (local_dir / MSG_FILEPATH).touch(exist_ok = False)
         (local_dir / CLS_FILEPATH).touch(exist_ok = False)
         (local_dir / DATABASE_FILEPATH).mkdir(exist_ok = False)
+        (local_dir / MAP_SIZE_FILEPATH).touch(exist_ok = False)
 
         try:
             reg._db = openLmdb(local_dir / REG_FILENAME, 1, False)
@@ -784,14 +796,14 @@ class Test_Register(TestCase):
                 reg.addDiskBlk(blk)
 
         reg = Testy_Register(SAVES_DIR, "hello")
-        too_large = reg._startNTailMod
+        too_large = reg._startnTailMod
         blk = Block([], ApriInfo(name ="hi"), too_large)
         with reg.open() as reg:
             with self.assertRaisesRegex(IndexError, "correct head"):
                 reg.addDiskBlk(blk)
 
         reg = Testy_Register(SAVES_DIR, "hello")
-        too_large = reg._startNTailMod
+        too_large = reg._startnTailMod
         blk = Block([], ApriInfo(name ="hi"), too_large - 1)
         with reg.open() as reg:
             try:
@@ -849,8 +861,13 @@ class Test_Register(TestCase):
                 2,
                 lmdbCountKeys(reg._db, _ID_APRI_KEY_PREFIX)
             )
-            with self.assertRaisesRegex(RegisterError, "[dD]uplicate"):
-                reg.addDiskBlk(blk4)
+
+            try:
+                with self.assertRaisesRegex(RegisterError, "[dD]uplicate"):
+                    reg.addDiskBlk(blk4)
+
+            except AssertionError:
+                raise
 
             reg.addDiskBlk(blk5)
 
@@ -867,7 +884,7 @@ class Test_Register(TestCase):
 
             reg.addDiskBlk(Block(np.arange(30), ApriInfo(maybe ="maybe")))
 
-            for debug in [1,2,3,4]:
+            for debug in [1,2,3,4,5,6,7,8,9,10]:
 
                 apri = ApriInfo(none ="all")
                 blk = Block(np.arange(14), apri, 0)
@@ -879,10 +896,13 @@ class Test_Register(TestCase):
 
                 cornifer.registers._debug = _NO_DEBUG
 
-                self.assertEqual(
-                    1,
-                    lmdbCountKeys(reg._db, _BLK_KEY_PREFIX)
-                )
+                try:
+                    self.assertEqual(
+                        1,
+                        lmdbCountKeys(reg._db, _BLK_KEY_PREFIX)
+                    )
+                except AssertionError:
+                    raise
 
                 self.assertEqual(
                     1,
@@ -899,10 +919,13 @@ class Test_Register(TestCase):
                     lmdbCountKeys(reg._db, _APRI_ID_KEY_PREFIX)
                 )
 
-                self.assertEqual(
-                    1,
-                    sum(1 for d in reg._localDir.iterdir() if d.is_file())
-                )
+                try:
+                    self.assertEqual(
+                        1,
+                        sum(1 for d in reg._localDir.iterdir() if d.is_file())
+                    )
+                except AssertionError:
+                    raise
 
                 self.assertTrue(np.all(
                     np.arange(30) ==
@@ -1099,15 +1122,15 @@ class Test_Register(TestCase):
     def check_reg_set_start_n_info(self, reg, mod, head, tail_length):
         self.assertEqual(
             mod,
-            reg._startNTailMod
+            reg._startnTailMod
         )
         self.assertEqual(
             head,
-            reg._startNHead
+            reg._startnHead
         )
         self.assertEqual(
             tail_length,
-            reg._startNTailLength
+            reg._startnTailLength
         )
 
         with reg._db.begin() as txn:
@@ -1656,55 +1679,66 @@ class Test_Register(TestCase):
 
             reg.addDiskBlk(blk)
 
-            for debug in [1,2,3]:
+            for compress in range(2):
 
-                if debug == 3:
-                    reg.compress(ApriInfo(maybe ="maybe"), 0, 20)
+                for debug in [1,2,3,4,5,6,7,8,9,   12,13,14,15,16,17]:
 
-                cornifer.registers._debug = debug
+                    if debug >= 9 and compress == 1 or debug == 9 and compress == 0:
+                        continue
 
-                with self.assertRaises(KeyboardInterrupt):
-                    reg.rmvDiskBlk(ApriInfo(maybe ="maybe"), 0, 20)
+                    if compress == 1:
+                        reg.compress(blk.apri(), blk.startn(), len(blk))
 
-                cornifer.registers._debug = _NO_DEBUG
+                    cornifer.registers._debug = debug
 
-                self.assertEqual(
-                    2,
-                    lmdbCountKeys(reg._db, _BLK_KEY_PREFIX)
-                )
+                    try:
+                        with self.assertRaises(KeyboardInterrupt):
+                            reg.rmvDiskBlk(ApriInfo(maybe = "maybe"), 0, 20)
+                    except (RegisterRecoveryError, AssertionError):
+                        raise
 
-                self.assertEqual(
-                    2,
-                    lmdbCountKeys(reg._db, _COMPRESSED_KEY_PREFIX)
-                )
+                    cornifer.registers._debug = _NO_DEBUG
 
-                self.assertEqual(
-                    2,
-                    lmdbCountKeys(reg._db, _ID_APRI_KEY_PREFIX)
-                )
+                    self.assertEqual(
+                        2,
+                        lmdbCountKeys(reg._db, _BLK_KEY_PREFIX)
+                    )
 
-                self.assertEqual(
-                    2,
-                    lmdbCountKeys(reg._db, _APRI_ID_KEY_PREFIX)
-                )
+                    self.assertEqual(
+                        2,
+                        lmdbCountKeys(reg._db, _COMPRESSED_KEY_PREFIX)
+                    )
 
-                self.assertEqual(
-                    2 + (1 if debug == 3 else 0),
-                    sum(1 for d in reg._localDir.iterdir() if d.is_file())
-                )
+                    self.assertEqual(
+                        2,
+                        lmdbCountKeys(reg._db, _ID_APRI_KEY_PREFIX)
+                    )
 
-                if debug == 3:
-                    reg.decompress(ApriInfo(maybe ="maybe"), 0, 20)
+                    self.assertEqual(
+                        2,
+                        lmdbCountKeys(reg._db, _APRI_ID_KEY_PREFIX)
+                    )
 
-                self.assertTrue(np.all(
-                    np.arange(14) ==
-                    reg.diskBlk(ApriInfo(no ="yes"), 0, 14).segment()
-                ))
+                    try:
+                        self.assertEqual(
+                            2 + compress,
+                            sum(1 for d in reg._localDir.iterdir() if d.is_file())
+                        )
+                    except AssertionError:
+                        raise
 
-                self.assertTrue(np.all(
-                    np.arange(20) ==
-                    reg.diskBlk(ApriInfo(maybe ="maybe"), 0, 20).segment()
-                ))
+                    if compress == 1:
+                        reg.decompress(blk.apri(), blk.startn(), len(blk))
+
+                    self.assertTrue(np.all(
+                        np.arange(14) ==
+                        reg.diskBlk(ApriInfo(no ="yes"), 0, 14).segment()
+                    ))
+
+                    self.assertTrue(np.all(
+                        np.arange(20) ==
+                        reg.diskBlk(ApriInfo(maybe ="maybe"), 0, 20).segment()
+                    ))
 
     def test_set_apos_info(self):
 
@@ -3045,7 +3079,7 @@ class Test_Register(TestCase):
 
                     self._is_not_compressed_helper(reg2, _apri, 0, _length)
 
-                expected = str(apri).replace("(", "\\(").replace(")", "\\)") + f".*start_n.*0.*length.*{length}"
+                expected = str(apri).replace("(", "\\(").replace(")", "\\)") + f".*startn.*0.*length.*{length}"
 
                 with self.assertRaisesRegex(CompressionError, expected):
                     reg2.compress(apri, 0, length)
@@ -3098,7 +3132,7 @@ class Test_Register(TestCase):
             for blk in blks:
                 reg1.addDiskBlk(blk)
                 data_files_bytes.append(
-                    self._is_not_compressed_helper(reg1, blk.apri(), blk.startN(), len(blk))
+                    self._is_not_compressed_helper(reg1, blk.apri(), blk.startn(), len(blk))
                 )
 
             for t in zip(apris, start_ns, lengths):
@@ -3114,7 +3148,7 @@ class Test_Register(TestCase):
 
                     self._is_compressed_helper(reg1, *_t)
 
-                expected = str(t[0]).replace("(", "\\(").replace(")", "\\)") + f".*start_n.*0.*length.*{t[2]}"
+                expected = str(t[0]).replace("(", "\\(").replace(")", "\\)") + f".*startn.*0.*length.*{t[2]}"
                 with self.assertRaisesRegex(DecompressionError, expected):
                     reg1.decompress(*t)
 
@@ -4296,7 +4330,10 @@ class Test_Register(TestCase):
                         get
                     )
 
-            reg.rmvDiskBlk(apri1, 0, 15)
+            try:
+                reg.rmvDiskBlk(apri1, 0, 15)
+            except DataNotFoundError:
+                raise
 
             for i in [1,2,3]:
 

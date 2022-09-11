@@ -44,7 +44,7 @@ class Test_Block(TestCase):
             Block([], descr, 0.5)
 
         self.assertEqual(
-            Block([], descr).startN(),
+            Block([], descr).startn(),
             0
         )
 
@@ -54,16 +54,16 @@ class Test_Block(TestCase):
 
         seq = Block([], descr, 0)
         with self.assertRaises(TypeError):
-            seq.setStartN(0.5)
+            seq.setStartn(0.5)
 
         seq = Block([], descr, 0)
         with self.assertRaises(ValueError):
-            seq.setStartN(-1)
+            seq.setStartn(-1)
 
         seq = Block([], descr)
-        seq.setStartN(15)
+        seq.setStartn(15)
         self.assertEqual(
-            seq.startN(),
+            seq.startn(),
             15
         )
 
