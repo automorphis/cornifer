@@ -1083,7 +1083,7 @@ class Register(ABC):
 
             else:
 
-                for key, val in self._iterDiskBlockPairs(_BLK_KEY_PREFIX, apri, None, txn):
+                for key, val in self._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri, None, txn):
 
                     blkFilename = val.decode("ASCII")
 
@@ -1092,7 +1092,7 @@ class Register(ABC):
 
                     blkDatas.append(self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key))
 
-                for key, val in self._iterDiskBlockPairs(_COMPRESSED_KEY_PREFIX, apri, None, txn):
+                for key, val in self._iterDiskBlkPairs(_COMPRESSED_KEY_PREFIX, apri, None, txn):
 
                     comprFilename = val.decode("ASCII")
 
@@ -1658,7 +1658,7 @@ class Register(ABC):
 
             startn = 0
 
-            for key, _ in self._iterDiskBlockPairs(_BLK_KEY_PREFIX, blk.apri(), None):
+            for key, _ in self._iterDiskBlkPairs(_BLK_KEY_PREFIX, blk.apri(), None):
 
                 _, _startn, _length = self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key)
 
@@ -1906,6 +1906,7 @@ class Register(ABC):
 
 
         for startn, length in self.diskIntervals(apri):
+
             try:
                 yield self.diskBlk(apri, startn, length, retMetadata, False, **kwargs)
 
@@ -1913,8 +1914,11 @@ class Register(ABC):
                 pass
 
         if recursively:
+
             for subreg in self._iterSubregs():
+
                 with subreg._recursiveOpen(True) as subreg:
+
                     for blk in subreg.diskBlks(apri, retMetadata, True, **kwargs):
                         yield blk
 
@@ -1959,7 +1963,7 @@ class Register(ABC):
             _DISK_BLOCK_DATA_NOT_FOUND_ERROR_MSG_FULL.format(str(apri), startn, length)
         )
 
-    def diskIntervals(self, apri):
+    def diskIntervals(self, apri, combine = False, recursively = False):
         """Return a `list` of all tuples `(startn, length)` associated to disk `Block`s.
 
         The tuples are sorted by increasing `startn` and the larger `length` is used to break ties.
@@ -1975,7 +1979,7 @@ class Register(ABC):
 
         return sorted([
             self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key, apri)[1:]
-            for key, _ in self._iterDiskBlockPairs(_BLK_KEY_PREFIX, apri, None)
+            for key, _ in self._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri, None)
         ], key = lambda t: (t[0], -t[1]))
 
     def numDiskBlks(self, apri):
@@ -2389,7 +2393,7 @@ class Register(ABC):
         except DataNotFoundError:
             return 0
 
-    def _iterDiskBlockPairs(self, prefix, apri, apriJson, txn = None):
+    def _iterDiskBlkPairs(self, prefix, apri, apriJson, txn = None):
         """Iterate over key-value pairs for block entries.
 
         :param prefix: (type `bytes`)
@@ -2783,7 +2787,7 @@ class Register(ABC):
 
             raise DataNotFoundError(_DISK_RAM_BLOCK_DATA_NOT_FOUND_ERROR_MSG_N.format(str(apri), n))
 
-    def intervals(self, apri, combine = True, recursively = False):
+    def intervals(self, apri, combine = False, recursively = False):
 
         if not isinstance(apri, ApriInfo):
             raise TypeError("`apri` must be of type `ApriInfo`.")
@@ -2843,6 +2847,43 @@ class Register(ABC):
         else:
             return 0
 
+    def maxn(self, apri, recursively = False):
+
+        ret = -1
+
+        for key, _ in self._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri, None):
+
+            apri, startn, length = self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key, apri)
+            maxn = startn + length - 1
+
+            if ret < maxn:
+                ret = maxn
+
+        for blk in self._ramBlks:
+
+            maxn = blk.startn() + len(blk) - 1
+
+            if ret < maxn:
+                ret = maxn
+
+        if recursively:
+
+            for subreg in self._iterSubregs():
+
+                with subreg._recursiveOpen(True) as subreg:
+
+                    try:
+                        ret = max(ret, subreg.maxn(apri, recursively = True))
+
+                    except DataNotFoundError:
+                        pass
+
+        if ret == -1:
+            raise DataNotFoundError(f"No disk `Block`s associated with {str(apri)}")
+
+        else:
+            return ret
+
     #################################
     # PROTEC RAM & DISK BLK METHODS #
 
@@ -2860,7 +2901,7 @@ class Register(ABC):
 
         else:
 
-            for key, _ in self._iterDiskBlockPairs(_BLK_KEY_PREFIX, apri, None):
+            for key, _ in self._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri, None):
                 yield self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key, apri)
 
         if recursively:
