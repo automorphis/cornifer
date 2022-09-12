@@ -1829,7 +1829,7 @@ class Register(ABC):
 
             blk_filename, _ = self._checkBlkCompressedFilesRaise(blk_key, compressed_key, apri, startn, length)
             blk_filename = self._localDir / blk_filename
-            data, blk_filename = type(self).loadDiskData(blk_filename, **kwargs)
+            data = type(self).loadDiskData(blk_filename, **kwargs)
             blk = Block(data, apri, startn)
 
             if retMetadata:
@@ -2965,7 +2965,7 @@ class NumpyRegister(Register):
                 "https://numpy.org/doc/stable/reference/generated/numpy.memmap.html#numpy.memmap for more information."
             )
 
-        return np.load(filename, mmap_mode = mmap_mode, allow_pickle = False, fix_imports = False), filename
+        return np.load(filename, mmap_mode = mmap_mode, allow_pickle = False, fix_imports = False)
 
     @classmethod
     def cleanDiskData(cls, filename, **kwargs):
@@ -3397,19 +3397,21 @@ def updateRegVersion(ident):
     print("... done.")
     print("Updating register....")
 
-    if oldVers not in ["0.1.0", "0.2", "0.3"]:
+    try:
 
         with (ident / MAP_SIZE_FILEPATH).open("r") as fh:
-            dbMapSize = int(fh.read())
+            dbMapSize = int(fh.readline())
 
-    else:
-        dbMapSize = 25 * BYTES_PER_MB
+    except FileNotFoundError:
+
+        if oldVers not in ["0.1.0", "0.2", "0.3"]:
+            raise RegisterError
 
     with (ident / CLS_FILEPATH).open("r") as fh:
-        clsName = fh.read()
+        clsName = fh.readline()
 
     with (ident / MSG_FILEPATH).open("r") as fh:
-        msg = fh.read()
+        msg = fh.readline()
 
     oldRegLoader = importlib.import_module(".regloader", oldCorniferName.name)
     oldErrors = importlib.import_module(".errors", oldCorniferName.name)
@@ -3461,8 +3463,8 @@ def updateRegVersion(ident):
     print("... done.")
     print("Deleting old register....")
     shutil.rmtree(ident)
-    print("... done.")
     newReg._localDir.rename(ident.name)
+    print("... done.")
     print("Uninstall old cornifer....")
     shutil.rmtree(oldCorniferName)
     shutil.rmtree(envDir)
