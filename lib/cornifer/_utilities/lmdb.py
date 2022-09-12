@@ -38,6 +38,9 @@ class ReversibleTransaction:
                 self.txn.commit()
                 self.committed = True
 
+    def cursor(self):
+        return self.txn.cursor()
+
     def reverse(self, txn):
 
         if self.committed:

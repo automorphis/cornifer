@@ -919,13 +919,28 @@ class Register(ABC):
             else:
                 raise
 
+        txn = None
+
         try:
 
-            with self._db.begin(write = True) as txn:
-                self._rmvApriTxn(apri, force, txn)
+            with ReversibleTransaction(self._db).begin(write = True) as txn:
+                blkDatas = self._rmvApriTxn(apri, force, txn)
 
-        except lmdb.MapFullError as e:
-            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+            for apri_, startn, length in blkDatas:
+                self.rmvDiskBlk(apri_, startn, length, False, False)
+
+        except BaseException as e:
+
+            if txn is not None:
+
+                with self._db.begin(write = True) as txn_:
+                    txn.reverse(txn_)
+
+            if isinstance(e, lmdb.MapFullError):
+                raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+
+            else:
+                raise e
 
     #################################
     #      PROTEC APRI METHODS      #
@@ -1047,6 +1062,8 @@ class Register(ABC):
         txn.delete(_ID_APRI_KEY_PREFIX + apriId)
         txn.delete(_APRI_ID_KEY_PREFIX + apriJson)
 
+        return blkDatas
+
     def _rmvApriTxnHelper(self, txn, apri, apris, aposs, blkDatas, force):
 
         apris.append(apri)
@@ -1054,7 +1071,7 @@ class Register(ABC):
         if _debug == 1:
             raise KeyboardInterrupt
 
-        if self.numDiskBlks(apri) != 0:
+        if self._numDiskBlksTxn(apri, txn) != 0:
 
             if not force:
 
@@ -1117,8 +1134,9 @@ class Register(ABC):
                     if not force:
 
                         raise ValueError(
-                            f"{str(_apri)} is associated with {str(apri)}. Please remove the former first before removing "
-                            "the latter. Or remove automatically by calling `reg.rmvApri(apri, force = True)`."
+                            f"{str(_apri)} is associated with {str(apri)}. Please remove the former first before "
+                            f"removing the latter. Or remove automatically by calling `reg.rmvApri(apri, "
+                            f"force = True)`."
                         )
 
                     else:
@@ -1964,15 +1982,8 @@ class Register(ABC):
 
         self._checkOpenRaise("numDiskBlks")
 
-        try:
-
-            return lmdbCountKeys(
-                self._db,
-                _BLK_KEY_PREFIX + self._getIdByApri(apri, None, False) + _KEY_SEP
-            )
-
-        except DataNotFoundError:
-            return 0
+        with self._db.begin() as txn:
+            return self._numDiskBlksTxn(apri, txn)
 
     def compress(self, apri, startn = None, length = None, compressionLevel = 6, retMetadata = False):
         """Compress a `Block`.
@@ -2365,6 +2376,18 @@ class Register(ABC):
                 str(tail)  .encode("ASCII") + _KEY_SEP +
                 str(length).encode("ASCII")
         )
+
+    def _numDiskBlksTxn(self, apri, txn):
+
+        try:
+
+            return lmdbCountKeys(
+                txn,
+                _BLK_KEY_PREFIX + self._getIdByApri(apri, None, False) + _KEY_SEP
+            )
+
+        except DataNotFoundError:
+            return 0
 
     def _iterDiskBlockPairs(self, prefix, apri, apriJson, txn = None):
         """Iterate over key-value pairs for block entries.
