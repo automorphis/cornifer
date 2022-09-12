@@ -24,10 +24,10 @@ from cornifer.version import CURRENT_VERSION
 PUBLIC READ-WRITE METHODS FOR LMDB:
  - setStartnInfo
  - open
- - changeApriInfo
- - rmvApriInfo
- - setAposInfo
- - rmvAposInfo
+ - changeApri
+ - rmvApri
+ - setApos
+ - rmvApos
  - addSubreg
  - rmvSubreg
  - addDiskBlk
@@ -77,7 +77,7 @@ PROTECTED READ-WRITE METHODS FOR LMDB:
     - setMsg
     - addDiskBlk
     - _getApriJsonById
-    - apriInfos (no recursive)
+    - apris (no recursive)
     
 - LEVEL 5
     - _from_name (same register)
@@ -961,8 +961,8 @@ class Test_Register(TestCase):
     def test_apri_infos_no_recursive(self):
 
         reg = Testy_Register(SAVES_DIR, "msg")
-        with self.assertRaisesRegex(RegisterError, "apriInfos"):
-            reg.apriInfos()
+        with self.assertRaisesRegex(RegisterError, "apris"):
+            reg.apris()
 
         reg = Testy_Register(SAVES_DIR, "msg")
         with reg.open() as reg:
@@ -971,11 +971,11 @@ class Test_Register(TestCase):
             reg._getIdByApri(apri1, None, True)
             self.assertEqual(
                 1,
-                len(list(reg.apriInfos()))
+                len(list(reg.apris()))
             )
             self.assertEqual(
                 apri1,
-                list(reg.apriInfos())[0]
+                list(reg.apris())[0]
             )
 
             apri2 = ApriInfo(name ="hey")
@@ -984,15 +984,15 @@ class Test_Register(TestCase):
 
             self.assertEqual(
                 2,
-                len(list(reg.apriInfos()))
+                len(list(reg.apris()))
             )
             self.assertIn(
                 apri1,
-                list(reg.apriInfos())
+                list(reg.apris())
             )
             self.assertIn(
                 apri2,
-                list(reg.apriInfos())
+                list(reg.apris())
             )
 
     # def test__from_name_same_register(self):
@@ -1744,16 +1744,16 @@ class Test_Register(TestCase):
 
         reg = Testy_Register(SAVES_DIR, "hello")
 
-        with self.assertRaisesRegex(RegisterError, "open.*setAposInfo"):
-            reg.setAposInfo(ApriInfo(no ="no"), AposInfo(yes ="yes"))
+        with self.assertRaisesRegex(RegisterError, "open.*setApos"):
+            reg.setApos(ApriInfo(no ="no"), AposInfo(yes ="yes"))
 
         with reg.open() as reg:
 
             try:
-                reg.setAposInfo(ApriInfo(no ="no"), AposInfo(yes ="yes"))
+                reg.setApos(ApriInfo(no ="no"), AposInfo(yes ="yes"))
 
             except DataNotFoundError:
-                self.fail("Do not need apri_info to already be there to add aposInfo")
+                self.fail("Do not need apri_info to already be there to add apos")
 
             except Exception as e:
                 raise e
@@ -1763,21 +1763,21 @@ class Test_Register(TestCase):
                 lmdbCountKeys(reg._db, _APOS_KEY_PREFIX)
             )
 
-            reg.setAposInfo(ApriInfo(no="no"), AposInfo(maybe="maybe"))
+            reg.setApos(ApriInfo(no="no"), AposInfo(maybe="maybe"))
 
             self.assertEqual(
                 1,
                 lmdbCountKeys(reg._db, _APOS_KEY_PREFIX)
             )
 
-            reg.setAposInfo(ApriInfo(weird="right"), AposInfo(maybe="maybe"))
+            reg.setApos(ApriInfo(weird="right"), AposInfo(maybe="maybe"))
 
             self.assertEqual(
                 2,
                 lmdbCountKeys(reg._db, _APOS_KEY_PREFIX)
             )
 
-            reg.setAposInfo(ApriInfo(weird="right"), AposInfo(maybe="maybe"))
+            reg.setApos(ApriInfo(weird="right"), AposInfo(maybe="maybe"))
 
             self.assertEqual(
                 2,
@@ -1789,7 +1789,7 @@ class Test_Register(TestCase):
                 cornifer.registers._debug = debug
 
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.setAposInfo(ApriInfo(__ ="____"), AposInfo(eight = 9))
+                    reg.setApos(ApriInfo(__ ="____"), AposInfo(eight = 9))
 
                 cornifer.registers._debug = _NO_DEBUG
 
@@ -1800,14 +1800,14 @@ class Test_Register(TestCase):
 
         with reg.open(readonly= True) as reg:
             with self.assertRaisesRegex(RegisterError, "read-write"):
-                reg.setAposInfo(ApriInfo(no="no"), AposInfo(yes="yes"))
+                reg.setApos(ApriInfo(no="no"), AposInfo(yes="yes"))
 
     def test_apos_info(self):
 
         reg = Testy_Register(SAVES_DIR, "hello")
 
-        with self.assertRaisesRegex(RegisterError, "open.*aposInfo"):
-            reg.aposInfo(ApriInfo(no ="no"))
+        with self.assertRaisesRegex(RegisterError, "open.*apos"):
+            reg.apos(ApriInfo(no ="no"))
 
         with reg.open() as reg:
 
@@ -1815,23 +1815,23 @@ class Test_Register(TestCase):
             apos = AposInfo(yes ="no")
 
             with self.assertRaisesRegex(DataNotFoundError, re.escape(str(apri))):
-                reg.aposInfo(apri)
+                reg.apos(apri)
 
-            reg.setAposInfo(apri, apos)
+            reg.setApos(apri, apos)
 
             self.assertEqual(
                 apos,
-                reg.aposInfo(apri)
+                reg.apos(apri)
             )
 
             apri = ApriInfo(no ="yes")
             apos = AposInfo(yes ="no", restart = AposInfo(num = 1))
 
-            reg.setAposInfo(apri, apos)
+            reg.setApos(apri, apos)
 
             self.assertEqual(
                 apos,
-                reg.aposInfo(apri)
+                reg.apos(apri)
             )
 
         with reg.open(readonly= True) as reg:
@@ -1839,13 +1839,13 @@ class Test_Register(TestCase):
             try:
                 self.assertEqual(
                     apos,
-                    reg.aposInfo(apri)
+                    reg.apos(apri)
                 )
 
             except RegisterError as e:
 
                 if "read-write" in str(e):
-                    self.fail("aposInfo allows the register to be in read-only mode")
+                    self.fail("apos allows the register to be in read-only mode")
 
                 else:
                     raise e
@@ -1857,8 +1857,8 @@ class Test_Register(TestCase):
 
         reg = Testy_Register(SAVES_DIR, "hello")
 
-        with self.assertRaisesRegex(RegisterError, "open.*rmvAposInfo"):
-            reg.rmvAposInfo(ApriInfo(no ="no"))
+        with self.assertRaisesRegex(RegisterError, "open.*rmvApos"):
+            reg.rmvApos(ApriInfo(no ="no"))
 
         with reg.open() as reg:
 
@@ -1868,9 +1868,9 @@ class Test_Register(TestCase):
             apri2 = ApriInfo(maam ="sir")
             apos2 = AposInfo(sir ="maam", restart = apos1)
 
-            reg.setAposInfo(apri1, apos1)
+            reg.setApos(apri1, apos1)
 
-            reg.rmvAposInfo(apri1)
+            reg.rmvApos(apri1)
 
             self.assertEqual(
                 0,
@@ -1878,12 +1878,12 @@ class Test_Register(TestCase):
             )
 
             with self.assertRaisesRegex(DataNotFoundError, re.escape(str(apri1))):
-                reg.aposInfo(apri1)
+                reg.apos(apri1)
 
-            reg.setAposInfo(apri1, apos1)
-            reg.setAposInfo(apri2, apos2)
+            reg.setApos(apri1, apos1)
+            reg.setApos(apri2, apos2)
 
-            reg.rmvAposInfo(apri2)
+            reg.rmvApos(apri2)
 
             self.assertEqual(
                 1,
@@ -1891,11 +1891,11 @@ class Test_Register(TestCase):
             )
 
             with self.assertRaisesRegex(DataNotFoundError, re.escape(str(apri2))):
-                reg.aposInfo(apri2)
+                reg.apos(apri2)
 
             self.assertEqual(
                 apos1,
-                reg.aposInfo(apri1)
+                reg.apos(apri1)
             )
 
             for debug in [1,2]:
@@ -1903,7 +1903,7 @@ class Test_Register(TestCase):
                 cornifer.registers._debug = debug
 
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.rmvAposInfo(apri1)
+                    reg.rmvApos(apri1)
 
                 cornifer.registers._debug = _NO_DEBUG
 
@@ -1914,14 +1914,14 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     apos1,
-                    reg.aposInfo(apri1)
+                    reg.apos(apri1)
                 )
 
 
 
         with reg.open(readonly= True) as reg:
             with self.assertRaisesRegex(RegisterError, "read-write"):
-                reg.rmvAposInfo(apri1)
+                reg.rmvApos(apri1)
 
     def test_disk_blocks_no_recursive(self):
 
@@ -2967,8 +2967,8 @@ class Test_Register(TestCase):
 
         reg = Testy_Register(SAVES_DIR, "tests")
 
-        with self.assertRaisesRegex(RegisterError, "open.*apriInfos"):
-            reg.apriInfos()
+        with self.assertRaisesRegex(RegisterError, "open.*apris"):
+            reg.apris()
 
         for i in range(200):
 
@@ -2980,7 +2980,7 @@ class Test_Register(TestCase):
                 reg.addDiskBlk(Block([1], apri1))
                 reg.addRamBlk(Block([1], apri2))
 
-                get = reg.apriInfos()
+                get = reg.apris()
 
             self.assertEqual(
                 2*(i+1),
@@ -3330,8 +3330,8 @@ class Test_Register(TestCase):
 
         reg = Testy_Register(SAVES_DIR, "msg")
 
-        with self.assertRaisesRegex(RegisterError, "open.*changeApriInfo"):
-            reg.changeApriInfo(ApriInfo(i = 0), ApriInfo(j=0))
+        with self.assertRaisesRegex(RegisterError, "open.*changeApri"):
+            reg.changeApri(ApriInfo(i = 0), ApriInfo(j=0))
 
         with reg.open() as reg:
 
@@ -3340,23 +3340,23 @@ class Test_Register(TestCase):
             apos = AposInfo(hey ="sup")
 
             with self.assertRaisesRegex(DataNotFoundError, re.escape(str(old_apri))):
-                reg.changeApriInfo(old_apri, new_apri)
+                reg.changeApri(old_apri, new_apri)
 
-            reg.setAposInfo(old_apri, apos)
+            reg.setApos(old_apri, apos)
 
-            reg.changeApriInfo(old_apri, new_apri)
+            reg.changeApri(old_apri, new_apri)
 
             with self.assertRaisesRegex(DataNotFoundError, re.escape(str(old_apri))):
-                reg.aposInfo(old_apri)
+                reg.apos(old_apri)
 
             self.assertEqual(
                 apos,
-                reg.aposInfo(new_apri)
+                reg.apos(new_apri)
             )
 
             self.assertEqual(
                 1,
-                len(reg.apriInfos())
+                len(reg.apris())
             )
 
             self.assertEqual(
@@ -3381,7 +3381,7 @@ class Test_Register(TestCase):
 
         with reg.open(readonly= True) as reg:
             with self.assertRaisesRegex(RegisterError, "read-write"):
-                reg.changeApriInfo(old_apri, new_apri)
+                reg.changeApri(old_apri, new_apri)
 
         reg = NumpyRegister(SAVES_DIR, "hello")
 
@@ -3395,25 +3395,25 @@ class Test_Register(TestCase):
             apos1 = AposInfo(some ="info")
             apos2 = AposInfo(some_more ="info")
 
-            reg.setAposInfo(old_apri, apos1)
-            reg.setAposInfo(other_apri, apos2)
+            reg.setApos(old_apri, apos1)
+            reg.setApos(other_apri, apos2)
 
-            reg.changeApriInfo(old_apri, new_apri)
+            reg.changeApri(old_apri, new_apri)
 
             with self.assertRaisesRegex(DataNotFoundError, re.escape(str(old_apri))):
-                reg.aposInfo(old_apri)
+                reg.apos(old_apri)
 
             with self.assertRaisesRegex(DataNotFoundError, re.escape(str(other_apri))):
-                reg.aposInfo(other_apri)
+                reg.apos(other_apri)
 
             self.assertEqual(
                 apos1,
-                reg.aposInfo(new_apri)
+                reg.apos(new_apri)
             )
 
             self.assertEqual(
                 apos2,
-                reg.aposInfo(new_other_apri)
+                reg.apos(new_other_apri)
             )
 
             self.assertIn(
@@ -3436,7 +3436,7 @@ class Test_Register(TestCase):
                 reg
             )
 
-            get = reg.apriInfos()
+            get = reg.apris()
 
             self.assertEqual(
                 2,
@@ -3465,22 +3465,22 @@ class Test_Register(TestCase):
 
             # change it back
 
-            reg.changeApriInfo(new_apri, old_apri)
+            reg.changeApri(new_apri, old_apri)
 
             with self.assertRaisesRegex(DataNotFoundError, re.escape(str(new_apri))):
-                reg.aposInfo(new_apri)
+                reg.apos(new_apri)
 
             with self.assertRaisesRegex(DataNotFoundError, re.escape(str(new_other_apri))):
-                reg.aposInfo(new_other_apri)
+                reg.apos(new_other_apri)
 
             self.assertEqual(
                 apos1,
-                reg.aposInfo(old_apri)
+                reg.apos(old_apri)
             )
 
             self.assertEqual(
                 apos2,
-                reg.aposInfo(other_apri)
+                reg.apos(other_apri)
             )
 
             self.assertIn(
@@ -3503,7 +3503,7 @@ class Test_Register(TestCase):
                 reg
             )
 
-            get = reg.apriInfos()
+            get = reg.apris()
 
             self.assertEqual(
                 2,
@@ -3536,15 +3536,15 @@ class Test_Register(TestCase):
             blk = Block(np.arange(100), other_apri)
             reg.addDiskBlk(blk)
 
-            reg.changeApriInfo(old_apri, other_apri)
+            reg.changeApri(old_apri, other_apri)
 
             other_other_apri = ApriInfo(sir ="maam", respective = other_apri)
 
             with self.assertRaisesRegex(DataNotFoundError, re.escape(str(old_apri))):
-                reg.aposInfo(old_apri)
+                reg.apos(old_apri)
 
             try:
-                reg.aposInfo(other_apri)
+                reg.apos(other_apri)
 
             except DataNotFoundError:
                 self.fail("It does contain other_apri")
@@ -3554,12 +3554,12 @@ class Test_Register(TestCase):
 
             self.assertEqual(
                 apos1,
-                reg.aposInfo(other_apri)
+                reg.apos(other_apri)
             )
 
             self.assertEqual(
                 apos2,
-                reg.aposInfo(other_other_apri)
+                reg.apos(other_other_apri)
             )
 
             self.assertEqual(
@@ -3592,7 +3592,7 @@ class Test_Register(TestCase):
                 reg
             )
 
-            get = reg.apriInfos()
+            get = reg.apris()
 
             self.assertEqual(
                 2,
@@ -3622,7 +3622,7 @@ class Test_Register(TestCase):
             # change to an apri that creates duplicate keys
 
             with self.assertRaisesRegex(ValueError, "disjoint"):
-                reg.changeApriInfo(other_other_apri, other_apri)
+                reg.changeApri(other_other_apri, other_apri)
 
         reg = NumpyRegister(SAVES_DIR, "hello")
 
@@ -3631,7 +3631,7 @@ class Test_Register(TestCase):
             apri1 = ApriInfo(hi ="hello")
             apri2 = ApriInfo(num = 7, respective = apri1)
 
-            reg.setAposInfo(apri1, AposInfo(no ="yes"))
+            reg.setApos(apri1, AposInfo(no ="yes"))
             reg.addDiskBlk(Block(np.arange(10), apri2))
 
             for debug in [1,2,3]:
@@ -3639,13 +3639,13 @@ class Test_Register(TestCase):
                 cornifer.registers._debug = debug
 
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.changeApriInfo(apri1, ApriInfo(sup ="hey"), False)
+                    reg.changeApri(apri1, ApriInfo(sup ="hey"), False)
 
                 cornifer.registers._debug = _NO_DEBUG
 
                 self.assertEqual(
                     AposInfo(no ="yes"),
-                    reg.aposInfo(ApriInfo(hi ="hello"))
+                    reg.apos(ApriInfo(hi ="hello"))
                 )
 
                 self.assertTrue(np.all(
@@ -3673,7 +3673,7 @@ class Test_Register(TestCase):
                     reg
                 )
 
-                get = reg.apriInfos()
+                get = reg.apris()
 
                 self.assertEqual(
                     2,
@@ -4030,7 +4030,7 @@ class Test_Register(TestCase):
 
 
         # check apri
-        all_apri = reg.apriInfos()
+        all_apri = reg.apris()
 
         for apri in apris:
 
@@ -4153,7 +4153,7 @@ class Test_Register(TestCase):
             self._composite_helper(reg, block_datas, apris)
 
             with self.assertRaisesRegex(ValueError, "`Block`"):
-                reg.rmvApriInfo(ApriInfo(descr="\\'hi\"", respective=inner_apri))
+                reg.rmvApri(ApriInfo(descr="\\'hi\"", respective=inner_apri))
 
             reg.rmvDiskBlk(
                 ApriInfo(descr="\\'hi\"", respective=inner_apri)
@@ -4163,14 +4163,14 @@ class Test_Register(TestCase):
 
             self._composite_helper(reg, block_datas, apris)
 
-            reg.rmvApriInfo(ApriInfo(descr="\\'hi\"", respective=inner_apri))
+            reg.rmvApri(ApriInfo(descr="\\'hi\"", respective=inner_apri))
 
             del apris[apris.index(ApriInfo(descr="\\'hi\"", respective=inner_apri))]
 
             self._composite_helper(reg, block_datas, apris)
 
             with self.assertRaises(ValueError):
-                reg.rmvApriInfo(inner_apri)
+                reg.rmvApri(inner_apri)
 
             reg.decompress(
                 ApriInfo(descr ="Apri_Info.fromJson(hi = \"lol\")", respective = inner_apri),
@@ -4218,7 +4218,7 @@ class Test_Register(TestCase):
                 self._composite_helper(reg, block_datas, apris)
 
             with self.assertRaisesRegex(ValueError, re.escape(str(apri))):
-                reg.rmvApriInfo(inner_inner_apri)
+                reg.rmvApri(inner_inner_apri)
 
             reg.concatDiskBlks(apri, delete = True)
 
@@ -4279,8 +4279,8 @@ class Test_Register(TestCase):
 
         reg = NumpyRegister(SAVES_DIR, "sup")
 
-        with self.assertRaisesRegex(RegisterError, "open.*rmvApriInfo"):
-            reg.rmvApriInfo(ApriInfo(no ="yes"))
+        with self.assertRaisesRegex(RegisterError, "open.*rmvApri"):
+            reg.rmvApri(ApriInfo(no ="yes"))
 
         with reg.open() as reg:
 
@@ -4289,7 +4289,7 @@ class Test_Register(TestCase):
             apri3 = ApriInfo(respective = apri1)
 
             reg.addDiskBlk(Block(np.arange(15), apri1))
-            reg.setAposInfo(apri2, AposInfo(num = 7))
+            reg.setApos(apri2, AposInfo(num = 7))
             reg.addDiskBlk(Block(np.arange(15, 30), apri3, 15))
 
             for i in [1,2,3]:
@@ -4297,9 +4297,9 @@ class Test_Register(TestCase):
                 apri = eval(f"apri{i}")
 
                 with self.assertRaises(ValueError):
-                    reg.rmvApriInfo(apri)
+                    reg.rmvApri(apri)
 
-                get = reg.apriInfos()
+                get = reg.apris()
 
                 self.assertEqual(
                     3,
@@ -4340,9 +4340,9 @@ class Test_Register(TestCase):
                 apri = eval(f"apri{i}")
 
                 with self.assertRaises(ValueError):
-                    reg.rmvApriInfo(apri)
+                    reg.rmvApri(apri)
 
-                get = reg.apriInfos()
+                get = reg.apris()
 
                 self.assertEqual(
                     3,
@@ -4372,14 +4372,14 @@ class Test_Register(TestCase):
                         get
                     )
 
-            reg.rmvAposInfo(apri2)
+            reg.rmvApos(apri2)
 
             for debug in [1,2,3,4]:
 
                 cornifer.registers._debug = debug
 
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.rmvApriInfo(apri2)
+                    reg.rmvApri(apri2)
 
                 cornifer.registers._debug = _NO_DEBUG
 
@@ -4388,9 +4388,9 @@ class Test_Register(TestCase):
                     apri = eval(f"apri{i}")
 
                     with self.assertRaises(ValueError):
-                        reg.rmvApriInfo(apri)
+                        reg.rmvApri(apri)
 
-                    get = reg.apriInfos()
+                    get = reg.apris()
 
                     self.assertEqual(
                         3,
@@ -4420,16 +4420,16 @@ class Test_Register(TestCase):
                             get
                         )
 
-            reg.rmvApriInfo(apri2)
+            reg.rmvApri(apri2)
 
             for i in [1,3]:
 
                 apri = eval(f"apri{i}")
 
                 with self.assertRaises(ValueError):
-                    reg.rmvApriInfo(apri)
+                    reg.rmvApri(apri)
 
-                get = reg.apriInfos()
+                get = reg.apris()
 
                 self.assertEqual(
                     2,
@@ -4466,9 +4466,9 @@ class Test_Register(TestCase):
 
             reg.rmvDiskBlk(apri3, 15, 15)
 
-            reg.rmvApriInfo(apri3)
+            reg.rmvApri(apri3)
 
-            get = reg.apriInfos()
+            get = reg.apris()
 
             self.assertEqual(
                 1,
@@ -4505,11 +4505,11 @@ class Test_Register(TestCase):
                 reg
             )
 
-            reg.rmvApriInfo(apri1)
+            reg.rmvApri(apri1)
 
             self.assertEqual(
                 0,
-                len(reg.apriInfos())
+                len(reg.apris())
             )
 
             self.assertNotIn(
@@ -4529,7 +4529,7 @@ class Test_Register(TestCase):
 
         with self.assertRaisesRegex(RegisterError, "read-write"):
             with reg.open(readonly= True) as reg:
-                reg.rmvApriInfo(ApriInfo(no ="yes"))
+                reg.rmvApri(ApriInfo(no ="yes"))
 
 def _set_block_datas_compressed(block_datas, apri, start_n = None, length = None, compressed = True):
 

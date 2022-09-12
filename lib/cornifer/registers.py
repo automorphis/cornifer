@@ -330,7 +330,7 @@ class Register(ABC):
             return lmdbHasKey(self._db, _APRI_ID_KEY_PREFIX + apri.toJson().encode("ASCII"))
 
     def __iter__(self):
-        return iter(self.apriInfos())
+        return iter(self.apris())
 
     def setMsg(self, message):
         """Give this `Register` a brief description.
@@ -699,7 +699,7 @@ class Register(ABC):
     #################################
     #      PUBLIC APRI METHODS      #
 
-    def apriInfos(self, recursively = False):
+    def apris(self, recursively = False):
 
         if not isinstance(recursively, bool):
             raise TypeError("`recursively` must be of type `bool`")
@@ -708,7 +708,7 @@ class Register(ABC):
         for blk in self._ramBlks:
             ret.append(blk.apri())
 
-        self._checkOpenRaise("apriInfos")
+        self._checkOpenRaise("apris")
 
         with lmdbPrefixIter(self._db, _ID_APRI_KEY_PREFIX) as it:
             for _, val in it:
@@ -718,11 +718,11 @@ class Register(ABC):
         if recursively:
             for subreg in self._iterSubregs():
                 with subreg._recursiveOpen(True) as subreg:
-                    ret.append(subreg.apriInfos())
+                    ret.append(subreg.apris())
 
         return sorted(list(set(ret)))
 
-    def changeApriInfo(self, oldApri, newApri, recursively = False):
+    def changeApri(self, oldApri, newApri, recursively = False):
         """Replace an old `ApriInfo`, and all references to it, with a new `ApriInfo`.
 
         If ANY `Block`, `ApriInfo`, or `AposInfo` references `old_apri`, its entries in this `Register` will be
@@ -742,7 +742,7 @@ class Register(ABC):
 
         `some_other_apri = ApriInfo(descr = "period length", respective = old_apri)`.
 
-        After a call to `changeApriInfo(old_apri, new_apri)`, the first `Block` will have `new_apri` and the second
+        After a call to `changeApri(old_apri, new_apri)`, the first `Block` will have `new_apri` and the second
         will have
 
         `ApriInfo(descr = "period length", respective = new_apri)`.
@@ -755,9 +755,9 @@ class Register(ABC):
 
         # DEBUG : 1, 2, 3
 
-        self._checkOpenRaise("changeApriInfo")
+        self._checkOpenRaise("changeApri")
 
-        self._checkReadwriteRaise("changeApriInfo")
+        self._checkReadwriteRaise("changeApri")
 
         # raises `DataNotFoundError` if `oldApri` does not have an ID
         old_apri_id = self._getIdByApri(oldApri, None, False)
@@ -884,9 +884,9 @@ class Register(ABC):
         if recursively:
             for subreg in self._iterSubregs():
                 with subreg._recursiveOpen(False) as subreg:
-                    subreg.changeApriInfo(oldApri, newApri, True)
+                    subreg.changeApri(oldApri, newApri, True)
 
-    def rmvApriInfo(self, apri, force = False, missingOk = False):
+    def rmvApri(self, apri, force = False, missingOk = False):
         """Remove an `ApriInfo` that is not associated with any other `ApriInfo`, `Block`, nor `AposInfo`.
 
         :param apri: (type `ApriInfo`)
@@ -895,9 +895,9 @@ class Register(ABC):
 
         # DEBUG : 1, 2, 3, 4, 5
 
-        self._checkOpenRaise("rmvApriInfo")
+        self._checkOpenRaise("rmvApri")
 
-        self._checkReadwriteRaise("rmvApriInfo")
+        self._checkReadwriteRaise("rmvApri")
 
         if not isinstance(apri, ApriInfo):
             raise TypeError("`apri` must be of type `ApriInfo`.")
@@ -922,7 +922,7 @@ class Register(ABC):
         try:
 
             with self._db.begin(write = True) as txn:
-                self._rmvApriInfoTxn(apri, force, txn)
+                self._rmvApriTxn(apri, force, txn)
 
         except lmdb.MapFullError as e:
             raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
@@ -1024,12 +1024,12 @@ class Register(ABC):
                 except lmdb.MapFullError as e:
                     raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
 
-    def _rmvApriInfoTxn(self, apri, force, txn):
+    def _rmvApriTxn(self, apri, force, txn):
 
         apris = []
         aposs = []
         blkDatas = []
-        self._rmvApriInfoTxnHelper(txn, apri, apris, aposs, blkDatas, force)
+        self._rmvApriTxnHelper(txn, apri, apris, aposs, blkDatas, force)
 
         if force:
 
@@ -1040,14 +1040,14 @@ class Register(ABC):
                 self._rmvAposInfoTxn(apri, txn)
 
             for apri in apris:
-                self._rmvApriInfoTxn(apri, False, txn)
+                self._rmvApriTxn(apri, False, txn)
 
         apriJson = apri.toJson().encode()
         apriId = self._getIdByApri(apri, apriJson, False, txn)
         txn.delete(_ID_APRI_KEY_PREFIX + apriId)
         txn.delete(_APRI_ID_KEY_PREFIX + apriJson)
 
-    def _rmvApriInfoTxnHelper(self, txn, apri, apris, aposs, blkDatas, force):
+    def _rmvApriTxnHelper(self, txn, apri, apris, aposs, blkDatas, force):
 
         apris.append(apri)
 
@@ -1060,8 +1060,8 @@ class Register(ABC):
 
                 raise ValueError(
                     f"There are disk `Block`s saved with `{str(apri)}`. Please remove them first and call "
-                    "`rmvApriInfo` again. Or remove them automatically by calling "
-                    "`reg.rmvApriInfo(apri, force = True)`."
+                    "`rmvApri` again. Or remove them automatically by calling "
+                    "`reg.rmvApri(apri, force = True)`."
                 )
 
             else:
@@ -1086,7 +1086,7 @@ class Register(ABC):
             raise KeyboardInterrupt
 
         try:
-            self.aposInfo(apri)
+            self.apos(apri)
 
         except DataNotFoundError:
             pass
@@ -1097,7 +1097,7 @@ class Register(ABC):
 
                 raise ValueError(
                     f"There is an `AposInfo` associated with `{str(apri)}`. Please remove it first and call "
-                    "`rmvApriInfo` again. Or remove automatically by calling `reg.rmvApriInfo(apri, force = True)`."
+                    "`rmvApri` again. Or remove automatically by calling `reg.rmvApri(apri, force = True)`."
                 )
 
             else:
@@ -1118,11 +1118,11 @@ class Register(ABC):
 
                         raise ValueError(
                             f"{str(_apri)} is associated with {str(apri)}. Please remove the former first before removing "
-                            "the latter. Or remove automatically by calling `reg.rmvApriInfo(apri, force = True)`."
+                            "the latter. Or remove automatically by calling `reg.rmvApri(apri, force = True)`."
                         )
 
                     else:
-                        self._rmvApriInfoTxnHelper(txn, _apri, apris, aposs, blkDatas, True)
+                        self._rmvApriTxnHelper(txn, _apri, apris, aposs, blkDatas, True)
 
             if _debug == 4:
                 raise KeyboardInterrupt
@@ -1130,15 +1130,15 @@ class Register(ABC):
     #################################
     #      PUBLIC APOS METHODS      #
 
-    def setAposInfo(self, apri, apos):
+    def setApos(self, apri, apos):
         """Set some `AposInfo` for corresponding `ApriInfo`.
 
         WARNING: This method will OVERWRITE any previous saved `AposInfo`. If you do not want to lose any previously
         saved data, then you should do something like the following:
 
-            apos = reg.aposInfo(apri)
+            apos = reg.apos(apri)
             apos.period_length = 5
-            reg.setAposInfo(apos)
+            reg.setApos(apos)
 
         :param apri: (type `ApriInfo`)
         :param apos: (type `AposInfo`)
@@ -1146,9 +1146,9 @@ class Register(ABC):
 
         # DEBUG : 1, 2
 
-        self._checkOpenRaise("setAposInfo")
+        self._checkOpenRaise("setApos")
 
-        self._checkReadwriteRaise("setAposInfo")
+        self._checkReadwriteRaise("setApos")
 
         if not isinstance(apri, ApriInfo):
             raise TypeError("`apri` must be of type `ApriInfo`")
@@ -1171,7 +1171,7 @@ class Register(ABC):
         except lmdb.MapFullError as e:
             raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
 
-    def aposInfo(self, apri):
+    def apos(self, apri):
         """Get some `AposInfo` associated with a given `ApriInfo`.
 
         :param apri: (type `ApriInfo`)
@@ -1179,7 +1179,7 @@ class Register(ABC):
         :return: (type `AposInfo`)
         """
 
-        self._checkOpenRaise("aposInfo")
+        self._checkOpenRaise("apos")
 
         if not isinstance(apri, ApriInfo):
             raise TypeError("`apri` must be of type `ApriInfo`")
@@ -1195,13 +1195,13 @@ class Register(ABC):
         else:
             raise DataNotFoundError(f"No `AposInfo` associated with `{str(apri)}`.")
 
-    def rmvAposInfo(self, apri, missingOk = False):
+    def rmvApos(self, apri, missingOk = False):
 
         # DEBUG : 1, 2
 
-        self._checkOpenRaise("rmvAposInfo")
+        self._checkOpenRaise("rmvApos")
 
-        self._checkReadwriteRaise("rmvAposInfo")
+        self._checkReadwriteRaise("rmvApos")
 
         if not isinstance(apri, ApriInfo):
             raise TypeError("`apri` must be of type `ApriInfo`.")
@@ -3373,7 +3373,7 @@ def updateRegVersion(ident):
                         pass
 
                     else:
-                        newReg.setAposInfo(apos)
+                        newReg.setApos(apos)
 
             else:
 
@@ -3385,13 +3385,13 @@ def updateRegVersion(ident):
                         newReg.addDiskBlk(blk)
 
                     try:
-                        apos = oldReg.aposInfo(apri)
+                        apos = oldReg.apos(apri)
 
                     except DataNotFoundError:
                         pass
 
                     else:
-                        newReg.setAposInfo(apos)
+                        newReg.setApos(apos)
 
     newReg.setClsName(clsName)
     print("... done.")
