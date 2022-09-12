@@ -1340,9 +1340,9 @@ class Test_Register(TestCase):
             reg.addDiskBlk(blk1)
             total = 0
             for i, t in chain(
-                enumerate(reg._iterDiskBlockPairs(_BLK_KEY_PREFIX, None, None)),
-                enumerate(reg._iterDiskBlockPairs(_BLK_KEY_PREFIX, apri1, None)),
-                enumerate(reg._iterDiskBlockPairs(_BLK_KEY_PREFIX, None, apri1.toJson().encode("ASCII")))
+                enumerate(reg._iterDiskBlkPairs(_BLK_KEY_PREFIX, None, None)),
+                enumerate(reg._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri1, None)),
+                enumerate(reg._iterDiskBlkPairs(_BLK_KEY_PREFIX, None, apri1.toJson().encode("ASCII")))
             ):
                 total += 1
                 if i == 0:
@@ -1356,9 +1356,9 @@ class Test_Register(TestCase):
             reg.addDiskBlk(blk2)
             total = 0
             for i, t in chain(
-                enumerate(reg._iterDiskBlockPairs(_BLK_KEY_PREFIX, None, None)),
-                enumerate(reg._iterDiskBlockPairs(_BLK_KEY_PREFIX, apri1, None)),
-                enumerate(reg._iterDiskBlockPairs(_BLK_KEY_PREFIX, None, apri1.toJson().encode("ASCII")))
+                enumerate(reg._iterDiskBlkPairs(_BLK_KEY_PREFIX, None, None)),
+                enumerate(reg._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri1, None)),
+                enumerate(reg._iterDiskBlkPairs(_BLK_KEY_PREFIX, None, apri1.toJson().encode("ASCII")))
             ):
                 total += 1
                 if i == 0:
@@ -1375,7 +1375,7 @@ class Test_Register(TestCase):
             reg.addDiskBlk(blk3)
             total = 0
             for i, t in chain(
-                enumerate(reg._iterDiskBlockPairs(_BLK_KEY_PREFIX, None, None))
+                enumerate(reg._iterDiskBlkPairs(_BLK_KEY_PREFIX, None, None))
             ):
                 total += 1
                 if i == 0:
@@ -1394,8 +1394,8 @@ class Test_Register(TestCase):
 
             total = 0
             for i, t in chain(
-                enumerate(reg._iterDiskBlockPairs(_BLK_KEY_PREFIX, apri1, None)),
-                enumerate(reg._iterDiskBlockPairs(_BLK_KEY_PREFIX, None, apri1.toJson().encode("ASCII")))
+                enumerate(reg._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri1, None)),
+                enumerate(reg._iterDiskBlkPairs(_BLK_KEY_PREFIX, None, apri1.toJson().encode("ASCII")))
             ):
                 total += 1
                 if i == 0:
@@ -3201,7 +3201,7 @@ class Test_Register(TestCase):
         #
         #     reg2.compress(apri1)
         #
-        #     for key, val in reg2._iterDiskBlockPairs(_COMPRESSED_KEY_PREFIX, apri1, None):
+        #     for key, val in reg2._iterDiskBlkPairs(_COMPRESSED_KEY_PREFIX, apri1, None):
         #
         #         compr_filename = reg2._localDir / val.decode("ASCII")
         #
@@ -3216,7 +3216,7 @@ class Test_Register(TestCase):
         #         self._is_compressed_helper(reg2, apri1, 0, 10, data_filename)
         #         break
         #
-        #     for _, val in reg2._iterDiskBlockPairs(_BLK_KEY_PREFIX, apri1, None):
+        #     for _, val in reg2._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri1, None):
         #
         #         filename = reg2._localDir / val.decode("ASCII")
         #
