@@ -3426,9 +3426,11 @@ class _CopyRegister(Register):
 def updateRegVersion(ident):
 
     from venv import EnvBuilder
-    from subprocess import check_call
+    from subprocess import check_call, DEVNULL
     import sys
     import importlib
+    import string
+    import re
 
     ident = Path(ident)
 
@@ -3445,95 +3447,142 @@ def updateRegVersion(ident):
         print(f"Register version at {ident} is up-to-date.")
         return
 
-    builder = EnvBuilder()
-    print("Setting up....")
+    builder = EnvBuilder(with_pip = True)
+    print("Setting up temporary venv....")
     envDir = randomUniqueFilename(Path.home())
-    builder.create(envDir)
-    print("... done.")
-    print("Downloading old cornifer version....")
-    ctx = builder.ensure_directories(envDir)
-    exe = ctx.env_exe
-    check_call([exe, "-m", "pip", "install", f"cornifer=={oldVers}"])
-    print("... done.")
-    print("Installing old cornifer.... ")
-    oldCorniferSitePackages = Path(ctx.env_dir) / "lib" / "site-packages"
-    localSitePackages = Path(sys.prefix) / "lib" / "site-packages"
-    oldCorniferName = randomUniqueFilename(localSitePackages)
-    shutil.copytree(oldCorniferSitePackages / "cornifer", oldCorniferName)
-    importlib.invalidate_caches()
-    print("... done.")
-    print("Updating register....")
+    oldCorniferName = None
 
     try:
 
-        with (ident / MAP_SIZE_FILEPATH).open("r") as fh:
-            dbMapSize = int(fh.readline())
+        builder.create(envDir)
+        print("... done.")
+        print("Downloading old cornifer version....")
+        oldCorniferDir = randomUniqueFilename(Path.home(), length = 25)
+        oldCorniferDir.mkdir(exist_ok = False)
+        check_call(
+            ["git", "clone", "--depth", "1", "--branch", oldVers, "https://github.com/automorphis/cornifer.git", str(oldCorniferDir)],
+            stderr = DEVNULL, stdout = DEVNULL
+        )
+        print("... done.")
+        print("Installing old cornifer.... ")
 
-    except FileNotFoundError:
+        # this name is not guaranteed to be a unique package name, but it will be with extremely high probability
+        oldCorniferName = (
+            "cornifer_" +
+            randomUniqueFilename(Path.home(), length = 25, alphabet = string.ascii_uppercase + string.ascii_lowercase).name
+        )
+
+        for filename in oldCorniferDir.glob("**/*.py"):
+
+            with filename.open("r") as fh:
+                editedText = re.sub("cornifer", oldCorniferName, fh.read())
+
+            with filename.open("w") as fh:
+                fh.write(editedText)
+
+        (oldCorniferDir / "lib" / "cornifer").rename(oldCorniferDir / "lib" / oldCorniferName)
+        check_call(
+            ["pip", "install", str(oldCorniferDir)],
+            stderr = DEVNULL, stdout = DEVNULL
+        )
+        print("... done.")
+        print("Updating register....")
 
         if oldVers not in ["0.1.0", "0.2", "0.3"]:
-            raise RegisterError
 
-    with (ident / CLS_FILEPATH).open("r") as fh:
-        clsName = fh.readline()
+            with (ident / MAP_SIZE_FILEPATH).open("r") as fh:
+                dbMapSize = int(fh.read())
 
-    with (ident / MSG_FILEPATH).open("r") as fh:
-        msg = fh.readline()
+        else:
+            dbMapSize = 25 * BYTES_PER_MB
 
-    oldRegLoader = importlib.import_module(".regloader", oldCorniferName.name)
-    oldErrors = importlib.import_module(".errors", oldCorniferName.name)
-    from oldRegLoader import load
-    newReg = _CopyRegister(ident.parent, msg, dbMapSize)
-    oldReg = load(ident)
+        with (ident / CLS_FILEPATH).open("r") as fh:
+            clsName = fh.read()
 
-    with oldReg.open() as oldReg:
+        with (ident / MSG_FILEPATH).open("r") as fh:
+            msg = fh.read()
 
-        with newReg.open() as newReg:
+        oldRegLoader = importlib.import_module(".regloader", oldCorniferName)
+        oldErrors = importlib.import_module(".errors", oldCorniferName)
+        from oldRegLoader import load
+        newReg = _CopyRegister(ident.parent, msg, dbMapSize)
+        oldReg = load(ident)
 
-            if oldVers in ["0.1.0", "0.2", "0.3"]:
+        with oldReg.open() as oldReg:
 
-                from oldErrors import Data_Not_Found_Error
+            with newReg.open() as newReg:
 
-                for apri in oldReg:
+                if oldVers in ["0.1.0", "0.2", "0.3"]:
 
-                    for blk in oldReg.get_all_disk_blocks(apri):
-                        newReg.addDiskBlk(blk)
+                    from oldErrors import Data_Not_Found_Error
 
-                    try:
-                        apos = oldReg.get_apos_info()
+                    for apri in oldReg:
 
-                    except Data_Not_Found_Error:
-                        pass
+                        for blk in oldReg.get_all_disk_blocks(apri):
+                            newReg.addDiskBlk(blk)
 
-                    else:
-                        newReg.setApos(apos)
+                        try:
+                            apos = oldReg.get_apos_info()
 
-            else:
+                        except Data_Not_Found_Error:
+                            pass
 
-                from oldErrors import DataNotFoundError
+                        else:
+                            newReg.setApos(apos)
 
-                for apri in oldReg:
+                else:
 
-                    for blk in oldReg.blks(apri):
-                        newReg.addDiskBlk(blk)
+                    from oldErrors import DataNotFoundError
 
-                    try:
-                        apos = oldReg.apos(apri)
+                    for apri in oldReg:
 
-                    except DataNotFoundError:
-                        pass
+                        for blk in oldReg.diskBlks(apri):
+                            newReg.addDiskBlk(blk)
 
-                    else:
-                        newReg.setApos(apos)
+                        try:
+                            apos = oldReg.apos(apri)
 
-    newReg.setClsName(clsName)
-    print("... done.")
-    print("Deleting old register....")
-    shutil.rmtree(ident)
-    newReg._localDir.rename(ident.name)
-    print("... done.")
-    print("Uninstall old cornifer....")
-    shutil.rmtree(oldCorniferName)
-    shutil.rmtree(envDir)
-    print("... done.")
-    print("Update successful!")
+                        except DataNotFoundError:
+                            pass
+
+                        else:
+                            newReg.setApos(apos)
+
+        newReg.setClsName(clsName)
+        print("... done.")
+        print("Deleting old register....")
+        shutil.rmtree(ident)
+        newReg._localDir.rename(ident.name)
+        print("... done.")
+
+    except:
+
+        erroredOut = True
+        raise
+
+    else:
+        erroredOut = False
+
+    finally:
+
+        if erroredOut:
+            print("Encountered an error, cleaning up...")
+
+        if oldCorniferName is not None:
+
+            print("Uninstalling old cornifer....")
+            check_call(
+                ["pip", "uninstall", oldCorniferName],
+                stderr = DEVNULL, stdout = DEVNULL
+            )
+            print("... done.")
+
+        print("Removing temporary venv...")
+
+        if envDir.exists():
+            shutil.rmtree(envDir)
+
+        print("... done.")
+
+        if not erroredOut:
+            print("Update successful!")
