@@ -9,12 +9,12 @@ from cornifer._utilities import intervalsOverlap, randomUniqueFilename, checkHas
 """
 - LEVEL 0:
     - intervalsOverlap
-        - input check: negative length
-        - edge cases: boundaries intersect, length of interval is 0
+        - input check: negative length_
+        - edge cases: boundaries intersect, length_ of interval is 0
     - randomUniqueFilename
         - no input check
         - check suffix matches
-        - don't worry about length, alphabet, num_attempts optional args
+        - don't worry about length_, alphabet, num_attempts optional args
     - checkHasMethod
         - no input check
         - edge cases:

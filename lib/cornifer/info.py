@@ -215,6 +215,13 @@ class _Info(ABC):
 
             return type(self)(**kw)
 
+    def __iter__(self):
+
+        for key, val in self.__dict__.items():
+
+            if key not in type(self)._reservedKws:
+                yield key, val
+
     def __contains__(self, apri):
 
         if not isinstance(apri, ApriInfo):

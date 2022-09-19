@@ -29,13 +29,13 @@ class Block:
             raise TypeError("`apri` must be of type `Apri_Info`.")
 
         if not isInt(startn):
-            raise TypeError("`startn` must be of type `int`.")
+            raise TypeError("`startn_` must be of type `int`.")
 
         else:
             startn = int(startn)
 
         if startn < 0:
-            raise ValueError("`startn` must be non-negative.")
+            raise ValueError("`startn_` must be non-negative.")
 
         self._custom_dtype = False
 
@@ -98,12 +98,12 @@ class Block:
     def setStartn(self, startn):
 
         if not isInt(startn):
-            raise TypeError("`startn` must be of type `int`")
+            raise TypeError("`startn_` must be of type `int`")
         else:
             startn = int(startn)
 
         if startn < 0:
-            raise ValueError("`startn` must be positive")
+            raise ValueError("`startn_` must be positive")
 
         self._startn = startn
 
@@ -177,7 +177,7 @@ class Block:
     def __hash__(self):
         raise TypeError(
             f"The type `{self.__class__.__name__}` is not hashable. Please instead hash " +
-            f"`(blk.apri(), blk.startn(), len(blk))`."
+            f"`(blk.apri(), blk.startn_(), len(blk))`."
         )
 
     def __str__(self):
