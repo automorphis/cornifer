@@ -18,7 +18,7 @@ from pathlib import Path
 
 import lmdb
 
-from cornifer._utilities import isInt
+from .._utilities import isInt
 
 class ReversibleTransaction:
 

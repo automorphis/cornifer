@@ -17,11 +17,11 @@ import re
 import warnings
 from pathlib import Path
 
-from cornifer.errors import RegisterError
-from cornifer.registers import Register
-from cornifer.regfilestructure import LOCAL_DIR_CHARS, checkRegStructure
-from cornifer._utilities import resolvePath
-from cornifer.version import CURRENT_VERSION, COMPATIBLE_VERSIONS
+from .errors import RegisterError
+from .registers import Register
+from .regfilestructure import LOCAL_DIR_CHARS, checkRegStructure
+from ._utilities import resolvePath
+from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _ARGS_TYPES = {
     "regLimit" : int,

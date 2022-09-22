@@ -16,8 +16,7 @@
 import platform
 from datetime import datetime
 
-from cornifer._utilities import BYTES_PER_MB, BYTES_PER_KB, LOCAL_TIMEZONE, BYTES_PER_GB
-
+from ._utilities import BYTES_PER_MB, BYTES_PER_KB, LOCAL_TIMEZONE, BYTES_PER_GB
 
 class FileMetadata:
 

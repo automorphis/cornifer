@@ -13,8 +13,8 @@
     GNU General Public License for more details.
 """
 
-from cornifer.info import ApriInfo, AposInfo
-from cornifer.blocks import Block
-from cornifer.registers import Register, PickleRegister, NumpyRegister
-from cornifer.regloader import search, load
-from cornifer.errors import DataNotFoundError, CompressionError, DecompressionError
+from .info import ApriInfo, AposInfo
+from .blocks import Block
+from .registers import Register, PickleRegister, NumpyRegister
+from .regloader import search, load
+from .errors import DataNotFoundError, CompressionError, DecompressionError

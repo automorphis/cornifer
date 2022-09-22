@@ -17,8 +17,8 @@ import warnings
 
 import numpy as np
 
-from cornifer import ApriInfo
-from cornifer._utilities import checkHasMethod, justifySlice, isInt
+from .info import ApriInfo
+from ._utilities import checkHasMethod, justifySlice, isInt
 
 
 class Block:
@@ -26,7 +26,7 @@ class Block:
     def __init__(self, segment, apri, startn = 0):
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `Apri_Info`.")
+            raise TypeError("`apri` must be of type `ApriInfo`.")
 
         if not isInt(startn):
             raise TypeError("`startn_` must be of type `int`.")

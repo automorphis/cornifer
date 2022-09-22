@@ -18,7 +18,7 @@ import json
 from abc import ABC, abstractmethod
 from copy import copy, deepcopy
 
-from cornifer._utilities import orderJsonObj, isInt
+from ._utilities import orderJsonObj, isInt
 
 class _InfoJsonEncoder(json.JSONEncoder):
 

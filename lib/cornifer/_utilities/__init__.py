@@ -15,6 +15,8 @@
 
 import random
 import re
+import string
+import time
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -25,7 +27,9 @@ BYTES_PER_KB = 1024
 BYTES_PER_MB = 1024**2
 BYTES_PER_GB = 1024**3
 BYTES_PER_CHAR = 1
+# BASE52 are distinguishable ascii characters (e.g. 1, l are easily confused in some typefaces)
 BASE52 = "2346789abcdefghijmnpqrstuvwxyzABCDEFGHJLMNPQRTUVWXYZ"
+BASE94 = string.ascii_letters + string.digits + string.punctuation
 
 NAME_REGEX = re.compile("[_a-zA-Z]\w*")
 
@@ -60,6 +64,22 @@ def randomUniqueFilename(directory, suffix ="", length = 6, alphabet = BASE52, n
 
 def checkHasMethod(instance, methodName):
     return hasattr(instance.__class__, methodName) and callable(getattr(instance.__class__, methodName))
+
+def nsTimeInBase(base = BASE94):
+
+    ns = time.time_ns()
+    baseLength = len(base)
+    ret = ""
+
+    while ns > 0:
+
+        quo = ns // baseLength
+        rem = ns - quo * baseLength
+        ret = base[rem] + ret
+        ns = quo
+
+    return ret
+
 
 # def safe_overwrite_file(filename, new_content):
 #     tempfile = randomUniqueFilename(filename.parent)
