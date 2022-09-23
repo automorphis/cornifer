@@ -8,7 +8,7 @@ from unittest import TestCase
 import cornifer
 import numpy as np
 
-from cornifer import NumpyRegister, Register, ApriInfo, Block, AposInfo
+from cornifer import NumpyRegister, Register, ApriInfo, Block, AposInfo, load
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
     DecompressionError, RegisterRecoveryError
 from cornifer.regfilestructure import REG_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
@@ -16,7 +16,7 @@ from cornifer.regfilestructure import REG_FILENAME, VERSION_FILEPATH, MSG_FILEPA
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
     _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG, \
-    _START_N_TAIL_LENGTH_DEFAULT, _LENGTH_LENGTH_KEY, _LENGTH_LENGTH_DEFAULT
+    _START_N_TAIL_LENGTH_DEFAULT, _LENGTH_LENGTH_KEY, _LENGTH_LENGTH_DEFAULT, _CURR_ID_KEY
 from cornifer._utilities.lmdb import lmdbHasKey, lmdbPrefixIter, lmdbCountKeys, openLmdb
 from cornifer.version import CURRENT_VERSION
 
@@ -438,7 +438,8 @@ class Test_Register(TestCase):
         keyvals = {
             _START_N_HEAD_KEY : b"0",
             _START_N_TAIL_LENGTH_KEY : str(_START_N_TAIL_LENGTH_DEFAULT).encode("ASCII"),
-            _LENGTH_LENGTH_KEY : str(_LENGTH_LENGTH_DEFAULT).encode("ASCII")
+            _LENGTH_LENGTH_KEY : str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"),
+            _CURR_ID_KEY : b"0",
         }
 
         self.assertTrue(reg._dbIsClosed())
@@ -944,21 +945,6 @@ class Test_Register(TestCase):
                 list(reg.apris())
             )
 
-    # def test__from_name_same_register(self):
-    #
-    #     reg = Testy_Register2(SAVES_DIR, "hello")
-    #     with reg.open() as reg: pass
-    #     with self.assertRaisesRegex(TypeError, "addSubclass"):
-    #         Register._fromLocalDir(reg._localDir)
-    #
-    #     reg1 = Testy_Register(SAVES_DIR, "hellooooo")
-    #     with reg1.open() as reg1: pass
-    #     reg2 = Register._fromLocalDir(reg1._localDir)
-    #     self.assertIs(
-    #         reg1,
-    #         reg2
-    #     )
-
     def test__open_created(self):
 
         reg = Testy_Register(SAVES_DIR, "testy")
@@ -1109,142 +1095,142 @@ class Test_Register(TestCase):
             _length
         )
 
-    # def test_set_start_n_info(self):
-    #
-    #     reg = Testy_Register(SAVES_DIR, "hello")
-    #     with self.assertRaisesRegex(RegisterError, "setStartnInfo"):
-    #         reg.setStartnInfo(10, 3)
-    #
-    #     reg = Testy_Register(SAVES_DIR, "hello")
-    #     with reg.open() as reg:
-    #         with self.assertRaisesRegex(TypeError, "int"):
-    #             reg.setStartnInfo(10, 3.5)
-    #
-    #     reg = Testy_Register(SAVES_DIR, "hello")
-    #     with reg.open() as reg:
-    #         with self.assertRaisesRegex(TypeError, "int"):
-    #             reg.setStartnInfo(10.5, 3)
-    #
-    #     reg = Testy_Register(SAVES_DIR, "hello")
-    #     with reg.open() as reg:
-    #         with self.assertRaisesRegex(ValueError, "non-negative"):
-    #             reg.setStartnInfo(-1, 3)
-    #
-    #     reg = Testy_Register(SAVES_DIR, "hello")
-    #     with reg.open() as reg:
-    #         try:
-    #             reg.setStartnInfo(0, 3)
-    #         except ValueError:
-    #             self.fail("head can be 0")
-    #
-    #     reg = Testy_Register(SAVES_DIR, "hello")
-    #     with reg.open() as reg:
-    #         with self.assertRaisesRegex(ValueError, "positive"):
-    #             reg.setStartnInfo(0, -1)
-    #
-    #     reg = Testy_Register(SAVES_DIR, "hello")
-    #     with reg.open() as reg:
-    #         with self.assertRaisesRegex(ValueError, "positive"):
-    #             reg.setStartnInfo(0, 0)
-    #
-    #
-    #     for head, tail_length in product([0, 1, 10, 100, 1100, 450], [1,2,3,4,5]):
-    #
-    #         # check set works
-    #         reg = Testy_Register(SAVES_DIR, "hello")
-    #         with reg.open() as reg:
-    #
-    #             try:
-    #                 reg.setStartnInfo(head, tail_length)
-    #
-    #             except ValueError:
-    #                 self.fail(f"head = {head}, tail_length = {tail_length} are okay")
-    #
-    #             with reg._db.begin() as txn:
-    #                 self.assertEqual(
-    #                     str(head).encode("ASCII"),
-    #                     txn.get(_START_N_HEAD_KEY)
-    #                 )
-    #
-    #                 self.assertEqual(
-    #                     str(tail_length).encode("ASCII"),
-    #                     txn.get(_START_N_TAIL_LENGTH_KEY)
-    #                 )
-    #
-    #         # check read-only mode doesn't work
-    #         with reg.open(readonly= True) as reg:
-    #             with self.assertRaisesRegex(RegisterError, "read-only"):
-    #                 reg.setStartnInfo(head, tail_length)
-    #
-    #         # tests make sure ValueError is thrown for small smart_n
-    #         # 0 and head * 10 ** tailLen - 1 are the two possible extremes of the small start_n
-    #         if head > 0:
-    #             for start_n in [0, head * 10 ** tail_length - 1]:
-    #                 reg = Testy_Register(SAVES_DIR, "hello")
-    #                 with reg.open() as reg:
-    #                         blk = Block([], ApriInfo(name ="hi"), start_n)
-    #                         reg.addDiskBlk(blk)
-    #                         with self.assertRaisesRegex(ValueError, "correct head"):
-    #                             reg.setStartnInfo(head, tail_length)
-    #
-    #                         # make sure it exits safely
-    #                         self.check_reg_set_start_n_info(
-    #                             reg,
-    #                             10 ** _START_N_TAIL_LENGTH_DEFAULT, 0, _START_N_TAIL_LENGTH_DEFAULT
-    #                         )
-    #
-    #         # tests to make sure a few permissible start_n work
-    #         smallest = head * 10 ** tail_length
-    #         largest = smallest + 10 ** tail_length  - 1
-    #         for start_n in [smallest, smallest + 1, smallest + 2, largest -2, largest -1, largest]:
-    #             reg = Testy_Register(SAVES_DIR, "hello")
-    #             apri = ApriInfo(name="hi")
-    #             with reg.open() as reg:
-    #                 blk = Block([], apri,start_n)
-    #                 reg.addDiskBlk(blk)
-    #
-    #                 for debug in [0, 1, 2]:
-    #
-    #                     if debug == _NO_DEBUG:
-    #                         reg.setStartnInfo(head, tail_length)
-    #
-    #                     else:
-    #
-    #                         cornifer.registers._debug = debug
-    #
-    #                         with self.assertRaises(KeyboardInterrupt):
-    #                             reg.setStartnInfo(head // 10, tail_length + 1)
-    #
-    #                         cornifer.registers._debug = _NO_DEBUG
-    #
-    #                     self.check_reg_set_start_n_info(
-    #                         reg,
-    #                         10 ** tail_length, head, tail_length
-    #                     )
-    #
-    #                     with lmdbPrefixIter(reg._db, _BLK_KEY_PREFIX) as it:
-    #                         for curr_key,_ in it:pass
-    #
-    #                     self.check_key_set_start_n_info(
-    #                         reg, curr_key,
-    #                         apri, start_n, 0
-    #                     )
-    #
-    #         # tests to make sure `largest + 1` etc do not work
-    #         for start_n in [largest + 1, largest + 10, largest + 100, largest + 1000]:
-    #             reg = Testy_Register(SAVES_DIR, "hello")
-    #             apri = ApriInfo(name="hi")
-    #             with reg.open() as reg:
-    #                 blk = Block([], apri, start_n)
-    #                 reg.addDiskBlk(blk)
-    #                 with self.assertRaisesRegex(ValueError, "correct head"):
-    #                     reg.setStartnInfo(head, tail_length)
-    #
-    #                 # make sure it exits safely
-    #                 self.check_reg_set_start_n_info(
-    #                     reg,
-    #                     10 ** _START_N_TAIL_LENGTH_DEFAULT, 0, _START_N_TAIL_LENGTH_DEFAULT
-    #                 )
+    def test_set_start_n_info(self):
+
+        reg = Testy_Register(SAVES_DIR, "hello")
+        with self.assertRaisesRegex(RegisterError, "setStartnInfo"):
+            reg.setStartnInfo(10, 3)
+
+        reg = Testy_Register(SAVES_DIR, "hello")
+        with reg.open() as reg:
+            with self.assertRaisesRegex(TypeError, "int"):
+                reg.setStartnInfo(10, 3.5)
+
+        reg = Testy_Register(SAVES_DIR, "hello")
+        with reg.open() as reg:
+            with self.assertRaisesRegex(TypeError, "int"):
+                reg.setStartnInfo(10.5, 3)
+
+        reg = Testy_Register(SAVES_DIR, "hello")
+        with reg.open() as reg:
+            with self.assertRaisesRegex(ValueError, "non-negative"):
+                reg.setStartnInfo(-1, 3)
+
+        reg = Testy_Register(SAVES_DIR, "hello")
+        with reg.open() as reg:
+            try:
+                reg.setStartnInfo(0, 3)
+            except ValueError:
+                self.fail("head can be 0")
+
+        reg = Testy_Register(SAVES_DIR, "hello")
+        with reg.open() as reg:
+            with self.assertRaisesRegex(ValueError, "positive"):
+                reg.setStartnInfo(0, -1)
+
+        reg = Testy_Register(SAVES_DIR, "hello")
+        with reg.open() as reg:
+            with self.assertRaisesRegex(ValueError, "positive"):
+                reg.setStartnInfo(0, 0)
+
+
+        for head, tail_length in product([0, 1, 10, 100, 1100, 450], [1,2,3,4,5]):
+
+            # check set works
+            reg = Testy_Register(SAVES_DIR, "hello")
+            with reg.open() as reg:
+
+                try:
+                    reg.setStartnInfo(head, tail_length)
+
+                except ValueError:
+                    self.fail(f"head = {head}, tail_length = {tail_length} are okay")
+
+                with reg._db.begin() as txn:
+                    self.assertEqual(
+                        str(head).encode("ASCII"),
+                        txn.get(_START_N_HEAD_KEY)
+                    )
+
+                    self.assertEqual(
+                        str(tail_length).encode("ASCII"),
+                        txn.get(_START_N_TAIL_LENGTH_KEY)
+                    )
+
+            # check read-only mode doesn't work
+            with reg.open(readonly= True) as reg:
+                with self.assertRaisesRegex(RegisterError, "read-only"):
+                    reg.setStartnInfo(head, tail_length)
+
+            # tests make sure ValueError is thrown for small smart_n
+            # 0 and head * 10 ** tailLen - 1 are the two possible extremes of the small start_n
+            if head > 0:
+                for start_n in [0, head * 10 ** tail_length - 1]:
+                    reg = Testy_Register(SAVES_DIR, "hello")
+                    with reg.open() as reg:
+                            blk = Block([], ApriInfo(name ="hi"), start_n)
+                            reg.addDiskBlk(blk)
+                            with self.assertRaisesRegex(ValueError, "correct head"):
+                                reg.setStartnInfo(head, tail_length)
+
+                            # make sure it exits safely
+                            self.check_reg_set_start_n_info(
+                                reg,
+                                10 ** _START_N_TAIL_LENGTH_DEFAULT, 0, _START_N_TAIL_LENGTH_DEFAULT
+                            )
+
+            # tests to make sure a few permissible start_n work
+            smallest = head * 10 ** tail_length
+            largest = smallest + 10 ** tail_length  - 1
+            for start_n in [smallest, smallest + 1, smallest + 2, largest -2, largest -1, largest]:
+                reg = Testy_Register(SAVES_DIR, "hello")
+                apri = ApriInfo(name="hi")
+                with reg.open() as reg:
+                    blk = Block([], apri,start_n)
+                    reg.addDiskBlk(blk)
+
+                    for debug in [0, 1, 2]:
+
+                        if debug == _NO_DEBUG:
+                            reg.setStartnInfo(head, tail_length)
+
+                        else:
+
+                            cornifer.registers._debug = debug
+
+                            with self.assertRaises(KeyboardInterrupt):
+                                reg.setStartnInfo(head // 10, tail_length + 1)
+
+                            cornifer.registers._debug = _NO_DEBUG
+
+                        self.check_reg_set_start_n_info(
+                            reg,
+                            10 ** tail_length, head, tail_length
+                        )
+
+                        with lmdbPrefixIter(reg._db, _BLK_KEY_PREFIX) as it:
+                            for curr_key,_ in it:pass
+
+                        self.check_key_set_start_n_info(
+                            reg, curr_key,
+                            apri, start_n, 0
+                        )
+
+            # tests to make sure `largest + 1` etc do not work
+            for start_n in [largest + 1, largest + 10, largest + 100, largest + 1000]:
+                reg = Testy_Register(SAVES_DIR, "hello")
+                apri = ApriInfo(name="hi")
+                with reg.open() as reg:
+                    blk = Block([], apri, start_n)
+                    reg.addDiskBlk(blk)
+                    with self.assertRaisesRegex(ValueError, "correct head"):
+                        reg.setStartnInfo(head, tail_length)
+
+                    # make sure it exits safely
+                    self.check_reg_set_start_n_info(
+                        reg,
+                        10 ** _START_N_TAIL_LENGTH_DEFAULT, 0, _START_N_TAIL_LENGTH_DEFAULT
+                    )
 
     def check__iter_disk_block_pairs(self, t, apri, start_n, length):
         self.assertEqual(
@@ -1336,26 +1322,6 @@ class Test_Register(TestCase):
 
             if total != 4:
                 self.fail()
-
-    # def test__from_local_dir_different_registers(self):
-    #
-    #     reg1 = Testy_Register(SAVES_DIR, "hellooooo")
-    #     with reg1.open() as reg1: pass
-    #
-    #     reg2 = Testy_Register(SAVES_DIR, "hellooooo")
-    #     with reg2.open() as reg2: pass
-    #
-    #     del Register._instances[reg2]
-    #
-    #     reg3 = Register._fromLocalDir(reg2._localDir)
-    #
-    #     self.assertEqual(
-    #         reg2,
-    #         reg3
-    #     )
-    #     self.assertFalse(
-    #         reg2 is reg3
-    #     )
 
     def test_open(self):
 
@@ -2980,41 +2946,41 @@ class Test_Register(TestCase):
 
     def test__iter_ram_and_disk_block_datas(self):pass
 
-    # def test_apri_infos(self):
-    # 
-    #     reg = Testy_Register(SAVES_DIR, "tests")
-    # 
-    #     with self.assertRaisesRegex(RegisterError, "open.*apris"):
-    #         reg.apris()
-    # 
-    #     for i in range(200):
-    # 
-    #         apri1 = ApriInfo(name = i)
-    #         apri2 = ApriInfo(name =f"{i}")
-    # 
-    #         with reg.open() as reg:
-    # 
-    #             reg.addDiskBlk(Block([1], apri1))
-    #             reg.addRamBlk(Block([1], apri2))
-    # 
-    #             get = reg.apris()
-    # 
-    #         self.assertEqual(
-    #             2*(i+1),
-    #             len(get)
-    #         )
-    # 
-    #         for j in range(i+1):
-    # 
-    #             self.assertIn(
-    #                 ApriInfo(name = i),
-    #                 get
-    #             )
-    # 
-    #             self.assertIn(
-    #                 ApriInfo(name =f"{i}"),
-    #                 get
-    #             )
+    def test_apri_infos(self):
+
+        reg = Testy_Register(SAVES_DIR, "tests")
+
+        with self.assertRaisesRegex(RegisterError, "open.*apris"):
+            reg.apris()
+
+        for i in range(200):
+
+            apri1 = ApriInfo(name = i)
+            apri2 = ApriInfo(name =f"{i}")
+
+            with reg.open() as reg:
+
+                reg.addDiskBlk(Block([1], apri1))
+                reg.addRamBlk(Block([1], apri2))
+
+                get = reg.apris()
+
+            self.assertEqual(
+                2*(i+1),
+                len(get)
+            )
+
+            for j in range(i+1):
+
+                self.assertIn(
+                    ApriInfo(name = i),
+                    get
+                )
+
+                self.assertIn(
+                    ApriInfo(name =f"{i}"),
+                    get
+                )
 
     def _is_compressed_helper(self, reg, apri, start_n, length, data_file_bytes = None):
 
@@ -3734,7 +3700,7 @@ class Test_Register(TestCase):
             reg.addDiskBlk(blk1)
             reg.addDiskBlk(blk2)
 
-            with self.assertRaisesRegex(ValueError, "too long"):
+            with self.assertRaisesRegex(ValueError, "right size"):
                 reg.concatDiskBlks(apri, 0, 150, True)
 
             self.assertEqual(
@@ -3747,16 +3713,26 @@ class Test_Register(TestCase):
                 lmdbCountKeys(reg._db, _COMPRESSED_KEY_PREFIX)
             )
 
-            with self.assertRaisesRegex(ValueError, "too long"):
+            with self.assertRaisesRegex(ValueError, "right size"):
                 reg.concatDiskBlks(apri, 1, 200)
 
-            with self.assertRaisesRegex(ValueError, "too long"):
+            with self.assertRaisesRegex(ValueError, "right size"):
                 reg.concatDiskBlks(apri, 0, 199)
+
+            self.assertEqual(
+                2,
+                lmdbCountKeys(reg._db, _BLK_KEY_PREFIX)
+            )
+
+            self.assertEqual(
+                2,
+                lmdbCountKeys(reg._db, _COMPRESSED_KEY_PREFIX)
+            )
 
             try:
                 reg.concatDiskBlks(apri, 0, 200, True)
 
-            except Exception as e:
+            except:
                 self.fail("concatDiskBlks call should have succeeded")
 
             self.assertEqual(
@@ -3996,10 +3972,13 @@ class Test_Register(TestCase):
             # check blocks
             for data, (seg, compressed) in block_datas.items():
 
-                filename = (txn
-                            .get(reg._getDiskBlkKey(_BLK_KEY_PREFIX, data[0], None, data[1], data[2], False))
-                            .decode("ASCII")
-                )
+                try:
+                    filename = (txn
+                                .get(reg._getDiskBlkKey(_BLK_KEY_PREFIX, data[0], None, data[1], data[2], False))
+                                .decode("ASCII")
+                    )
+                except:
+                    raise
 
                 filename = reg._localDir / filename
 
@@ -4143,7 +4122,8 @@ class Test_Register(TestCase):
 
             self._composite_helper(reg, block_datas, apris)
 
-            for start_n, length in reg.intervals(ApriInfo(descr ="Apri_Info.fromJson(hi = \"lol\")", respective = inner_apri)):
+            for start_n, length in reg.intervals(
+                    ApriInfo(descr="Apri_Info.fromJson(hi = \"lol\")", respective=inner_apri)):
                 reg.compress(ApriInfo(descr ="Apri_Info.fromJson(hi = \"lol\")", respective = inner_apri), start_n, length)
 
             _set_block_datas_compressed(block_datas,
@@ -4152,7 +4132,7 @@ class Test_Register(TestCase):
 
             self._composite_helper(reg, block_datas, apris)
 
-            for start_n, length in reg.intervals(ApriInfo(descr ="\\'hi\"", respective = inner_apri)):
+            for start_n, length in reg.intervals(ApriInfo(descr="\\'hi\"", respective=inner_apri)):
                 reg.compress(ApriInfo(descr ="\\'hi\"", respective = inner_apri), start_n, length)
 
             _set_block_datas_compressed(block_datas,
@@ -4215,6 +4195,8 @@ class Test_Register(TestCase):
             new_message,
             str(reg)
         )
+
+        reg = load(reg._localDir)
 
         with reg.open() as reg:
 

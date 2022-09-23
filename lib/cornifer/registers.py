@@ -17,7 +17,6 @@ import inspect
 import math
 import pickle
 import shutil
-import time
 import warnings
 import zipfile
 from contextlib import contextmanager
@@ -32,7 +31,7 @@ from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, 
 from .info import ApriInfo, AposInfo
 from .blocks import Block, MemmapBlock
 from .filemetadata import FileMetadata
-from ._utilities import randomUniqueFilename, isInt, resolvePath, BYTES_PER_MB, isDeletable, nsTimeInBase
+from ._utilities import randomUniqueFilename, isInt, resolvePath, BYTES_PER_MB, isDeletable
 from ._utilities.lmdb import lmdbHasKey, lmdbPrefixIter, openLmdb, lmdbIsClosed, lmdbCountKeys, \
     ReversibleTransaction
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
@@ -55,6 +54,7 @@ _SUB_KEY_PREFIX            = b"sub"
 _BLK_KEY_PREFIX            = b"blk"
 _APRI_ID_KEY_PREFIX        = b"apri"
 _ID_APRI_KEY_PREFIX        = b"id"
+_CURR_ID_KEY               = b"curr_id"
 _APOS_KEY_PREFIX           = b"apos"
 _COMPRESSED_KEY_PREFIX     = b"compr"
 _LENGTH_LENGTH_KEY         = b"lenlen"
@@ -516,6 +516,7 @@ class Register(ABC):
                         txn.put(_START_N_HEAD_KEY, str(self._startnHead).encode("ASCII"))
                         txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startnTailLength).encode("ASCII"))
                         txn.put(_LENGTH_LENGTH_KEY, str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"))
+                        txn.put(_CURR_ID_KEY, b"0")
 
                 except lmdb.MapFullError as e:
                     raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
@@ -1052,10 +1053,10 @@ class Register(ABC):
                 return _id
 
             elif missingOk:
-                # in order to prevent race conditions, it is necessary to stall the program momentarily, otherwise
-                # repeated calls to this function may result in the same ID
-                time.sleep(1e-6)
-                _id = nsTimeInBase().encode("ASCII")
+
+                _id = txn.get(_CURR_ID_KEY)
+                next_id = str(int(_id) + 1).encode("ASCII")
+                txn.put(_CURR_ID_KEY, next_id)
                 txn.put(key, _id)
                 txn.put(_ID_APRI_KEY_PREFIX + _id, key[_APRI_ID_KEY_PREFIX_LEN : ])
 
@@ -2159,9 +2160,8 @@ class Register(ABC):
             raise KeyboardInterrupt
 
         # this will create ID's if necessary
-        ids = []
         for i, apri in enumerate(apris):
-            ids.append(self._getIdByApri(apri, None, True, txn))
+            self._getIdByApri(apri, None, True, txn)
 
         if _debug == 7:
             raise KeyboardInterrupt
@@ -2171,8 +2171,6 @@ class Register(ABC):
             blk.apri(), None, blk.startn(), len(blk),
             False, txn
         )
-
-        x=self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, blkKey, None, txn)
 
         if not lmdbHasKey(txn, blkKey):
 
@@ -2516,6 +2514,11 @@ class Register(ABC):
         else:
             raise DataNotFoundError(f"No matching RAM disk `Block` found.")
 
+    def rmvAllRamBlks(self):
+
+        self._checkOpenRaise("rmvAllRamBlks")
+        self._ramBlks = {}
+
     #################################
     #    PROTEC RAM BLK METHODS     #
 
@@ -2557,7 +2560,7 @@ class Register(ABC):
 
         else:
 
-            for startn, length in self.intervals(apri, False, diskonly, False):
+            for startn, length in self.intervals(apri, combine = False, diskonly = diskonly, recursively = False):
 
                 if startn <= n < startn + length:
                     return self.blk(apri, startn, length, diskonly, False, retMetadata, **kwargs)
@@ -2685,7 +2688,7 @@ class Register(ABC):
 
         else:
 
-            for startn, length in self.intervals(apri, False, diskonly, recursively):
+            for startn, length in self.intervals(apri, combine = False, diskonly = diskonly, recursively = recursively):
 
                 try:
                     yield self.blk(apri, startn, length, diskonly, False, retMetadata, **kwargs)
@@ -2789,7 +2792,7 @@ class Register(ABC):
 
             if isinstance(n, slice):
                 # return iterator if given slice
-                return _ElementIter(self, apri, n, recursively, kwargs)
+                return _ElementIter(self, apri, n, diskonly, recursively, kwargs)
 
             else:
                 return self.blkByN(apri, n, diskonly, recursively, False, **kwargs)[n]
@@ -2810,12 +2813,15 @@ class Register(ABC):
             _blkNotFoundErrMsg(diskonly, str(apri), n)
         )
 
-    def intervals(self, apri, combine = False, diskonly = False, recursively = False):
+    def intervals(self, apri, sort = False, combine = False, diskonly = False, recursively = False):
 
         self._checkOpenRaise("intervals")
 
         if not isinstance(apri, ApriInfo):
             raise TypeError("`apri` must be of type `ApriInfo`.")
+
+        if not isinstance(sort, bool):
+            raise TypeError("`sort` must be of type `bool`.")
 
         if not isinstance(combine, bool):
             raise TypeError("`combine` must be of type `bool`.")
@@ -2826,41 +2832,39 @@ class Register(ABC):
         if not isinstance(recursively, bool):
             raise TypeError("`recursively` must be of type `bool`.")
 
-        try:
-            self._checkKnownApri(apri)
+        if not sort and not combine:
 
-        except DataNotFoundError:
+            try:
+                self._checkKnownApri(apri)
 
-            if not recursively:
-                raise
+            except DataNotFoundError:
 
-        else:
+                if not recursively:
+                    raise
 
-            if not diskonly and apri in self._ramBlks.keys():
+            else:
 
-                for blk in self._ramBlks[apri]:
-                    yield blk.startn(), len(blk)
+                if not diskonly and apri in self._ramBlks.keys():
 
-            for key, _ in self._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri, None):
-                yield self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key, apri)[1:]
+                    for blk in self._ramBlks[apri]:
+                        yield blk.startn(), len(blk)
 
-        if recursively:
+                for key, _ in self._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri, None):
+                    yield self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key, apri)[1:]
 
-            for subreg in self._iterSubregs():
+            if recursively:
 
-                with subreg._recursiveOpen(True) as subreg:
+                for subreg in self._iterSubregs():
 
-                    for data in subreg.intervals(apri, combine, diskonly, recursively):
-                        yield data
+                    with subreg._recursiveOpen(True) as subreg:
 
-        if combine:
+                        for data in subreg.intervals(apri, sort = False, combine = False, diskonly = diskonly, recursively = True):
+                            yield data
+
+        elif combine:
 
             ret = []
-            intervals_sorted = sorted(
-                list(self.intervals(apri, False, diskonly, recursively)),
-                key = lambda t: (t[0], -t[1])
-            )
-
+            intervals_sorted = self.intervals(apri, sort = True, combine = False, diskonly = diskonly, recursively = recursively)
             for startn, length in intervals_sorted:
 
                 if len(ret) == 0:
@@ -2869,7 +2873,18 @@ class Register(ABC):
                 elif startn <= ret[-1][0] + ret[-1][1]:
                     ret[-1] = (ret[-1][0], max(startn + length - ret[-1][0], ret[-1][1]))
 
-            return ret
+            for t in ret:
+                yield t
+
+        else:
+
+            ret = sorted(
+                list(self.intervals(apri, sort = False, combine = False, diskonly = diskonly, recursively = recursively)),
+                key = lambda t: (t[0], -t[1])
+            )
+
+            for t in ret:
+                yield t
 
     def totalLen(self, apri, diskonly = False, recursively = False):
 
@@ -2885,7 +2900,7 @@ class Register(ABC):
             raise TypeError("`recursively` must be of type `bool`.")
 
         try:
-            return sum(t[1] for t in self.intervals(apri, diskonly, recursively))
+            return sum(t[1] for t in self.intervals(apri, combine = True, diskonly = diskonly, recursively = recursively))
 
         except DataNotFoundError:
             return 0
@@ -2954,8 +2969,8 @@ class Register(ABC):
 
         else:
 
-            for ret, _ in self.intervals(apri, False, diskonly, recursively):
-                pass
+            for startn, length in self.intervals(apri, sort = False, combine = False, diskonly = diskonly, recursively = recursively):
+                ret = startn + length - 1
 
         if recursively:
 
@@ -2964,7 +2979,7 @@ class Register(ABC):
                 with subreg._recursiveOpen(True) as subreg:
 
                     try:
-                        ret = max(ret, subreg.maxn(apri, recursively = True))
+                        ret = max(ret, subreg.maxn(apri, diskonly = diskonly, recursively = True))
 
                     except DataNotFoundError:
                         pass
@@ -3142,15 +3157,15 @@ class NumpyRegister(Register):
 
         If `delete = True`, then the smaller `Block`s are deleted automatically.
 
-        The interval `range(startn_, startn_ + length_)` must be the disjoint union of intervals of the form
-        `range(blk.startn_(), blk.startn_() + len(blk))`, where `blk` is a disk `Block` with `ApriInfo`
+        The interval `range(startn, startn + length)` must be the disjoint union of intervals of the form
+        `range(blk.startn(), blk.startn() + len(blk))`, where `blk` is a disk `Block` with `ApriInfo`
         given by `apri`.
 
         Length-0 `Block`s are ignored.
 
-        If `startn_` is not specified, it is taken to be the smallest `startn_` of any `Block` saved to this
-        `Register`. If `length_` is not specified, it is taken to be the length_ of the largest
-        contiguous set of indices that start with `startn_`. If `startn_` is not specified but `length_` is, a
+        If `startn` is not specified, it is taken to be the smallest `startn` of any `Block` saved to this
+        `Register`. If `length` is not specified, it is taken to be the length of the largest
+        contiguous set of indices that start with `startn`. If `startn` is not specified but `length` is, a
         ValueError is raised.
 
         :param apri: (type `ApriInfo`)
@@ -3160,7 +3175,7 @@ class NumpyRegister(Register):
         :param retMetadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
         contains file creation date/time and size of dumped dumped to the disk.
         :raise DataNotFoundError: If the union of the intervals of relevant disk `Block`s does not equal
-        `range(startn_, startn_ + length_)`.
+        `range(startn, startn + length)`.
         :raise ValueError: If any two intervals of relevant disk `Block`s intersect.
         :raise ValueError: If any two relevant disk `Block` segments have inequal shapes.
         :return: (type `File_Metadata`) If `retMetadata is True`.
@@ -3177,26 +3192,25 @@ class NumpyRegister(Register):
         if not isinstance(retMetadata, bool):
             raise TypeError("`retMetadata` must be of type `bool`.")
 
+        self._checkKnownApri(apri)
         # infer startn
         startn, _ = self._resolveStartnLength(apri, startn, length, True)
-
-        # this implementation depends on `diskIntervals` returning smaller startn_ before larger
+        # this implementation depends on `intervals` returning smaller startn before larger
         # ones and, when ties occur, larger lengths before smaller ones.
-
         if length is None:
             # infer length
 
             current_segment = False
             length = 0
 
-            for _startn, _length in self.intervals(apri, True, False):
+            for _startn, _length in self.intervals(apri, combine = False, diskonly = False):
 
                 if _length > 0:
 
                     if current_segment:
 
                         if startn > _startn:
-                            raise RuntimeError("Could not infer a value for `length_`.")
+                            raise RuntimeError("Could not infer a value for `length`.")
 
                         elif startn == _startn:
                             raise ValueError(
@@ -3219,9 +3233,7 @@ class NumpyRegister(Register):
                     else:
 
                         if startn < _startn:
-                            raise DataNotFoundError(
-                                f"No disk `Block` found with the following data: {str(apri)}, startn_ = {startn}."
-                            )
+                            raise DataNotFoundError(_blkNotFoundErrMsg(True, apri, None, startn))
 
                         elif startn == _startn:
 
@@ -3229,18 +3241,19 @@ class NumpyRegister(Register):
                             current_segment = True
 
             if length == 0:
-                raise RuntimeError("could not infer a value for `length_`.")
+                raise RuntimeError("could not infer a value for `length`.")
 
-            warnings.warn(f"`length_` value not specified, inferred value: `length_ = {length}`.")
+            warnings.warn(f"`length` value not specified, inferred value: `length = {length}`.")
 
         combined_interval = None
 
         last_check = False
         last__startn = None
-
+        _startn = None
+        _length = None
         intervals_to_get = []
 
-        for _startn, _length in self.intervals(apri, True, False):
+        for _startn, _length in self.intervals(apri, combine = False, diskonly = True):
             # infer blocks to combine
 
             if last_check:
@@ -3259,8 +3272,8 @@ class NumpyRegister(Register):
 
                     if startn < _startn + _length:
                         raise ValueError(
-                            f"The first `Block` is too long. Try again by calling `reg.concatDiskBlks({str(apri)}, " +
-                            f"{_startn}, {length - (_startn - startn)})`."
+                            f"The first `Block` does not have the right size. Try again by calling "
+                            f"`reg.concatDiskBlks({str(apri)}, {_startn}, {length - (_startn - startn)})`."
                         )
 
                 else:
@@ -3270,7 +3283,7 @@ class NumpyRegister(Register):
                         if _startn > startn:
 
                             raise DataNotFoundError(
-                                f"No disk `Block` found with the following data: `{str(apri)}, startn_ = {startn}`."
+                                f"No disk `Block` found with the following data: `{str(apri)}, startn = {startn}`."
                             )
 
                         elif _startn == startn:
@@ -3295,8 +3308,9 @@ class NumpyRegister(Register):
 
                             if _startn + _length > startn + length:
                                 raise ValueError(
-                                    f"The last `Block` is too long. Try again by calling `reg.concatDiskBlks({str(apri)}, " +
-                                    f"{startn}, {length - (_startn + _length - (startn + length))})`."
+                                    f"The last `Block` does not have the right size. Try again by calling "
+                                    f"`reg.concatDiskBlks({str(apri)}, {startn}, "
+                                    f"{length - (_startn + _length - (startn + length))})`."
                                 )
 
                             combined_interval = (startn, combined_interval[1] + _length)
@@ -3306,6 +3320,16 @@ class NumpyRegister(Register):
                         else:
                             raise ValueError(f"Overlapping `Block` intervals found with {str(apri)}.")
 
+        else:
+
+            if _startn is None:
+                raise DataNotFoundError(_blkNotFoundErrMsg(True, apri))
+
+            elif _startn + _length != startn + length:
+                raise ValueError(
+                    f"The last `Block` does not have the right size. "
+                    f"Try again by calling `reg.concatDiskBlks(apri, {startn}, {_startn + _length})`."
+                )
 
         if len(intervals_to_get) == 1:
 
@@ -3326,7 +3350,7 @@ class NumpyRegister(Register):
             for _startn, _length in intervals_to_get:
                 # check that blocks have the correct shape
 
-                blk = self.blk(apri, _startn, _length, False, retMetadata=False, mmap_mode="r")
+                blk = self.blk(apri, _startn, _length, True, False, False, mmap_mode="r")
                 blks.append(blk)
 
                 if fixed_shape is None:
@@ -3339,9 +3363,9 @@ class NumpyRegister(Register):
                     raise ValueError(
                         "Cannot combine the following two `Block`s because all axes other than axis 0 must have the same " +
                         "shape:\n" +
-                        f"{str(apri)}, startn_ = {ref_blk.startn()}, length_ = {len(ref_blk)}\n, shape = " +
+                        f"{str(apri)}, startn = {ref_blk.startn()}, length = {len(ref_blk)}\n, shape = " +
                         f"{str(fixed_shape)}\n" +
-                        f"{str(apri)}, startn_ = {_startn}, length_ = {_length}\n, shape = " +
+                        f"{str(apri)}, startn = {_startn}, length = {_length}\n, shape = " +
                         f"{str(blk.segment().shape)}\n"
 
                     )
@@ -3392,12 +3416,13 @@ Register.addSubclass(NumpyRegister)
 
 class _ElementIter:
 
-    def __init__(self, reg, apri, slc, recursively, kwargs):
+    def __init__(self, reg, apri, slc, diskonly, recursively, kwargs):
 
         self.reg = reg
         self.apri = apri
         self.step = slc.step if slc.step else 1
         self.stop = slc.stop
+        self.diskonly = diskonly
         self.recursively = recursively
         self.kwargs = kwargs
         self.curr_blk = None
@@ -3405,15 +3430,13 @@ class _ElementIter:
         self.curr_n = slc.start if slc.start else 0
 
     def updateIntervalsCalculated(self):
-        self.intervals = dict(self.reg.intervals(self.apri, False))
+
+        self.intervals = list(
+            self.reg.intervals(self.apri, sort = True, combine = False, diskonly = self.diskonly, recursively = self.recursively)
+        )
 
     def getNextBlk(self):
-
-        try:
-            return self.reg._ramBlkByN(self.apri, self.curr_n, self.recursively)
-
-        except DataNotFoundError:
-            return self.reg._diskBlkByN(self.apri, self.curr_n, retMetadata=self.recursively, **self.kwargs)
+        return self.reg.blkByN(self.apri, self.curr_n, self.diskonly, self.recursively, False, **self.kwargs)
 
     def __iter__(self):
         return self
@@ -3425,8 +3448,12 @@ class _ElementIter:
 
         elif self.curr_blk is None:
 
-            self.intervals = self.reg.intervals(self.apri, False)
-            self.curr_n = max( self.intervals[0][0] , self.curr_n )
+            self.updateIntervalsCalculated()
+
+            if len(self.intervals) == 0:
+                raise StopIteration
+
+            self.curr_n = max(self.intervals[0][0], self.curr_n)
 
             try:
                 self.curr_blk = self.getNextBlk()
@@ -3441,7 +3468,7 @@ class _ElementIter:
 
             except DataNotFoundError:
 
-                self.intervals = self.reg.intervals(self.apri, False)
+                self.updateIntervalsCalculated()
 
                 for startn, length in self.intervals:
 
