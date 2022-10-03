@@ -1,5 +1,5 @@
 """
-    Beta Expansions of Salem Numbers, calculating periods thereof
+    Cornifer, an intuitive data manager for empirical and computational mathematics.
     Copyright (C) 2021 Michael P. Lane
 
     This program is free software: you can redistribute it and/or modify
@@ -12,6 +12,7 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
+
 from pathlib import Path
 
 from setuptools import setup

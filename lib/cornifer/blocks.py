@@ -14,6 +14,7 @@
 """
 import sys
 import warnings
+from abc import ABC, abstractmethod
 
 import numpy as np
 
@@ -162,6 +163,9 @@ class Block:
             else:
                 return self._seg[item]
 
+    def __setitem__(self, key, value):
+        """TODO"""
+
     def __len__(self):
 
         if self._dtype == "ndarray":
@@ -209,7 +213,13 @@ class Block:
         else:
             return self._seg == other._seg
 
-class MemmapBlock (Block):
+class ReleaseBlock(Block, ABC):
+
+    @abstractmethod
+    def release(self):
+        """Release resources associated with this `Block`."""
+
+class MemmapBlock (ReleaseBlock):
 
     def __init__(self, segment, apri, startn = 0):
 
@@ -218,7 +228,7 @@ class MemmapBlock (Block):
 
         super().__init__(segment, apri, startn)
 
-    def close(self):
+    def release(self):
         """Close NumPy `memmap` handle.
 
         This method won't always work because NumPy doesn't provide an API for closing memmap handles. This works by
@@ -236,5 +246,14 @@ class MemmapBlock (Block):
         except AttributeError:
             pass
 
+    def changeMode(self, mode):
+
+        if not isinstance(mode, str):
+            raise TypeError("`mode` must be a string.")
+
+        filename = self._seg.filename
+        self._seg.flush()
+        self.release()
+        self._seg = np.memmap(filename, mode = mode)
 
 

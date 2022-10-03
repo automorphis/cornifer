@@ -9,6 +9,7 @@ import cornifer
 import numpy as np
 
 from cornifer import NumpyRegister, Register, ApriInfo, Block, AposInfo, load
+from cornifer._utilities import randomUniqueFilename
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
     DecompressionError, RegisterRecoveryError
 from cornifer.regfilestructure import REG_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
@@ -110,7 +111,7 @@ PROTECTED READ-WRITE METHODS FOR LMDB:
     
 """
 
-SAVES_DIR = Path(__file__).parent.resolve() / "temp"
+SAVES_DIR = randomUniqueFilename(Path.home())
 # SAVES_DIR = Path.home() / "tmp" / "tests"
 
 class Testy_Register(Register):
