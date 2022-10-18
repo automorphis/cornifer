@@ -229,14 +229,13 @@ class Register(ABC):
         checkRegStructure(localDir)
 
         if Register._instanceExists(localDir):
-
             # return the `Register` that has already been opened
             return Register._getInstance(localDir)
 
         else:
 
             with (localDir / CLS_FILEPATH).open("r") as fh:
-                cls_name = fh.readline()
+                cls_name = fh.readline().strip()
 
             if cls_name == "Register":
                 raise TypeError(
@@ -256,14 +255,13 @@ class Register(ABC):
                 msg = fh.read()
 
             with (localDir / MAP_SIZE_FILEPATH).open("r") as fh:
-                mapSize = int(fh.readline())
+                mapSize = int(fh.readline().strip())
 
             reg = con(localDir.parent, msg, mapSize)
-
             reg._setLocalDir(localDir)
 
             with (localDir / VERSION_FILEPATH).open("r") as fh:
-                reg._version = fh.readline()
+                reg._version = fh.readline().strip()
 
             return reg
 
@@ -547,9 +545,6 @@ class Register(ABC):
     @staticmethod
     @contextmanager
     def opens(*regs, **kwargs):
-
-        if not isinstance(regs, (list, tuple)):
-            raise TypeError("`regs` must of type `list` or `tuple`.")
 
         if (len(kwargs) == 1 and 'readonlys' not in kwargs) or len(kwargs) > 1:
             raise KeyError("`opens` only takes one keyword-argument, `readonlys`.")
