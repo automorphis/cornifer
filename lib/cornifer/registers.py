@@ -2008,8 +2008,7 @@ class Register(ABC):
                 "x",  # zip mode (write, but don't overwrite)
                 zipfile.ZIP_DEFLATED,  # compression mode
                 True,  # use zip64
-                compressionLevel,
-                strict_timestamps=False  # change timestamps of old or new files
+                compressionLevel
 
             ) as compressed_fh:
 
