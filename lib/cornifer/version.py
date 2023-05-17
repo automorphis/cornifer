@@ -16,3 +16,4 @@
 CURRENT_VERSION          = "0.6"
 COMPATIBLE_VERSIONS      = ["0.6", "0.6"]
 
+
