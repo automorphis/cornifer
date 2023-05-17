@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 from unittest import TestCase
 
-from cornifer.regfilestructure import checkRegStructure, REG_FILENAME, VERSION_FILEPATH, \
+from cornifer.regfilestructure import check_reg_structure, REG_FILENAME, VERSION_FILEPATH, \
     MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH, MAP_SIZE_FILEPATH
 
 SAVES_DIR = Path(__file__).parent.resolve() / "temp"
@@ -22,10 +22,10 @@ class Test_Register_File_Structure(TestCase):
 
         # tests absolute filepath
         with self.assertRaisesRegex(ValueError, "absolute"):
-            checkRegStructure(Path("sup"))
+            check_reg_structure(Path("sup"))
 
         try:
-            checkRegStructure(SAVES_DIR)
+            check_reg_structure(SAVES_DIR)
 
         except ValueError as e:
             if "absolute" in str(e):
@@ -34,14 +34,14 @@ class Test_Register_File_Structure(TestCase):
         except FileNotFoundError:
             pass
 
-        local_dir = SAVES_DIR / "localDir"
+        local_dir = SAVES_DIR / "local_dir"
         local_dir.mkdir(exist_ok = False)
 
         register_filepath = local_dir / REG_FILENAME
         register_filepath.mkdir(exist_ok = False)
 
         with self.assertRaises(FileNotFoundError) as cm:
-            checkRegStructure(local_dir)
+            check_reg_structure(local_dir)
 
         e = str(cm.exception)
 
@@ -62,7 +62,7 @@ class Test_Register_File_Structure(TestCase):
         (local_dir / MAP_SIZE_FILEPATH).touch(exist_ok = False)
 
         try:
-            checkRegStructure(local_dir)
+            check_reg_structure(local_dir)
 
         except Exception:
             self.fail()

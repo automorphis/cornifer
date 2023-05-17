@@ -27,27 +27,27 @@ LOCAL_DIR_CHARS        = BASE52
 COMPRESSED_FILE_SUFFIX = ".zip"
 
 
-def checkRegStructure(localDir):
+def check_reg_structure(local_dir):
     """
-    :param localDir: (type `pathlib.Path`) Absolute.
+    :param local_dir: (type `pathlib.Path`) Absolute.
     :raise FileNotFoundError
     """
 
-    if not localDir.is_absolute():
-        raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(localDir)))
+    if not local_dir.is_absolute():
+        raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(local_dir)))
 
     problems = []
 
-    if not localDir.is_dir():
-        problems.append(str(localDir))
+    if not local_dir.is_dir():
+        problems.append(str(local_dir))
 
     for path in [VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, MAP_SIZE_FILEPATH]:
-        if not (localDir / path).is_file():
-            problems.append(str(localDir / path))
+        if not (local_dir / path).is_file():
+            problems.append(str(local_dir / path))
 
     for path in [DATABASE_FILEPATH]:
-        if not (localDir / path).is_dir():
-            problems.append(str(localDir / path))
+        if not (local_dir / path).is_dir():
+            problems.append(str(local_dir / path))
 
     if len(problems) > 0:
         raise FileNotFoundError(

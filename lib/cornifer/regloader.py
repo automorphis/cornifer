@@ -19,57 +19,57 @@ from pathlib import Path
 
 from .errors import RegisterError
 from .registers import Register
-from .regfilestructure import LOCAL_DIR_CHARS, checkRegStructure
-from ._utilities import resolvePath
+from .regfilestructure import LOCAL_DIR_CHARS, check_reg_structure
+from ._utilities import resolve_path
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _ARGS_TYPES = {
-    "regLimit" : int,
+    "reg_limit" : int,
 
-    "printApri" : bool,
-    "apriLimit" : int,
+    "print_apri" : bool,
+    "apri_limit" : int,
 
-    "printIntervals" : bool,
-    "printIntervalMode" : str,
-    "intervalLimit" : int,
+    "print_intervals" : bool,
+    "print_interval_mode" : str,
+    "interval_limit" : int,
 
-    "printIncompatibleRegs" : bool,
+    "print_incompatible_regs" : bool,
 
-    "keyExactMatch" : bool,
+    "key_exact_match" : bool,
 
-    "tupleExactMatch" : bool,
+    "tuple_exact_match" : bool,
 
-    "dictExactMatch" : bool,
+    "dict_exact_match" : bool,
 
-    "strExactMatch" : bool,
+    "str_exact_match" : bool,
 
 }
 
 _args = {
-    "regLimit" : 10,
+    "reg_limit" : 10,
 
-    "printApri" : True,
-    "apriLimit" : 5,
+    "print_apri" : True,
+    "apri_limit" : 5,
 
-    "printIntervals" : True,
-    "printIntervalMode" : "combined", # combined, uncombined
-    "intervalLimit" : 5,
+    "print_intervals" : True,
+    "print_interval_mode" : "combined", # combined, uncombined
+    "interval_limit" : 5,
 
     "print_warnings_" : True,
     "warnings_limit" : 10,
 
-    "printIncompatibleRegs" : False,
+    "print_incompatible_regs" : False,
 
-    "keyExactMatch" : False,
+    "key_exact_match" : False,
 
-    "tupleExactMatch" : False,
+    "tuple_exact_match" : False,
 
-    "dictExactMatch" : False,
+    "dict_exact_match" : False,
 
-    "strExactMatch" : False
+    "str_exact_match" : False
 }
 
-def setSearchArgs(**kwargs):
+def set_search_args(**kwargs):
     """This function changes the output of the `search` function."""
 
     for key,val in kwargs:
@@ -83,8 +83,8 @@ def setSearchArgs(**kwargs):
         elif _ARGS_TYPES[key] == int and val <= 0:
             raise ValueError(f"Value for key \"{key}\" must be a positive integer.")
 
-        elif key == "printIntervals_mode" and val not in ["combined", "uncombined"]:
-            raise ValueError('Value for key "printIntervals_mode" can be either "combined" or "uncombined".')
+        elif key == "print_intervals_mode" and val not in ["combined", "uncombined"]:
+            raise ValueError('Value for key "print_intervals_mode" can be either "combined" or "uncombined".')
 
         _args[key] = val
 
@@ -108,11 +108,11 @@ def load(identifier):
     if len(bad_symbs) > 0:
         raise ValueError("An ident cannot contain any of the following symbols: " + "".join(bad_symbs))
 
-    reg = Register._fromLocalDir(resolved)
+    reg = Register._from_local_dir(resolved)
 
-    if not reg._hasCompatibleVersion():
+    if not reg._has_compatible_version():
         warnings.warn(
-            f"The register at `{reg._localDir}` has an incompatible version.\n"
+            f"The register at `{reg._local_dir}` has an incompatible version.\n"
             f"Current Cornifer version: {CURRENT_VERSION}\n"
             f"Compatible versions:      {str(COMPATIBLE_VERSIONS)}\n"
             f"Loaded register version:  {reg._version}"
@@ -129,8 +129,8 @@ def search(apri = None, saves_directory = None, **kwargs):
     #    2a. Load the `Register` and check that it has a compatible version.
     #    2b. Create two dictionaries `combined` and `uncombined`, whose keys are tuples of all registers and their
     #    corresponding apris. The values of `combined` are the return values of
-    #    `reg.get_all_intervals(apri, combine = True)` and those of `uncombined` are the return values of
-    #    `reg.get_disk_block_intervals(apri)`.
+    #    `reg.get_all_intervals(info, combine = True)` and those of `uncombined` are the return values of
+    #    `reg.get_disk_block_intervals(info)`.
     #    2c. Apply the search parameters to obtain a `list` of `relevant` registers and apris.
     # 3. Print out descriptions of registers, apris, and blocks matching search criteria.
 
@@ -143,7 +143,7 @@ def search(apri = None, saves_directory = None, **kwargs):
     elif not isinstance(saves_directory, (Path, str)):
         raise TypeError("`savesDir` must be either a string or of type `pathlib.Path`.")
 
-    saves_directory = resolvePath(Path(saves_directory))
+    saves_directory = resolve_path(Path(saves_directory))
 
     # test that kwargs are hashable
     for key, val in kwargs.items():
@@ -170,7 +170,7 @@ def search(apri = None, saves_directory = None, **kwargs):
     for local_dir in saves_directory.iterdir():
 
         try:
-            checkRegStructure(local_dir)
+            check_reg_structure(local_dir)
 
         except FileNotFoundError:
             is_register = False
@@ -185,15 +185,15 @@ def search(apri = None, saves_directory = None, **kwargs):
 
             # load register
             try:
-                reg = Register._fromLocalDir(local_dir)
+                reg = Register._from_local_dir(local_dir)
 
             except (RegisterError, TypeError) as m:
                 warnings_.append(f"`Register` at `{str(local_dir)}` not loaded. Error text: {str(m)}")
                 continue
 
             # test if compatible register
-            if not reg._hasCompatibleVersion():
-                if _args["printIncompatibleRegs"]:
+            if not reg._has_compatible_version():
+                if _args["print_incompatible_regs"]:
                     warnings_.append(f"`Register` at `{str(local_dir)}` has an incompatible version.")
                 else:
                     continue
@@ -217,7 +217,7 @@ def search(apri = None, saves_directory = None, **kwargs):
                 continue
 
 
-                # mode = _args["printIntervalMode"]
+                # mode = _args["print_interval_mode"]
 
                 # if mode == "disjoint_intervals":
                 #     pass
@@ -238,7 +238,7 @@ def search(apri = None, saves_directory = None, **kwargs):
             #     PHASE 2c     #
 
             if apri is not None and apri in apris:
-                # if the passed `apri` matches ANY of `apris`
+                # if the passed `info` matches ANY of `apris`
                 relevant.append((reg, apri))
 
             elif len(kwargs) > 0:
@@ -250,9 +250,9 @@ def search(apri = None, saves_directory = None, **kwargs):
                         for _key, _val in _apri.__dict__:
                             # iterate over `_apri` data
                             if (
-                                _key not in _apri._reservedKws and (
-                                    (key == _key and _args["keyExactMatch"]) or
-                                    (key_re.match(_key) is not None and not _args["keyExactMatch"])
+                                _key not in _apri._reserved_kws and (
+                                    (key == _key and _args["key_exact_match"]) or
+                                    (key_re.match(_key) is not None and not _args["key_exact_match"])
                                 ) and
                                 _val_match(val, _val)
                             ):
@@ -267,7 +267,7 @@ def search(apri = None, saves_directory = None, **kwargs):
                         relevant.append((reg, _apri))
 
             elif apri is None and len(kwargs) == 0:
-                # if no search criteria given, then append all apri
+                # if no search criteria given, then append all info
                 for _apri in apris:
                     relevant.append((reg, _apri))
 
@@ -290,11 +290,11 @@ def search(apri = None, saves_directory = None, **kwargs):
 
         prnt += "\n"
 
-    relevant = sorted(relevant, key = lambda t: t[0]._localDir)
+    relevant = sorted(relevant, key = lambda t: t[0]._local_dir)
     current_reg = None
     reg_index = 0
     apri_index = 0
-    hit_apriLimit = False
+    hit_apri_limit = False
 
     prnt += "REGISTERS:\n"
     for reg,apri in relevant:
@@ -302,8 +302,8 @@ def search(apri = None, saves_directory = None, **kwargs):
         if current_reg is None or current_reg != reg:
 
             current_reg = reg
-            prnt += f"({reg._localDir.name}) \"{str(reg)}\"\n"
-            hit_apriLimit = False
+            prnt += f"({reg._local_dir.name}) \"{str(reg)}\"\n"
+            hit_apri_limit = False
             apri_index = 0
 
             if current_reg is not None:
@@ -312,17 +312,17 @@ def search(apri = None, saves_directory = None, **kwargs):
             else:
                 reg_index = 0
 
-        if reg_index >= _args["regLimit"]:
+        if reg_index >= _args["reg_limit"]:
 
             num_regs = len(set(_reg for _reg, _ in relevant))
             prnt += f"... and {num_regs - reg_index} more.\n"
             break
 
-        if _args["printApri"] and not hit_apriLimit:
+        if _args["print_apri"] and not hit_apri_limit:
 
-            if apri_index >= _args["apriLimit"]:
+            if apri_index >= _args["apri_limit"]:
 
-                hit_apriLimit = True
+                hit_apri_limit = True
                 num_apri = len(set(_apri for _reg,_apri in relevant if _reg == reg))
                 prnt += f"... and {num_apri - apri_index} more.\n"
 
@@ -330,11 +330,11 @@ def search(apri = None, saves_directory = None, **kwargs):
 
                 prnt += f"\t{repr(apri)}\n"
 
-                if _args["printIntervals"]:
+                if _args["print_intervals"]:
 
-                    lim = _args["intervalLimit"]
+                    lim = _args["interval_limit"]
 
-                    if _args["printIntervalMode"] == "combined":
+                    if _args["print_interval_mode"] == "combined":
                         ints = combined[reg, apri]
 
                     else:
@@ -359,7 +359,7 @@ def _val_match(search_val, apri_val):
         return False
 
     if isinstance(search_val, str):
-        if _args["strExactMatch"]:
+        if _args["str_exact_match"]:
             search_val = re.compile(search_val)
         else:
             return search_val == apri_val
@@ -368,13 +368,13 @@ def _val_match(search_val, apri_val):
         return search_val.match(apri_val) is not None
 
     elif isinstance(search_val, dict):
-        if _args["dictExactMatch"]:
+        if _args["dict_exact_match"]:
             return search_val == apri_val
         else:
             return all(val == apri_val[key] for key, val in search_val.items())
 
     elif isinstance(search_val, tuple):
-        if _args["tupleExactMatch"]:
+        if _args["tuple_exact_match"]:
             return search_val == apri_val
         else:
             return search_val in apri_val

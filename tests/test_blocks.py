@@ -4,7 +4,8 @@ from unittest import TestCase
 
 import numpy as np
 
-from cornifer import ApriInfo, Block
+from cornifer import Block
+from cornifer.info import ApriInfo
 
 
 class Test_Block(TestCase):
@@ -54,14 +55,14 @@ class Test_Block(TestCase):
 
         seq = Block([], descr, 0)
         with self.assertRaises(TypeError):
-            seq.setStartn(0.5)
+            seq.set_startn(0.5)
 
         seq = Block([], descr, 0)
         with self.assertRaises(ValueError):
-            seq.setStartn(-1)
+            seq.set_startn(-1)
 
         seq = Block([], descr)
-        seq.setStartn(15)
+        seq.set_startn(15)
         self.assertEqual(
             seq.startn(),
             15

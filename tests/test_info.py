@@ -2,7 +2,7 @@ import json
 from copy import copy
 from unittest import TestCase
 
-from cornifer import ApriInfo
+from cornifer.info import ApriInfo
 
 
 class Test__Info(TestCase):
@@ -51,31 +51,35 @@ class Test__Info(TestCase):
     def test__from_json(self):
 
         with self.assertRaises(ValueError):
-            ApriInfo.fromJson("[\"no\"]")
+            ApriInfo.from_json("[\"no\"]")
 
-        apri = ApriInfo.fromJson("{\"msg\": \"primes\"}")
+        apri = ApriInfo.from_json("{\"msg\": \"primes\"}")
         self.assertEqual(apri.msg, "primes")
 
-        apri = ApriInfo.fromJson("{\"mod4\": 1}")
+        apri = ApriInfo.from_json("{\"mod4\": 1}")
         self.assertEqual(apri.mod4, 1)
 
-        apri = ApriInfo.fromJson("{\"tup\": [1,2,3]}")
+        apri = ApriInfo.from_json("{\"tup\": [1,2,3]}")
         self.assertEqual(apri.tup, (1,2,3))
 
-        apri = ApriInfo.fromJson("""{"msg" : "primes", "respective" : "ApriInfo.fromJson({\\"haha\\" : \\"lol\\"})" }""")
+        apri = ApriInfo.from_json("""{"msg" : "primes", "respective" : "ApriInfo.from_json({\\"haha\\" : \\"lol\\"})" }""")
         self.assertEqual(apri.msg, "primes")
         self.assertEqual(apri.respective, ApriInfo(haha ="lol"))
 
+        apri = ApriInfo.from_json(ApriInfo(msg = "primes", respective = ApriInfo(haha = "lol")).to_json())
+        self.assertEqual(apri.msg, "primes")
+        self.assertEqual(apri.respective, ApriInfo(haha = "lol"))
+
     def test__to_json(self):
 
-        _json = ApriInfo(msg ="primes", mod4 = 3).toJson()
+        _json = ApriInfo(msg ="primes", mod4 = 3).to_json()
         self.assertTrue(isinstance(_json, str))
         obj = json.loads(_json)
         self.assertTrue(isinstance(obj, dict))
         self.assertEqual(len(obj), 2)
         self.assertEqual(obj, {"msg": "primes", "mod4": 3})
 
-        _json = ApriInfo(msg="primes", primes = (2, 3, 5)).toJson()
+        _json = ApriInfo(msg="primes", primes = (2, 3, 5)).to_json()
         self.assertTrue(isinstance(_json, str))
         obj = json.loads(_json)
         self.assertTrue(isinstance(obj, dict))
@@ -83,7 +87,7 @@ class Test__Info(TestCase):
         self.assertEqual(obj, {"msg": "primes", "primes": [2,3,5]})
 
         apri = ApriInfo(msg ="primes", primes = (2, 3, 5), respective = ApriInfo(lol ="haha"))
-        self.assertEqual(apri, ApriInfo.fromJson(apri.toJson()))
+        self.assertEqual(apri, ApriInfo.from_json(apri.to_json()))
 
     def test___hash__(self):
 
@@ -154,12 +158,12 @@ class Test__Info(TestCase):
 
         self.assertEqual(
             {(None, ApriInfo(descr ="descr"))},
-            set(apri.iterInnerInfo())
+            set(apri.iter_inner_info())
         )
 
         self.assertEqual(
             1,
-            sum(1 for _ in apri.iterInnerInfo())
+            sum(1 for _ in apri.iter_inner_info())
         )
 
         apri = ApriInfo(descr = ApriInfo(num = 7))
@@ -169,12 +173,12 @@ class Test__Info(TestCase):
                 (None, ApriInfo(descr = ApriInfo(num = 7))),
                 ("descr", ApriInfo(num = 7))
             },
-            set(apri.iterInnerInfo())
+            set(apri.iter_inner_info())
         )
 
         self.assertEqual(
             2,
-            sum(1 for _ in apri.iterInnerInfo())
+            sum(1 for _ in apri.iter_inner_info())
         )
 
         apri = ApriInfo(descr = ApriInfo(blub = ApriInfo(hi ="hello")))
@@ -185,12 +189,12 @@ class Test__Info(TestCase):
                 ("descr", ApriInfo(blub = ApriInfo(hi ="hello"))),
                 ("blub", ApriInfo(hi ="hello"))
             },
-            set(apri.iterInnerInfo())
+            set(apri.iter_inner_info())
         )
 
         self.assertEqual(
             3,
-            sum(1 for _ in apri.iterInnerInfo())
+            sum(1 for _ in apri.iter_inner_info())
         )
 
         apri = ApriInfo(num = 7, descr = ApriInfo(blub = ApriInfo(hi ="hello")))
@@ -201,12 +205,12 @@ class Test__Info(TestCase):
                 ("descr", ApriInfo(blub = ApriInfo(hi ="hello"))),
                 ("blub", ApriInfo(hi ="hello"))
             },
-            set(apri.iterInnerInfo())
+            set(apri.iter_inner_info())
         )
 
         self.assertEqual(
             3,
-            sum(1 for _ in apri.iterInnerInfo())
+            sum(1 for _ in apri.iter_inner_info())
         )
 
         apri = ApriInfo(num = 7, descr = ApriInfo(no ="yes", blub = ApriInfo(hi ="hello")))
@@ -217,12 +221,12 @@ class Test__Info(TestCase):
                 ("descr", ApriInfo(no ="yes", blub = ApriInfo(hi ="hello"))),
                 ("blub", ApriInfo(hi ="hello"))
             },
-            set(apri.iterInnerInfo())
+            set(apri.iter_inner_info())
         )
 
         self.assertEqual(
             3,
-            sum(1 for _ in apri.iterInnerInfo())
+            sum(1 for _ in apri.iter_inner_info())
         )
 
         apri = ApriInfo(num = ApriInfo(descr ="hi"), two = ApriInfo(descr ="hi"))
@@ -233,12 +237,12 @@ class Test__Info(TestCase):
                 ("num", ApriInfo(descr ="hi")),
                 ("two", ApriInfo(descr ="hi"))
             },
-            set(apri.iterInnerInfo())
+            set(apri.iter_inner_info())
         )
 
         self.assertEqual(
             3,
-            sum(1 for _ in apri.iterInnerInfo())
+            sum(1 for _ in apri.iter_inner_info())
         )
 
         apri = ApriInfo(num = ApriInfo(descr ="hey"), two = ApriInfo(descr ="hi"))
@@ -249,12 +253,12 @@ class Test__Info(TestCase):
                 ("num", ApriInfo(descr ="hey")),
                 ("two", ApriInfo(descr ="hi"))
             },
-            set(apri.iterInnerInfo())
+            set(apri.iter_inner_info())
         )
 
         self.assertEqual(
             3,
-            sum(1 for _ in apri.iterInnerInfo())
+            sum(1 for _ in apri.iter_inner_info())
         )
 
     def test_change_info(self):
@@ -262,19 +266,19 @@ class Test__Info(TestCase):
         apri = ApriInfo(descr ="descr")
 
         with self.assertRaises(TypeError):
-            apri.changeInfo(apri, 0)
+            apri.change_info(apri, 0)
 
         with self.assertRaises(TypeError):
-            apri.changeInfo(0, apri)
+            apri.change_info(0, apri)
 
-        replaced = apri.changeInfo(ApriInfo(no ="yes"), ApriInfo(maybe ="maybe"))
+        replaced = apri.change_info(ApriInfo(no ="yes"), ApriInfo(maybe ="maybe"))
 
         self.assertEqual(
             ApriInfo(descr ="descr"),
             replaced
         )
 
-        replaced = apri.changeInfo(apri, ApriInfo(no ="yes"))
+        replaced = apri.change_info(apri, ApriInfo(no ="yes"))
 
         self.assertEqual(
             ApriInfo(no ="yes"),
@@ -283,14 +287,14 @@ class Test__Info(TestCase):
 
         apri = ApriInfo(descr = ApriInfo(num = 7))
 
-        replaced = apri.changeInfo(ApriInfo(num = 7), ApriInfo(_num = 8))
+        replaced = apri.change_info(ApriInfo(num = 7), ApriInfo(_num = 8))
 
         self.assertEqual(
             ApriInfo(descr = ApriInfo(_num = 8)),
             replaced
         )
 
-        replaced = apri.changeInfo(apri, ApriInfo(hello ="hi"))
+        replaced = apri.change_info(apri, ApriInfo(hello ="hi"))
 
         self.assertEqual(
             ApriInfo(hello ="hi"),
@@ -299,21 +303,21 @@ class Test__Info(TestCase):
 
         apri = ApriInfo(descr = ApriInfo(blub = ApriInfo(hi ="hello")))
 
-        replaced = apri.changeInfo(ApriInfo(hi ="hello"), ApriInfo(hi ="hellox"))
+        replaced = apri.change_info(ApriInfo(hi ="hello"), ApriInfo(hi ="hellox"))
 
         self.assertEqual(
             ApriInfo(descr = ApriInfo(blub = ApriInfo(hi ="hellox"))),
             replaced
         )
 
-        replaced = apri.changeInfo(ApriInfo(blub = ApriInfo(hi ="hello")), ApriInfo(bloob = ApriInfo(hi ="hello")))
+        replaced = apri.change_info(ApriInfo(blub = ApriInfo(hi ="hello")), ApriInfo(bloob = ApriInfo(hi ="hello")))
 
         self.assertEqual(
             ApriInfo(descr = ApriInfo(bloob = ApriInfo(hi ="hello"))),
             replaced
         )
 
-        replaced = apri.changeInfo(ApriInfo(descr = ApriInfo(blub = ApriInfo(hi ="hello"))), ApriInfo(descr ="yes"))
+        replaced = apri.change_info(ApriInfo(descr = ApriInfo(blub = ApriInfo(hi ="hello"))), ApriInfo(descr ="yes"))
 
         self.assertEqual(
             ApriInfo(descr ="yes"),
@@ -322,21 +326,21 @@ class Test__Info(TestCase):
 
         apri = ApriInfo(num = 7, descr = ApriInfo(blub = ApriInfo(hi ="hello")))
 
-        replaced = apri.changeInfo(ApriInfo(blub = ApriInfo(hi ="hello")), ApriInfo(bloob = ApriInfo(hi ="hello")))
+        replaced = apri.change_info(ApriInfo(blub = ApriInfo(hi ="hello")), ApriInfo(bloob = ApriInfo(hi ="hello")))
 
         self.assertEqual(
             ApriInfo(num = 7, descr = ApriInfo(bloob = ApriInfo(hi ="hello"))),
             replaced
         )
 
-        replaced = apri.changeInfo(ApriInfo(descr = ApriInfo(blub = ApriInfo(hi ="hello"))), ApriInfo(descr ="yes"))
+        replaced = apri.change_info(ApriInfo(descr = ApriInfo(blub = ApriInfo(hi ="hello"))), ApriInfo(descr ="yes"))
 
         self.assertEqual(
             ApriInfo(num = 7, descr = ApriInfo(blub = ApriInfo(hi ="hello"))),
             replaced
         )
 
-        replaced = apri.changeInfo(ApriInfo(num = 7, descr = ApriInfo(blub = ApriInfo(hi ="hello"))), ApriInfo(loot ="chest"))
+        replaced = apri.change_info(ApriInfo(num = 7, descr = ApriInfo(blub = ApriInfo(hi ="hello"))), ApriInfo(loot ="chest"))
 
         self.assertEqual(
             ApriInfo(loot ="chest"),
@@ -345,7 +349,7 @@ class Test__Info(TestCase):
 
         apri = ApriInfo(num = ApriInfo(descr ="hi"), two = ApriInfo(descr ="hi"))
 
-        replaced = apri.changeInfo(ApriInfo(descr ="hi"), ApriInfo(num = ApriInfo(descr ="hi")))
+        replaced = apri.change_info(ApriInfo(descr ="hi"), ApriInfo(num = ApriInfo(descr ="hi")))
 
         self.assertEqual(
             ApriInfo(num = ApriInfo(num = ApriInfo(descr ="hi")), two = ApriInfo(num = ApriInfo(descr ="hi"))),
@@ -354,7 +358,7 @@ class Test__Info(TestCase):
 
         apri = ApriInfo(num = ApriInfo(descr ="hey"), two = ApriInfo(descr ="hi"))
 
-        replaced = apri.changeInfo(ApriInfo(descr ="hi"), ApriInfo(num = ApriInfo(descr ="hi")))
+        replaced = apri.change_info(ApriInfo(descr ="hi"), ApriInfo(num = ApriInfo(descr ="hi")))
 
         self.assertEqual(
             ApriInfo(num = ApriInfo(descr ="hey"), two = ApriInfo(num = ApriInfo(descr ="hi"))),

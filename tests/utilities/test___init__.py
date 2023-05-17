@@ -3,36 +3,36 @@ import time
 from pathlib import Path
 from unittest import TestCase
 
-from cornifer._utilities import intervalsOverlap, randomUniqueFilename, checkHasMethod, \
-    replaceListsWithTuples, replaceTuplesWithLists, _justifySliceStartStop, orderJsonObj
+from cornifer._utilities import intervals_overlap, random_unique_filename, check_has_method, \
+    replace_lists_with_tuples, replace_tuples_with_lists, _justify_slice_start_stop, order_json_obj
 
 """
 - LEVEL 0:
-    - intervalsOverlap
+    - intervals_overlap
         - input check: negative length_
         - edge cases: boundaries intersect, length_ of interval is 0
-    - randomUniqueFilename
+    - random_unique_filename
         - no input check
         - check suffix matches
         - don't worry about length_, alphabet, num_attempts optional args
-    - checkHasMethod
+    - check_has_method
         - no input check
         - edge cases:
-    - replaceListsWithTuples
+    - replace_lists_with_tuples
         - no input check
         - check tuples stay tuples
         - edge cases: empty list, empty dict, empty tuple
-    - replaceTuplesWithLists
+    - replace_tuples_with_lists
         - no input check
         - check lists stay lists
         - edge cases: empty list, empty dict, empty tuple
-    - _justifySliceStartStop
+    - _justify_slice_start_stop
         - no input check
         - edge cases: everything is an edge case lol
 
 - LEVEL 1:
-    - justifySlice (_justifySliceStartStop)
-        - input check: `minIndex > maxIndex`
+    - justify_slice (_justify_slice_start_stop)
+        - input check: `min_index > max_index`
         - edge cases: everything is an edge case lol
 """
 
@@ -274,14 +274,14 @@ class Test___init__(TestCase):
         }
 
         for (int1, int2), ret in good_cases.items():
-            self.assertEqual(intervalsOverlap(int1, int2), ret, f"{int1}, {int2}, {ret}")
-            self.assertEqual(intervalsOverlap(int2, int1), ret, f"{int1}, {int2}, {ret}")
+            self.assertEqual(intervals_overlap(int1, int2), ret, f"{int1}, {int2}, {ret}")
+            self.assertEqual(intervals_overlap(int2, int1), ret, f"{int1}, {int2}, {ret}")
 
         for (int1, int2), error in bad_cases.items():
             with self.assertRaises(error):
-                intervalsOverlap(int1, int2)
+                intervals_overlap(int1, int2)
             with self.assertRaises(error):
-                intervalsOverlap(int2, int1)
+                intervals_overlap(int2, int1)
 
     def test_random_unique_filename(self):
 
@@ -298,7 +298,7 @@ class Test___init__(TestCase):
         for ext in exts:
             num_subdirs = 1000
             for _ in range(num_subdirs):
-                file = randomUniqueFilename(directory, ext)
+                file = random_unique_filename(directory, ext)
                 files.add(file)
                 file.touch()
                 self.assertEqual(file.suffix, ext)
@@ -316,9 +316,9 @@ class Test___init__(TestCase):
         test = Test()
         test.also_no = lambda x : x+1
 
-        self.assertTrue(checkHasMethod(test, "yes"))
-        self.assertFalse(checkHasMethod(test, "also_no"))
-        self.assertFalse(checkHasMethod(test, "no"))
+        self.assertTrue(check_has_method(test, "yes"))
+        self.assertFalse(check_has_method(test, "also_no"))
+        self.assertFalse(check_has_method(test, "no"))
 
     def test_replace_lists_with_tuples(self):
 
@@ -380,7 +380,7 @@ class Test___init__(TestCase):
         ]
 
         for inp, out in tests:
-            self.assertEqual(replaceListsWithTuples(inp), out)
+            self.assertEqual(replace_lists_with_tuples(inp), out)
 
     def test_replace_tuples_with_lists(self):
 
@@ -442,35 +442,35 @@ class Test___init__(TestCase):
         ]
 
         for inp, out in tests:
-            self.assertEqual(replaceTuplesWithLists(inp), out)
+            self.assertEqual(replace_tuples_with_lists(inp), out)
 
     def test__justify_slice_start_stop(self):
 
         for inp, out in test__justify_slice_start_tests.items():
             self.assertEqual(
-                _justifySliceStartStop(*inp),
+                _justify_slice_start_stop(*inp),
                 out,
                 f"{inp}, {out}"
             )
 
     def test_order_json_obj(self):
         self.assertEqual(
-            list(orderJsonObj({"xyz": 3, "abc": 4}).keys()),
+            list(order_json_obj({"xyz": 3, "abc": 4}).keys()),
             ["abc", "xyz"]
         )
         self.assertEqual(
-            list(orderJsonObj({"abc": 3, "xyz": 4}).keys()),
+            list(order_json_obj({"abc": 3, "xyz": 4}).keys()),
             ["abc", "xyz"]
         )
         self.assertEqual(
-            list(orderJsonObj({"xyz": {"abc":1, "xyz":2}, "abc": 4}).items()),
+            list(order_json_obj({"xyz": {"abc":1, "xyz":2}, "abc": 4}).items()),
             [("abc",4), ("xyz", {"abc": 1, "xyz":2})]
         )
         self.assertEqual(
-            list(orderJsonObj({"xyz": {"xyz":2, "abc":1}, "abc": 4}).items()),
+            list(order_json_obj({"xyz": {"xyz":2, "abc":1}, "abc": 4}).items()),
             [("abc",4), ("xyz", {"abc": 1, "xyz":2})]
         )
         self.assertEqual(
-            orderJsonObj([{"xyz":1, "abc":2}]),
+            order_json_obj([{"xyz":1, "abc":2}]),
             [{"abc":2, "xyz":1}]
         )

@@ -30,7 +30,7 @@ class FileMetadata:
         self.size_B  = self.size % BYTES_PER_KB
 
     @staticmethod
-    def fromPath(path):
+    def from_path(path):
 
         stat = path.stat()
 

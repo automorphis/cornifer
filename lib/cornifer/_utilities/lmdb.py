@@ -18,7 +18,7 @@ from pathlib import Path
 
 import lmdb
 
-from .._utilities import isInt
+from .._utilities import is_int
 
 class ReversibleTransaction:
 
@@ -85,7 +85,7 @@ class ReversibleTransaction:
 
         self.txn.delete(key)
 
-def lmdbIsClosed(db):
+def lmdb_is_closed(db):
 
     try:
         with db.begin() as _:
@@ -102,12 +102,12 @@ def lmdbIsClosed(db):
     else:
         return False
 
-def openLmdb(filepath, mapSize, readonly):
+def open_lmdb(filepath, mapSize, readonly):
 
     if not isinstance(filepath, Path):
         raise TypeError("`filepath` must be of type `pathlib.Path`.")
 
-    if not isInt(mapSize):
+    if not is_int(mapSize):
         raise TypeError("`map_size` must be of type `int`.")
     else:
         mapSize = int(mapSize)
@@ -129,33 +129,33 @@ def openLmdb(filepath, mapSize, readonly):
         create = False
     )
 
-def lmdbHasKey(dbOrTxn, key):
+def lmdb_has_key(db_or_txn, key):
     """
-    :param dbOrTxn: If type `lmdb_cornifer.Environment`, open a new read-only transaction and close it after this function
+    :param db_or_txn: If type `lmdb_cornifer.Environment`, open a new read-only transaction and close it after this function
     resolves. If type `lmdb_cornifer.Transaction`, do not close it after the function resolves.
     :param key: (type `bytes`)
     :return: (type `bool`)
     """
 
-    with _resolveDbOrTxn(dbOrTxn) as txn:
+    with _resolve_db_or_txn(db_or_txn) as txn:
         return txn.get(key, default = None) is not None
 
-def lmdbPrefixList(dbOrTxn, prefix):
+def lmdb_prefix_list(db_or_txn, prefix):
 
-    with lmdbPrefixIter(dbOrTxn, prefix) as it:
+    with lmdb_prefix_iter(db_or_txn, prefix) as it:
         return [t for t in it]
 
 @contextmanager
-def lmdbPrefixIter(dbOrTxn, prefix):
+def lmdb_prefix_iter(db_or_txn, prefix):
     """Iterate over all key-value pairs where they key begins with given prefix.
 
-    :param dbOrTxn: If type `lmdb_cornifer.Environment`, open a new read-only transaction and close it after this function
+    :param db_or_txn: If type `lmdb_cornifer.Environment`, open a new read-only transaction and close it after this function
     resolves. If type `lmdb_cornifer.Transaction`, do not close it after the function resolves.
     :param prefix: (type `bytes`)
     :return: (type `_LMDB_Prefix_Iterator`)
     """
 
-    with _resolveDbOrTxn(dbOrTxn) as txn:
+    with _resolve_db_or_txn(db_or_txn) as txn:
 
         it = _LmdbPrefixIter(txn, prefix)
 
@@ -165,31 +165,34 @@ def lmdbPrefixIter(dbOrTxn, prefix):
         finally:
             it.cursor.close()
 
-def lmdbCountKeys(dbOrTxn, prefix):
+def lmdb_count_keys(db_or_txn, prefix):
 
     count = 0
 
-    with lmdbPrefixIter(dbOrTxn, prefix) as it:
+    with lmdb_prefix_iter(db_or_txn, prefix) as it:
 
          for _ in it:
             count += 1
 
     return count
 
+def is_transaction(txn):
+    return isinstance(txn, (lmdb.Transaction, ReversibleTransaction))
+
 @contextmanager
-def _resolveDbOrTxn(dbOrTxn):
+def _resolve_db_or_txn(db_or_txn):
 
-    if isinstance(dbOrTxn, lmdb.Environment):
+    if isinstance(db_or_txn, lmdb.Environment):
 
-        if lmdbIsClosed(dbOrTxn):
+        if lmdb_is_closed(db_or_txn):
             raise lmdb.Error("Environment should not be closed.")
 
-        txn = dbOrTxn.begin()
+        txn = db_or_txn.begin()
         abort = True
 
-    elif isinstance(dbOrTxn, (lmdb.Transaction, ReversibleTransaction)):
+    elif is_transaction(db_or_txn):
 
-        txn = dbOrTxn
+        txn = db_or_txn
         abort = False
 
     else:

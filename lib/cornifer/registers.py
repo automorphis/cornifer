@@ -20,6 +20,7 @@ import shutil
 import warnings
 import zipfile
 from contextlib import contextmanager, ExitStack
+from itertools import count
 from pathlib import Path
 from abc import ABC, abstractmethod
 
@@ -28,14 +29,14 @@ import numpy as np
 
 from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, CompressionError, \
     DecompressionError, NOT_ABSOLUTE_ERROR_MESSAGE, RegisterRecoveryError
-from .info import ApriInfo, AposInfo
+from .info import ApriInfo, AposInfo, _InfoJsonEncoder, _InfoJsonDecoder, _Info
 from .blocks import Block, MemmapBlock, ReleaseBlock
 from .filemetadata import FileMetadata
-from ._utilities import randomUniqueFilename, isInt, resolvePath, BYTES_PER_MB, isDeletable
-from ._utilities.lmdb import lmdbHasKey, lmdbPrefixIter, openLmdb, lmdbIsClosed, lmdbCountKeys, \
-    ReversibleTransaction
+from ._utilities import random_unique_filename, is_int, resolve_path, BYTES_PER_MB, is_deletable
+from ._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, open_lmdb, lmdb_is_closed, lmdb_count_keys, \
+    ReversibleTransaction, is_transaction, lmdb_prefix_list
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
-    COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, checkRegStructure, DATABASE_FILEPATH, \
+    COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
     REG_FILENAME, MAP_SIZE_FILEPATH
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
@@ -52,7 +53,7 @@ _CLS_KEY                   = b"cls"
 _MSG_KEY                   = b"msg"
 _SUB_KEY_PREFIX            = b"sub"
 _BLK_KEY_PREFIX            = b"blk"
-_APRI_ID_KEY_PREFIX        = b"apri"
+_APRI_ID_KEY_PREFIX        = b"info"
 _ID_APRI_KEY_PREFIX        = b"id"
 _CURR_ID_KEY               = b"curr_id"
 _APOS_KEY_PREFIX           = b"apos"
@@ -74,7 +75,7 @@ _SUB_VAL                   = b""
 #################################
 #        ERROR MESSAGES         #
 
-def _blkNotFoundErrMsg(diskonly, apri, n = None, startn = None, length = None):
+def _blk_not_found_err_msg(diskonly, apri, n = None, startn = None, length = None):
 
     if (startn is not None or length is not None) and n is not None:
         raise ValueError
@@ -106,7 +107,7 @@ _NOT_CREATED_ERROR_MESSAGE = (
 )
 
 _MEMORY_FULL_ERROR_MESSAGE = (
-    "Exceeded max `Register` size of {0} Bytes. Please increase the max size using the method `increaseRegSize`."
+    "Exceeded max `Register` size of {0} Bytes. Please increase the max size using the method `increase_reg_size`."
 )
 
 _REG_ALREADY_ADDED_ERROR_MESSAGE = "Already added as subregister."
@@ -127,73 +128,73 @@ class Register(ABC):
     #################################
     #     PUBLIC INITIALIZATION     #
 
-    def __init__(self, savesDir, msg, initialRegSize = None):
+    def __init__(self, saves_dir, msg, initial_reg_size = None):
         """
-        :param savesDir: (type `str`)
+        :param saves_dir: (type `str`)
         :param msg: (type `str`) A brief message describing this `Register`.
-        :param initialRegSize: (type `int`, default 5) Size in bytes. You may wish to set this lower
+        :param initial_reg_size: (type `int`, default 5) Size in bytes. You may wish to set this lower
         than 5 MB if you do not expect to add many disk `Block`s to your register and you are concerned about disk
         memory. If your `Register` exceeds `initial_register_size`, then you can adjust the database size later via the
-        method `increaseRegSize`. If you are on a non-Windows system, there is no harm in setting this value
+        method `increase_reg_size`. If you are on a non-Windows system, there is no harm in setting this value
         to be very large (e.g. 1 TB).
         """
 
-        if not isinstance(savesDir, (str, Path)):
+        if not isinstance(saves_dir, (str, Path)):
             raise TypeError("`savesDir` must be a string or a `pathlib.Path`.")
 
         if not isinstance(msg, str):
             raise TypeError("`msg` must be a string.")
 
-        if initialRegSize is not None and not isInt(initialRegSize):
+        if initial_reg_size is not None and not is_int(initial_reg_size):
             raise TypeError("`initialRegSize` must be of type `int`.")
 
-        elif initialRegSize is not None:
-            initialRegSize = int(initialRegSize)
+        elif initial_reg_size is not None:
+            initial_reg_size = int(initial_reg_size)
 
         else:
-            initialRegSize = _INITIAL_REGISTER_SIZE_DEFAULT
+            initial_reg_size = _INITIAL_REGISTER_SIZE_DEFAULT
 
-        if initialRegSize <= 0:
+        if initial_reg_size <= 0:
             raise ValueError("`initialRegSize` must be positive.")
 
-        self.savesDir = resolvePath(Path(savesDir))
+        self.saves_dir = resolve_path(Path(saves_dir))
 
-        if not self.savesDir.is_dir():
+        if not self.saves_dir.is_dir():
             raise FileNotFoundError(
-                f"You must create the file `{str(self.savesDir)}` before calling " +
-                f"`{self.__class__.__name__}(\"{str(self.savesDir)}\", \"{msg}\")`."
+                f"You must create the file `{str(self.saves_dir)}` before calling " +
+                f"`{self.__class__.__name__}(\"{str(self.saves_dir)}\", \"{msg}\")`."
             )
 
         self._msg = msg
-        self._msgFilepath = None
+        self._msg_filepath = None
 
-        self._localDir = None
-        self._localDirBytes = None
-        self._subregBytes = None
+        self._local_dir = None
+        self._local_dir_bytes = None
+        self._subreg_bytes = None
 
         self._db = None
-        self._dbFilepath = None
-        self._dbMapSize = initialRegSize
-        self._dbMapSizeFilepath = None
+        self._db_filepath = None
+        self._db_map_size = initial_reg_size
+        self._db_map_size_filepath = None
         self._readonly = None
 
         self._version = CURRENT_VERSION
-        self._versionFilepath = None
+        self._version_filepath = None
 
-        self._clsFilepath = None
+        self._cls_filepath = None
 
-        self._startnHead = _START_N_HEAD_DEFAULT
-        self._startnTailLength = _START_N_TAIL_LENGTH_DEFAULT
-        self._startnTailMod = 10 ** self._startnTailLength
-        self._lengthLength = _LENGTH_LENGTH_DEFAULT
-        self._maxLength = _MAX_LENGTH_DEFAULT
+        self._startn_head = _START_N_HEAD_DEFAULT
+        self._startn_tail_length = _START_N_TAIL_LENGTH_DEFAULT
+        self._startn_tail_mod = 10 ** self._startn_tail_length
+        self._length_length = _LENGTH_LENGTH_DEFAULT
+        self._max_length = _MAX_LENGTH_DEFAULT
 
-        self._ramBlks = {}
+        self._ram_blks = {}
 
         self._created = False
 
     @staticmethod
-    def addSubclass(subclass):
+    def add_subclass(subclass):
 
         if not inspect.isclass(subclass):
             raise TypeError(f"The `subclass` argument must be a class, not a {type(subclass)}.")
@@ -211,30 +212,30 @@ class Register(ABC):
     _instances = {}
 
     @staticmethod
-    def _fromLocalDir(localDir):
-        """Return a `Register` instance from a `localDir` with the correct concrete subclass.
+    def _from_local_dir(local_dir):
+        """Return a `Register` instance from a `local_dir` with the correct concrete subclass.
 
-        This static method does not open the `Register` database at any point.
+        This static method does not open the LMDB database at any point.
 
-        :param localDir: (type `pathlib.Path`) Absolute.
+        :param local_dir: (type `pathlib.Path`) Absolute.
         :return: (type `Register`)
         """
 
-        if not localDir.is_absolute():
-            raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(localDir)))
+        if not local_dir.is_absolute():
+            raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(local_dir)))
 
-        if not localDir.exists():
-            raise FileNotFoundError(f"The `Register` database `{str(localDir)}` could not be found.")
+        if not local_dir.exists():
+            raise FileNotFoundError(f"The `Register` database `{str(local_dir)}` could not be found.")
 
-        checkRegStructure(localDir)
+        check_reg_structure(local_dir)
 
-        if Register._instanceExists(localDir):
+        if Register._instance_exists(local_dir):
             # return the `Register` that has already been opened
-            return Register._getInstance(localDir)
+            return Register._get_instance(local_dir)
 
         else:
 
-            with (localDir / CLS_FILEPATH).open("r") as fh:
+            with (local_dir / CLS_FILEPATH).open("r") as fh:
                 cls_name = fh.readline().strip()
 
             if cls_name == "Register":
@@ -251,55 +252,55 @@ class Register(ABC):
                     f"`Register` via `Register.addSubclass({cls_name})`."
                 )
 
-            with (localDir / MSG_FILEPATH).open("r") as fh:
+            with (local_dir / MSG_FILEPATH).open("r") as fh:
                 msg = fh.read()
 
-            with (localDir / MAP_SIZE_FILEPATH).open("r") as fh:
+            with (local_dir / MAP_SIZE_FILEPATH).open("r") as fh:
                 mapSize = int(fh.readline().strip())
 
-            reg = con(localDir.parent, msg, mapSize)
-            reg._setLocalDir(localDir)
+            reg = con(local_dir.parent, msg, mapSize)
+            reg._set_local_dir(local_dir)
 
-            with (localDir / VERSION_FILEPATH).open("r") as fh:
+            with (local_dir / VERSION_FILEPATH).open("r") as fh:
                 reg._version = fh.readline().strip()
 
             return reg
 
     @staticmethod
-    def _addInstance(localDir, reg):
+    def _add_instance(local_dir, reg):
         """
-        :param localDir: (type `pathlib.Path`) Absolute.
+        :param local_dir: (type `pathlib.Path`) Absolute.
         :param reg: (type `Register`)
         """
 
-        if not localDir.is_absolute():
-            raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(localDir)))
+        if not local_dir.is_absolute():
+            raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(local_dir)))
 
-        Register._instances[localDir] = reg
+        Register._instances[local_dir] = reg
 
     @staticmethod
-    def _instanceExists(localDir):
+    def _instance_exists(local_dir):
         """
-        :param localDir: (type `pathlib.Path`) Absolute.
+        :param local_dir: (type `pathlib.Path`) Absolute.
         :return: (type `bool`)
         """
 
-        if not localDir.is_absolute():
-            raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(localDir)))
+        if not local_dir.is_absolute():
+            raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(local_dir)))
 
-        return localDir in Register._instances.keys()
+        return local_dir in Register._instances.keys()
 
     @staticmethod
-    def _getInstance(localDir):
+    def _get_instance(local_dir):
         """
-        :param localDir: (type `pathlib.Path`) Absolute.
+        :param local_dir: (type `pathlib.Path`) Absolute.
         :return: (type `Register`)
         """
 
-        if not localDir.is_absolute():
-            raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(localDir)))
+        if not local_dir.is_absolute():
+            raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(local_dir)))
 
-        return Register._instances[localDir]
+        return Register._instances[local_dir]
 
     #################################
     #    PUBLIC REGISTER METHODS    #
@@ -313,7 +314,7 @@ class Register(ABC):
             return False
 
         else:
-            return self._localDir == other._localDir
+            return self._local_dir == other._local_dir
 
     def __hash__(self):
 
@@ -321,28 +322,38 @@ class Register(ABC):
             raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("__hash__"))
 
         else:
-            return hash(str(self._localDir)) + hash(type(self))
+            return hash(str(self._local_dir)) + hash(type(self))
 
     def __str__(self):
         return self._msg
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(\"{str(self.savesDir)}\", \"{self._msg}\")"
+        return f"{self.__class__.__name__}(\"{str(self.saves_dir)}\", \"{self._msg}\")"
 
     def __contains__(self, apri):
 
-        self._checkOpenRaise("__contains__")
+        self._check_open_raise("__contains__")
 
-        if any(blk.apri() == apri for blk in self._ramBlks):
+        if any(blk.apri() == apri for blk in self._ram_blks):
             return True
 
         else:
-            return lmdbHasKey(self._db, _APRI_ID_KEY_PREFIX + apri.toJson().encode("ASCII"))
+
+            with self._db.begin() as txn:
+
+                try:
+                    apri_json = relational_encode_info(self, apri, txn)
+
+                except DataNotFoundError:
+                    return False
+
+                key = _APRI_ID_KEY_PREFIX + apri_json
+                return lmdb_has_key(txn, key)
 
     def __iter__(self):
         return iter(self.apris())
 
-    def setMsg(self, message):
+    def set_msg(self, message):
         """Give this `Register` a brief description.
 
         WARNING: This method OVERWRITES the current msg. In order to append a new msg to the current one, do
@@ -350,7 +361,7 @@ class Register(ABC):
 
             old_message = str(reg)
             new_message = old_message + " Hello!"
-            reg.setMsg(new_message)
+            reg.set_msg(new_message)
 
         :param message: (type `str`)
         """
@@ -361,37 +372,37 @@ class Register(ABC):
         self._msg = message
 
         if self._created:
-            with self._msgFilepath.open("w") as fh:
+            with self._msg_filepath.open("w") as fh:
                 fh.write(message)
 
-    def setStartnInfo(self, head = None, tailLen = None):
-        """Set the range of the `startn_` parameters of disk `Block`s belonging to this `Register`.
+    def set_startn_info(self, head = None, tail_len = None):
+        """Set the range of the `startn` parameters of disk `Block`s belonging to this `Register`.
 
-        Reset to default `head` and `tail_length` by omitting the parameters.
+        Reset to default `head` and `tail_len` by omitting the parameters.
 
-        If the `startn_` parameter is very large (of order more than trillions), then the `Register` database can
-        become very bloated by storing many redundant digits for the `startn_` parameter. Calling this method with
-        appropriate `head` and `tail_length` parameters alleviates the bloat.
+        If the `startn` parameter is very large (of order more than trillions), then the `Register` database can
+        become very bloated by storing many redundant digits for the `startn` parameter. Calling this method with
+        appropriate `head` and `tail_len` parameters alleviates the bloat.
 
-        The "head" and "tail" of a non-negative number x is defined by x = head * 10^L + tail, where L is the "length_",
+        The "head" and "tail" of a non-negative number x is defined by x = head * 10^L + tail, where L is the "length",
         or the number of digits, of "tail". (L must be at least 1, and 0 is considered to have 1 digit.)
 
-        By calling `setstartnInfo(head, tail_length)`, the user is asserting that the startn_ of every disk
-        `Block` belong to this `Register` can be decomposed in the fashion startn_ = head * 10^tail_length + tail. The
-        user is discouraged to call this method for large `tail_length` values (>12), as this is likely unnecessary and
+        By calling `set_startn_info(head, tail_len)`, the user is asserting that the `startn` of every disk
+        `Block` belong to this `Register` can be decomposed in the fashion startn = head * 10^tail_length + tail. The
+        user is discouraged to call this method for large `tail_len` values (>12), as this is likely unnecessary and
         defeats the purpose of this method.
 
         :param head: (type `int`, optional) Non-negative. If omitted, resets this `Register` to the default `head`.
-        :param tailLen: (type `int`) Positive. If omitted, resets this `Register` to the default `tail_length`.
+        :param tail_len: (type `int`) Positive. If omitted, resets this `Register` to the default `tail_len`.
         """
 
         # DEBUG : 1, 2
 
-        self._checkOpenRaise("setStartnInfo")
+        self._check_open_raise("set_startn_info")
 
-        self._checkReadwriteRaise("setStartnInfo")
+        self._check_readwrite_raise("set_startn_info")
 
-        if head is not None and not isInt(head):
+        if head is not None and not is_int(head):
             raise TypeError("`head` must be of type `int`.")
 
         elif head is not None:
@@ -400,40 +411,40 @@ class Register(ABC):
         else:
             head = _START_N_HEAD_DEFAULT
 
-        if tailLen is not None and not isInt(tailLen):
-            raise TypeError("`tailLen` must of of type `int`.")
+        if tail_len is not None and not is_int(tail_len):
+            raise TypeError("`tail_len` must of of type `int`.")
 
-        elif tailLen is not None:
-            tailLen = int(tailLen)
+        elif tail_len is not None:
+            tail_len = int(tail_len)
 
         else:
-            tailLen = _START_N_TAIL_LENGTH_DEFAULT
+            tail_len = _START_N_TAIL_LENGTH_DEFAULT
 
         if head < 0:
             raise ValueError("`head` must be non-negative.")
 
-        if tailLen <= 0:
-            raise ValueError("`tailLen` must be positive.")
+        if tail_len <= 0:
+            raise ValueError("`tail_len` must be positive.")
 
-        if head == self._startnHead and tailLen == self._startnTailLength:
+        if head == self._startn_head and tail_len == self._startn_tail_length:
             return
 
-        new_mod = 10 ** tailLen
+        new_mod = 10 ** tail_len
 
-        with lmdbPrefixIter(self._db, _BLK_KEY_PREFIX) as it:
+        with lmdb_prefix_iter(self._db, _BLK_KEY_PREFIX) as it:
 
             for key, _ in it:
 
-                apri, startn, length = self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key)
+                apri, startn, length = self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
 
                 if startn // new_mod != head:
 
                     raise ValueError(
-                        "The following `startn_` does not have the correct head:\n" +
-                        f"`startn_`   : {startn}\n" +
-                        "That `startn_` is associated with a `Block` whose `ApriInfo` and length_ is:\n" +
-                        f"`ApriInfo` : {str(apri.toJson())}\n" +
-                        f"length_      : {length}\n"
+                        "The following `startn` does not have the correct head:\n" +
+                        f"`startn`   : {startn}\n" +
+                        "That `startn` is associated with a `Block` whose `ApriInfo` and length is:\n" +
+                        f"`ApriInfo` : {str(apri)}\n" +
+                        f"length     : {length}\n"
                     )
 
         if _debug == 1:
@@ -445,19 +456,19 @@ class Register(ABC):
 
                 with self._db.begin() as ro_txn:
 
-                    with lmdbPrefixIter(ro_txn, _BLK_KEY_PREFIX) as it:
+                    with lmdb_prefix_iter(ro_txn, _BLK_KEY_PREFIX) as it:
 
                         rw_txn.put(_START_N_HEAD_KEY, str(head).encode("ASCII"))
-                        rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(tailLen).encode("ASCII"))
+                        rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(tail_len).encode("ASCII"))
 
                         for key, val in it:
 
-                            _, startn, _ = self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key)
-                            apri_json, _, length_bytes = Register._splitDiskBlockKey(_BLK_KEY_PREFIX_LEN, key)
+                            _, startn, _ = self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
+                            apri_json, _, length_bytes = Register._split_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
 
                             new_startn_bytes = str(startn % new_mod).encode("ASCII")
 
-                            new_key = Register._joinDiskBlockData(
+                            new_key = Register._join_disk_block_data(
                                 _BLK_KEY_PREFIX, apri_json, new_startn_bytes, length_bytes
                             )
 
@@ -470,11 +481,11 @@ class Register(ABC):
                     raise KeyboardInterrupt
 
         except lmdb.MapFullError as e:
-            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
-        self._startnHead = head
-        self._startnTailLength = tailLen
-        self._startnTailMod = 10 ** self._startnTailLength
+        self._startn_head = head
+        self._startn_tail_length = tail_len
+        self._startn_tail_mod = 10 ** self._startn_tail_length
 
     @contextmanager
     def open(self, readonly = False):
@@ -482,53 +493,53 @@ class Register(ABC):
         if not self._created and not readonly:
 
             # set local directory info and create levelDB database
-            localDir = randomUniqueFilename(self.savesDir, length = 4, alphabet = LOCAL_DIR_CHARS)
+            local_dir = random_unique_filename(self.saves_dir, length = 4, alphabet = LOCAL_DIR_CHARS)
 
             try:
 
-                localDir.mkdir()
-                (localDir / REG_FILENAME).mkdir()
+                local_dir.mkdir()
+                (local_dir / REG_FILENAME).mkdir()
 
-                with (localDir / MSG_FILEPATH).open("x") as fh:
+                with (local_dir / MSG_FILEPATH).open("x") as fh:
                     fh.write(self._msg)
 
-                with (localDir / VERSION_FILEPATH).open("x") as fh:
+                with (local_dir / VERSION_FILEPATH).open("x") as fh:
                     fh.write(self._version + "\nDO NOT EDIT THIS FILE. CALL THE FUNCTION `updateRegVersion` INSTEAD.")
 
-                with (localDir / CLS_FILEPATH).open("x") as fh:
+                with (local_dir / CLS_FILEPATH).open("x") as fh:
                     fh.write(str(type(self).__name__) + "\nDO NOT EDIT THIS FILE.")
 
-                with (localDir / MAP_SIZE_FILEPATH).open("x") as fh:
-                    fh.write(str(self._dbMapSize) + "\nDO NOT EDIT THIS FILE. CALL THE FUNCTION `increaseRegSize` INSTEAD.")
+                with (local_dir / MAP_SIZE_FILEPATH).open("x") as fh:
+                    fh.write(str(self._db_map_size) + "\nDO NOT EDIT THIS FILE. CALL THE FUNCTION `increase_reg_size` INSTEAD.")
 
-                (localDir / DATABASE_FILEPATH).mkdir()
-                self._setLocalDir(localDir)
-                self._db = openLmdb(self._dbFilepath, self._dbMapSize, False)
+                (local_dir / DATABASE_FILEPATH).mkdir()
+                self._set_local_dir(local_dir)
+                self._db = open_lmdb(self._db_filepath, self._db_map_size, False)
 
                 try:
 
                     with self._db.begin(write = True) as txn:
                         # set register info
-                        txn.put(_START_N_HEAD_KEY, str(self._startnHead).encode("ASCII"))
-                        txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startnTailLength).encode("ASCII"))
+                        txn.put(_START_N_HEAD_KEY, str(self._startn_head).encode("ASCII"))
+                        txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startn_tail_length).encode("ASCII"))
                         txn.put(_LENGTH_LENGTH_KEY, str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"))
                         txn.put(_CURR_ID_KEY, b"0")
 
                 except lmdb.MapFullError as e:
-                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
-                Register._addInstance(localDir, self)
+                Register._add_instance(local_dir, self)
                 yiel = self
 
             except BaseException as e:
 
-                if localDir.is_dir():
-                    shutil.rmtree(localDir)
+                if local_dir.is_dir():
+                    shutil.rmtree(local_dir)
 
                 raise e
 
         elif self._created:
-            yiel = self._openCreated(readonly)
+            yiel = self._open_created(readonly)
 
         else:
             raise ValueError(
@@ -540,7 +551,7 @@ class Register(ABC):
             yield yiel
 
         finally:
-            yiel._closeCreated()
+            yiel._close_created()
 
     @staticmethod
     @contextmanager
@@ -586,83 +597,83 @@ class Register(ABC):
 
             yield tuple(yld)
 
-    def increaseRegSize(self, numBytes):
+    def increase_reg_size(self, num_bytes):
         """WARNING: DO NOT CALL THIS METHOD FROM MORE THAN ONE PYTHON PROCESS AT A TIME. You are safe if you call it
         from only one Python process. You are safe if you have multiple Python processes running and call it from only
         ONE of them. But do NOT call it from multiple processes at once. Doing so may result in catastrophic loss of
         data.
 
-        :param numBytes: (type `int`) Positive.
+        :param num_bytes: (type `int`) Positive.
         """
 
-        self._checkOpenRaise("increaseRegSize")
+        self._check_open_raise("increase_reg_size")
 
-        if not isInt(numBytes):
-            raise TypeError("`numBytes` must be of type `int`.")
+        if not is_int(num_bytes):
+            raise TypeError("`num_bytes` must be of type `int`.")
 
-        if numBytes <= 0:
-            raise ValueError("`numBytes` must be positive.")
+        if num_bytes <= 0:
+            raise ValueError("`num_bytes` must be positive.")
 
-        if numBytes <= self._dbMapSize:
-            raise ValueError("`numBytes` must be larger than the current `Register` size.")
+        if num_bytes <= self._db_map_size:
+            raise ValueError("`num_bytes` must be larger than the current `Register` size.")
 
-        self._db.set_mapsize(numBytes)
-        self._dbMapSize = numBytes
+        self._db.set_mapsize(num_bytes)
+        self._db_map_size = num_bytes
 
-        with self._dbMapSizeFilepath.open("w") as fh:
-            fh.write(str(self._dbMapSize))
+        with self._db_map_size_filepath.open("w") as fh:
+            fh.write(str(self._db_map_size))
 
-    def regSize(self):
-        return self._dbMapSize
+    def reg_size(self):
+        return self._db_map_size
 
     def ident(self):
 
         if not self._created:
             raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("ident"))
 
-        return str(self._localDir)
+        return str(self._local_dir)
 
     #################################
     #    PROTEC REGISTER METHODS    #
 
-    def _openCreated(self, readonly):
+    def _open_created(self, readonly):
 
-        if Register._instanceExists(self._localDir):
-            ret = Register._getInstance(self._localDir)
+        if Register._instance_exists(self._local_dir):
+            ret = Register._get_instance(self._local_dir)
 
         else:
             ret = self
 
         if not ret._created:
-            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_openCreated"))
+            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_open_created"))
 
-        if ret._db is not None and not ret._dbIsClosed():
+        if ret._db is not None and not ret._db_is_closed():
             raise RegisterAlreadyOpenError()
 
         ret._readonly = readonly
 
-        ret._db = openLmdb(ret._dbFilepath, ret._dbMapSize, readonly)
+        ret._db = open_lmdb(ret._db_filepath, ret._db_map_size, readonly)
 
         with ret._db.begin() as txn:
-            ret._lengthLength = int(txn.get(_LENGTH_LENGTH_KEY))
+            ret._length_length = int(txn.get(_LENGTH_LENGTH_KEY))
 
-        ret._maxLength = 10 ** ret._lengthLength - 1
+        ret._max_length = 10 ** ret._length_length - 1
 
         return ret
 
-    def _closeCreated(self):
+    def _close_created(self):
         self._db.close()
 
     @contextmanager
-    def _recursiveOpen(self, readonly):
+    def _recursive_open(self, readonly):
 
         if not self._created:
-            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_recursiveOpen"))
+            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_recursive_open"))
 
         else:
 
             try:
-                yiel = self._openCreated(readonly)
+                yiel = self._open_created(readonly)
                 need_close = True
 
             except RegisterAlreadyOpenError:
@@ -679,22 +690,22 @@ class Register(ABC):
 
             finally:
                 if need_close:
-                    yiel._closeCreated()
+                    yiel._close_created()
 
-    def _checkOpenRaise(self, methodName):
+    def _check_open_raise(self, method_name):
 
-        if self._db is None or self._dbIsClosed():
+        if self._db is None or self._db_is_closed():
             raise RegisterError(
                 f"This `Register` database has not been opened. You must open this register via `with reg.open() as " +
-                f"reg:` before calling the method `{methodName}`."
+                f"reg:` before calling the method `{method_name}`."
             )
 
-    def _checkReadwriteRaise(self, methodName):
-        """Call `self._checkOpenRaise` before this method."""
+    def _check_readwrite_raise(self, method_name):
+        """Call `self._check_open_raise` before this method."""
 
         if self._readonly:
             raise RegisterError(
-                f"This `Register` is `open`ed in read-only mode. In order to call the method `{methodName}`, you must "
+                f"This `Register` is `open`ed in read-only mode. In order to call the method `{method_name}`, you must "
                 "open this `Register` in read-write mode via `with reg.open() as reg:`."
             )
 
@@ -710,60 +721,63 @@ class Register(ABC):
     #
     #         raise MemoryError(
     #             "The `Register` database is out of memory. Please allocate more memory using the method "
-    #             "`Register.increaseRegSize`."
+    #             "`Register.increase_reg_size`."
     #         )
 
-    def _setLocalDir(self, localDir):
-        """`localDir` and a corresponding register database must exist prior to calling this method.
+    def _set_local_dir(self, local_dir):
+        """`local_dir` and a corresponding register database must exist prior to calling this method.
 
-        :param localDir: (type `pathlib.Path`) Absolute.
+        :param local_dir: (type `pathlib.Path`) Absolute.
         """
 
-        if not localDir.is_absolute():
-            raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(localDir)))
+        if not local_dir.is_absolute():
+            raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(local_dir)))
 
-        if localDir.parent != self.savesDir:
+        if local_dir.parent != self.saves_dir:
             raise ValueError(
-                "The `localDir` argument must be a sub-directory of `reg.savesDir`.\n" +
-                f"`localDir.parent`    : {str(localDir.parent)}\n"
-                f"`reg.savesDir` : {str(self.savesDir)}"
+                "The `local_dir` argument must be a sub-directory of `reg.savesDir`.\n" +
+                f"`local_dir.parent`    : {str(local_dir.parent)}\n"
+                f"`reg.savesDir` : {str(self.saves_dir)}"
             )
 
-        checkRegStructure(localDir)
+        check_reg_structure(local_dir)
 
         self._created = True
 
-        self._localDir = localDir
-        self._localDirBytes = str(self._localDir).encode("ASCII")
+        self._local_dir = local_dir
+        self._local_dir_bytes = str(self._local_dir).encode("ASCII")
 
-        self._dbFilepath = self._localDir / DATABASE_FILEPATH
+        self._db_filepath = self._local_dir / DATABASE_FILEPATH
 
-        self._subregBytes = (
-            _SUB_KEY_PREFIX + self._localDirBytes
+        self._subreg_bytes = (
+            _SUB_KEY_PREFIX + self._local_dir_bytes
         )
 
-        self._versionFilepath = localDir / VERSION_FILEPATH
-        self._msgFilepath = localDir / MSG_FILEPATH
-        self._clsFilepath = localDir / CLS_FILEPATH
-        self._dbMapSizeFilepath = localDir / MAP_SIZE_FILEPATH
+        self._version_filepath = local_dir / VERSION_FILEPATH
+        self._msg_filepath = local_dir / MSG_FILEPATH
+        self._cls_filepath = local_dir / CLS_FILEPATH
+        self._db_map_size_filepath = local_dir / MAP_SIZE_FILEPATH
 
-    def _hasCompatibleVersion(self):
+    def _has_compatible_version(self):
         return self._version in COMPATIBLE_VERSIONS
 
-    def _dbIsClosed(self):
+    def _db_is_closed(self):
 
         if not self._created:
-            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_dbIsClosed"))
+            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_db_is_closed"))
 
         else:
-            return lmdbIsClosed(self._db)
+            return lmdb_is_closed(self._db)
 
     #################################
     #      PUBLIC APRI METHODS      #
 
     def apris(self, diskonly = False, recursively = False):
 
-        self._checkOpenRaise("apris")
+        self._check_open_raise("apris")
+
+        if not isinstance(diskonly, bool):
+            raise TypeError("`diskonly` must be of type `bool`")
 
         if not isinstance(recursively, bool):
             raise TypeError("`recursively` must be of type `bool`")
@@ -771,24 +785,25 @@ class Register(ABC):
         ret = []
 
         if not diskonly:
-            ret.extend(self._ramBlks.keys())
+            ret.extend(self._ram_blks.keys())
 
-        with lmdbPrefixIter(self._db, _ID_APRI_KEY_PREFIX) as it:
+        with self._db.begin() as txn:
 
-            for _, val in it:
-                ret.append(ApriInfo.fromJson(val.decode("ASCII")))
+            with lmdb_prefix_iter(txn, _ID_APRI_KEY_PREFIX) as it:
 
+                for _, val in it:
+                    ret.append(relational_decode_info(self, ApriInfo, val, txn))
 
         if recursively:
 
-            for subreg in self._iterSubregs():
+            for subreg in self._iter_subregs():
 
-                with subreg._recursiveOpen(True) as subreg:
+                with subreg._recursive_open(True) as subreg:
                     ret.append(subreg.apris())
 
         return sorted(list(set(ret)))
 
-    def changeApri(self, oldApri, newApri, recursively = False):
+    def change_apri(self, old_apri, new_apri, diskonly = False, recursively = False):
         """Replace an old `ApriInfo`, and all references to it, with a new `ApriInfo`.
 
         If ANY `Block`, `ApriInfo`, or `AposInfo` references `old_apri`, its entries in this `Register` will be
@@ -802,203 +817,145 @@ class Register(ABC):
 
         with
 
-        `new_apri = ApriInfo(descr = "odd periods", ref = "Newton et al. 2005")`.
+        `new_apri = ApriInfo(descr = "periodic points", ref = "Newton et al. 2005")`.
 
         In an example `Register`, there are two `Block`s, one with `old_apri` and the other with
 
-        `some_other_apri = ApriInfo(descr = "period length_", respective = old_apri)`.
+        `some_other_apri = ApriInfo(descr = "period length", respective = old_apri)`.
 
-        After a call to `changeApri(old_apri, new_apri)`, the first `Block` will have `new_apri` and the second
+        After a call to `change_apri(old_apri, new_apri)`, the first `Block` will have `new_apri` and the second
         will have
 
-        `ApriInfo(descr = "period length_", respective = new_apri)`.
+        `ApriInfo(descr = "period length", respective = new_apri)`.
 
-        :param oldApri: (type `ApriInfo`)
-        :param newApri: (type `ApriInfo`)
+        :param old_apri: (type `ApriInfo`)
+        :param new_apri: (type `ApriInfo`)
         :param recursively: (type `bool`)
         :raise ValueError: See above.
         """
 
         # DEBUG : 1, 2, 3
 
-        self._checkOpenRaise("changeApri")
+        self._check_open_raise("change_apri")
 
-        self._checkReadwriteRaise("changeApri")
+        self._check_readwrite_raise("change_apri")
 
-        # raises `DataNotFoundError` if `oldApri` does not have an ID
-        old_apri_id = self._getIdByApri(oldApri, None, False)
+        self._check_known_apri(old_apri)
 
-        if oldApri == newApri:
+        if old_apri == new_apri:
             return
 
-        old_apri_json = oldApri.toJson().encode("ASCII")
-
-        old_apri_id_key = _APRI_ID_KEY_PREFIX + old_apri_json
-        old_id_apri_key = _ID_APRI_KEY_PREFIX + old_apri_id
-
-        new_apri_json = newApri.toJson().encode("ASCII")
-
-        if lmdbHasKey(self._db, _APRI_ID_KEY_PREFIX + new_apri_json):
-
-            new_apri_id = self._getIdByApri(newApri, new_apri_json, False)
-            new_id_apri_key = _ID_APRI_KEY_PREFIX + new_apri_id
-            has_new_apri_already = True
-
-            warnings.warn(f"This `Register` already has a reference to {str(newApri)}.")
-
-        else:
-
-            new_apri_id = None
-            new_id_apri_key = None
-            has_new_apri_already = False
-
-        if _debug == 1:
-            raise KeyboardInterrupt
+        # if not diskonly:
+        #
+        #     for apri in self._ram_blks.keys():
+        #         apri.change_info(old_apri, new_apri)
 
         try:
 
-            with self._db.begin(write = True) as rw_txn:
+            with self._db.begin(write = True) as txn:
 
-                with self._db.begin() as ro_txn:
+                if _debug == 1:
+                    raise KeyboardInterrupt
 
-                    apris_changed = set()
-                    apris_didnt_change = set()
+                try:
+                    self._check_known_apri(new_apri, txn)
 
-                    # change all apri_id keys
-                    with lmdbPrefixIter(ro_txn, _APRI_ID_KEY_PREFIX) as it:
-                        for key, val in it:
+                except DataNotFoundError:
+                    has_new_apri_already = False
 
-                            if key == old_apri_id_key:
-                                new_key = _APRI_ID_KEY_PREFIX + new_apri_json
+                else:
+                    has_new_apri_already = True
 
-                            else:
+                if has_new_apri_already:
+                    warnings.warn(f"This `Register` already has a reference to {str(new_apri)}.")
 
-                                apri = ApriInfo.fromJson(key[_APRI_ID_KEY_PREFIX_LEN:].decode("ASCII"))
-                                replaced = apri.changeInfo(oldApri, newApri)
-                                new_key = _APRI_ID_KEY_PREFIX + replaced.toJson().encode("ASCII")
+                # delete old_apri and reserve its ID
+                old_id = self._get_id_by_apri(old_apri, None, False, txn, None)
+                old_id_apri_key = _ID_APRI_KEY_PREFIX + old_id
+                old_apri_json = txn.get(old_id_apri_key)
+                old_apri_id_key = _APRI_ID_KEY_PREFIX + old_apri_json
+                txn.delete(old_id_apri_key)
+                txn.delete(old_apri_id_key)
+                reserved = [old_id]
 
-                            if new_key != key:
+                if _debug == 2:
+                    raise KeyboardInterrupt
 
-                                rw_txn.put(new_key, val)
-                                rw_txn.delete(key)
-                                apris_changed.add(new_key[_APRI_ID_KEY_PREFIX_LEN : ])
+                # make inner id's if they're missing
+                for key, info in new_apri.iter_inner_info(mode = "dfs"):
 
-                            else:
-                                apris_didnt_change.add(key[_APRI_ID_KEY_PREFIX_LEN : ])
+                    if key is not None and isinstance(info, ApriInfo):
+                        self._get_id_by_apri(info, None, True, txn, reserved)
 
-                    # check `apris_changed` and `apris_didnt_change` are disjoint, otherwise raise ValueError
-                    if not apris_changed.isdisjoint(apris_didnt_change):
+                # check for duplicate keys and give old_id new new_apri
+                new_apri_json = relational_encode_info(self, new_apri, txn)
+                new_apri_id_key = _APRI_ID_KEY_PREFIX + new_apri_json
 
-                        # ValueError automatically aborts the LMDB transaction
-                        raise ValueError(
-                            "The set of `ApriInfo` that changed under the replacement `oldApri` -> `newApri` must be "
-                            "disjoint from the set of `ApriInfo` that did not change."
-                        )
+                if lmdb_has_key(txn, new_apri_id_key):
+                    raise ValueError("Duplicate `ApriInfo`.")
 
-                    # change all id_apri keys
-                    with lmdbPrefixIter(ro_txn, _ID_APRI_KEY_PREFIX) as it:
-                        for key, val in it:
-
-                            new_key = key
-
-                            if key == old_id_apri_key:
-                                new_val = new_apri_json
-
-                            else:
-
-                                apri = ApriInfo.fromJson(val.decode("ASCII"))
-                                replaced = apri.changeInfo(oldApri, newApri)
-                                new_val = replaced.toJson().encode("ASCII")
-
-                            if has_new_apri_already and key == new_id_apri_key:
-                                new_key = old_id_apri_key
-
-                            if key != new_key or val != new_val:
-                                rw_txn.put(new_key, new_val)
-
-                    if has_new_apri_already:
-
-                        # change all blocks
-                        for prefix in [_BLK_KEY_PREFIX, _COMPRESSED_KEY_PREFIX]:
-
-                            with lmdbPrefixIter(ro_txn, prefix + new_apri_id + _KEY_SEP) as it:
-                                for key, val in it:
-
-                                    new_blk_key = prefix + old_apri_id + key[key.index(_KEY_SEP) : ]
-                                    rw_txn.put(new_blk_key, val)
-
-                    # change all apos vals
-                    with lmdbPrefixIter(ro_txn, _APOS_KEY_PREFIX) as it:
-                        for key, val in it:
-
-                            apos = AposInfo.fromJson(val.decode("ASCII"))
-                            replaced = apos.changeInfo(oldApri, newApri)
-                            new_val = replaced.toJson().encode("ASCII")
-
-                            if val != new_val:
-                                rw_txn.put(new_key, new_val)
-
-                    if _debug == 2:
-                        raise KeyboardInterrupt
+                Register._add_apri(txn, old_id, new_apri, new_apri_json)
 
                 if _debug == 3:
                     raise KeyboardInterrupt
 
         except lmdb.MapFullError as e:
-            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
         if recursively:
-            for subreg in self._iterSubregs():
-                with subreg._recursiveOpen(False) as subreg:
-                    subreg.changeApri(oldApri, newApri, True)
 
-    def rmvApri(self, apri, force = False, missingOk = False):
+            for subreg in self._iter_subregs():
+
+                with subreg._recursive_open(False) as subreg:
+                    subreg.change_apri(old_apri, new_apri, True)
+
+    def rmv_apri(self, apri, force = False, missing_ok = False):
         """Remove an `ApriInfo` that is not associated with any other `ApriInfo`, `Block`, nor `AposInfo`.
 
         :param apri: (type `ApriInfo`)
-        :raise ValueError: If there are any `ApriInfo`, `Block`, or `AposInfo` associated with `apri`.
+        :raise ValueError: If there are any `ApriInfo`, `Block`, or `AposInfo` associated with `info`.
         """
 
         # DEBUG : 1, 2, 3, 4, 5
 
-        self._checkOpenRaise("rmvApri")
+        self._check_open_raise("rmv_apri")
 
-        self._checkReadwriteRaise("rmvApri")
+        self._check_readwrite_raise("rmv_apri")
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`.")
+            raise TypeError("`info` must be of type `ApriInfo`.")
 
         if not isinstance(force, bool):
             raise TypeError("`force` must be of type `bool`.")
 
-        if not isinstance(missingOk, bool):
-            raise TypeError("`missingOk` must be of type `bool`.")
+        if not isinstance(missing_ok, bool):
+            raise TypeError("`missing_ok` must be of type `bool`.")
 
-        if not missingOk:
-            self._checkKnownApri(apri)
+        if not missing_ok:
+            self._check_known_apri(apri)
 
         txn = None
-        ramBlkDelSuccess = False
+        ram_blk_del_success = False
         reinsert = None
 
         try:
 
-            if apri in self._ramBlks.keys():
+            if apri in self._ram_blks.keys():
 
-                reinsert = self._ramBlks[apri]
-                del self._ramBlks[apri]
-                ramBlkDelSuccess = True
+                reinsert = self._ram_blks[apri]
+                del self._ram_blks[apri]
+                ram_blk_del_success = True
 
             with ReversibleTransaction(self._db).begin(write = True) as txn:
-                blkDatas = self._rmvApriTxn(apri, force, txn)
+                blkDatas = self._rmv_apri_txn(apri, force, txn)
 
             for apri_, startn, length in blkDatas:
-                self.rmvDiskBlk(apri_, startn, length, False, False)
+                self.rmv_disk_blk(apri_, startn, length, False, False)
 
         except BaseException as e:
 
-            if ramBlkDelSuccess:
-                self._ramBlks[apri] = reinsert
+            if ram_blk_del_success:
+                self._ram_blks[apri] = reinsert
 
             if txn is not None:
 
@@ -1006,7 +963,7 @@ class Register(ABC):
                     txn.reverse(txn_)
 
             if isinstance(e, lmdb.MapFullError):
-                raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+                raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
             else:
                 raise e
@@ -1014,24 +971,36 @@ class Register(ABC):
     #################################
     #      PROTEC APRI METHODS      #
 
-    def _checkKnownApri(self, apri):
+    def _check_known_apri(self, apri, txn = None):
+
+        commit = txn is None
+
+        if commit:
+            txn = self._db.begin()
 
         try:
-            self._getIdByApri(apri, None, False, None)
 
-        except DataNotFoundError:
-            pass
+            try:
+                self._get_id_by_apri(apri, None, False, None, txn)
 
-        else:
-            return
+            except DataNotFoundError:
+                pass
 
-        if apri not in self._ramBlks.keys():
+            else:
+                return
+
+        finally:
+
+            if commit:
+                txn.commit()
+
+        if apri not in self._ram_blks.keys():
             raise DataNotFoundError(_NO_APRI_ERROR_MESSAGE.format(str(apri)))
 
-    def _getApriJsonById(self, _id, txn = None):
+    def _get_apri_json_by_id(self, id_, txn = None):
         """Get JSON bytestring representing an `ApriInfo` instance.
 
-        :param _id: (type `bytes`)
+        :param id_: (type `bytes`)
         :param txn: (type `lmbd.Transaction`, default `None`) The transaction to query. If `None`, then use open a new
         transaction and commit it after this method resolves.
         :return: (type `bytes`)
@@ -1043,43 +1012,42 @@ class Register(ABC):
             txn = self._db.begin()
 
         try:
-            return txn.get(_ID_APRI_KEY_PREFIX + _id)
+            return txn.get(_ID_APRI_KEY_PREFIX + id_)
 
         finally:
 
             if commit:
                 txn.commit()
 
-    def _getIdByApri(self, apri, apriJson, missingOk, txn = None):
-        """Get an `ApriInfo` ID for this database. If `missingOk is True`, then create an ID if the passed `apri` or
-        `apriJson` is unknown to this `Register`.
+    def _get_id_by_apri(self, apri, apri_json, missing_ok, txn = None, reserved = None):
+        """Get an `ApriInfo` ID for this database. If `missing_ok is True`, then create an ID if the passed `apri` or
+        `apri_json` is unknown to this `Register`.
 
-        One of `apri` and `apriJson` can be `None`, but not both. If both are not `None`, then `apri` is used.
+        One of `apri` and `apri_json` can be `None`, but not both. If both are not `None`, then `apri` is used.
 
         `self._db` must be opened by the caller.
 
         :param apri: (type `ApriInfo`)
-        :param apriJson: (type `bytes`)
-        :param missingOk: (type `bool`) Create an ID if the passed `apri` or `apriJson` is unknown to this `Register`.
-        :param txn: (type `lmbd.Transaction`, default `None`) The transaction to query. If `None`, then use open a new
-        transaction and commit it after this method resolves.
-        :raises DataNotFoundError: If `apri` or `apriJson` is not known to this `Register` and `missingOk
+        :param apri_json: (type `bytes`)
+        :param missing_ok: (type `bool`) Create an ID if the passed `apri` or `apri_json` is unknown to this `Register`.
+        :param txn: (type `lmbd.Transaction`, default `None`) The transaction to query. If `None`, then open a new
+        transaction and commit it after this method returns.
+        :param reserved: (type `list`, default `None`) Apri ID's that cannot be returned by this method.
+        :raises DataNotFoundError: If `apri` or `apri_json` is not known to this `Register` and `missing_ok
         is False`.
         :return: (type `bytes`)
         """
 
         if apri is not None:
-            key = _APRI_ID_KEY_PREFIX + apri.toJson().encode("ASCII")
+            apri_json =  relational_encode_info(self, apri, txn)
 
-        elif apriJson is not None:
-            key = _APRI_ID_KEY_PREFIX + apriJson
-
-        else:
+        elif apri_json is None:
             raise ValueError
 
         commit = txn is None
+        key = _APRI_ID_KEY_PREFIX + apri_json
 
-        if commit and missingOk:
+        if commit and missing_ok:
             txn = self._db.begin(write = True)
 
         elif commit:
@@ -1087,28 +1055,21 @@ class Register(ABC):
 
         try:
 
-            _id = txn.get(key, default = None)
+            id_ = txn.get(key, default = None)
 
-            if _id is not None:
-                return _id
+            if id_ is not None:
+                return id_
 
-            elif missingOk:
+            elif missing_ok:
 
-                _id = txn.get(_CURR_ID_KEY)
-                next_id = str(int(_id) + 1).encode("ASCII")
-                txn.put(_CURR_ID_KEY, next_id)
-                txn.put(key, _id)
-                txn.put(_ID_APRI_KEY_PREFIX + _id, key[_APRI_ID_KEY_PREFIX_LEN : ])
-
-                if 8 + 6 + len(key) > 4096:
-                    warnings.warn(f"Long `ApriInfo` result in disk memory inefficiency. Long `ApriInfo`: {str(apri)}.")
-
-                return _id
+                next_id = Register._get_new_apri_id(txn, reserved if reserved is not None else [])
+                Register._add_apri(txn, next_id, apri, apri_json)
+                return next_id
 
             else:
 
                 if apri is None:
-                    apri = ApriInfo.fromJson(apriJson.decode("ASCII"))
+                    apri = relational_decode_info(self, ApriInfo, apri_json, txn)
 
                 raise DataNotFoundError(_NO_APRI_ERROR_MESSAGE.format(str(apri)))
 
@@ -1120,67 +1081,91 @@ class Register(ABC):
                     txn.commit()
 
                 except lmdb.MapFullError as e:
-                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
-    def _rmvApriTxn(self, apri, force, txn):
+    @staticmethod
+    def _add_apri(txn, id_, apri, apri_json):
+
+        apri_id_key = _APRI_ID_KEY_PREFIX + apri_json
+        id_apri_key = _ID_APRI_KEY_PREFIX + id_
+        txn.put(apri_id_key, id_)
+        txn.put(id_apri_key, apri_json)
+
+        if 8 + 6 + len(apri_id_key) > 4096:
+            warnings.warn(f"Long `ApriInfo` result in disk memory inefficiency. Long `ApriInfo`: {str(apri)}.")
+
+    @staticmethod
+    def _get_new_apri_id(txn, reserved):
+
+        for next_id_num in count(int(txn.get(_CURR_ID_KEY))):
+
+            next_id = str(next_id_num).encode("ASCII")
+
+            if next_id not in reserved:
+                break
+
+        txn.put(_CURR_ID_KEY, str(next_id_num + 1).encode("ASCII"))
+        return next_id
+
+    def _rmv_apri_txn(self, apri, force, txn):
 
         apris = []
         aposs = []
-        blkDatas = []
-        self._rmvApriTxnHelper(txn, apri, apris, aposs, blkDatas, force)
+        blk_datas = []
+        self._rmv_apri_txn_helper(txn, apri, apris, aposs, blk_datas, force)
 
         if force:
 
-            for data in blkDatas:
-                self._rmvDiskBlkTxn(data[0], data[1], data[2], txn)
+            for data in blk_datas:
+                self._rmv_disk_blk_txn(data[0], data[1], data[2], txn)
 
             for apri in aposs:
-                self._rmvAposInfoTxn(apri, txn)
+                self._rmv_apos_info_txn(apri, txn)
 
             for apri in apris:
-                self._rmvApriTxn(apri, False, txn)
+                self._rmv_apri_txn(apri, False, txn)
 
-        apriJson = apri.toJson().encode()
-        apriId = self._getIdByApri(apri, apriJson, False, txn)
-        txn.delete(_ID_APRI_KEY_PREFIX + apriId)
-        txn.delete(_APRI_ID_KEY_PREFIX + apriJson)
+        apri_json = relational_encode_info(self, apri, txn)
+        apri_id = self._get_id_by_apri(apri, apri_json, False, txn)
+        txn.delete(_ID_APRI_KEY_PREFIX + apri_id)
+        txn.delete(_APRI_ID_KEY_PREFIX + apri_json)
 
-        return blkDatas
+        return blk_datas
 
-    def _rmvApriTxnHelper(self, txn, apri, apris, aposs, blkDatas, force):
+    def _rmv_apri_txn_helper(self, txn, apri, apris, aposs, blk_datas, force):
 
         apris.append(apri)
 
         if _debug == 1:
             raise KeyboardInterrupt
 
-        if self._numDiskBlksTxn(apri, txn) != 0:
+        if self._num_disk_blks_txn(apri, txn) != 0:
 
             if not force:
 
                 raise ValueError(
                     f"There are disk `Block`s saved with `{str(apri)}`. Please remove them first and call "
-                    "`rmvApri` again. Or remove them automatically by calling "
-                    "`reg.rmvApri(apri, force = True)`."
+                    "`rmv_apri` again. Or remove them automatically by calling "
+                    "`reg.rmv_apri(info, force = True)`."
                 )
 
             else:
 
-                for key, val in self._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri, None, txn):
+                for key, val in self._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri, None, txn):
 
-                    blkFilename = val.decode("ASCII")
+                    blk_filename = val.decode("ASCII")
 
-                    if not isDeletable(self._localDir / blkFilename):
-                        raise OSError(f"Cannot delete `Block` file `{blkFilename}`.")
+                    if not is_deletable(self._local_dir / blk_filename):
+                        raise OSError(f"Cannot delete `Block` file `{blk_filename}`.")
 
-                    blkDatas.append(self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key))
+                    blk_datas.append(self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key))
 
-                for key, val in self._iterDiskBlkPairs(_COMPRESSED_KEY_PREFIX, apri, None, txn):
+                for key, val in self._iter_disk_blk_pairs(_COMPRESSED_KEY_PREFIX, apri, None, txn):
 
-                    comprFilename = val.decode("ASCII")
+                    compr_filename = val.decode("ASCII")
 
-                    if val != _IS_NOT_COMPRESSED_VAL and not isDeletable(self._localDir / comprFilename):
-                        raise OSError(f"Cannot delete compressed `Block` file `{comprFilename}`.")
+                    if val != _IS_NOT_COMPRESSED_VAL and not is_deletable(self._local_dir / compr_filename):
+                        raise OSError(f"Cannot delete compressed `Block` file `{compr_filename}`.")
 
         if _debug == 2:
             raise KeyboardInterrupt
@@ -1197,7 +1182,7 @@ class Register(ABC):
 
                 raise ValueError(
                     f"There is an `AposInfo` associated with `{str(apri)}`. Please remove it first and call "
-                    "`rmvApri` again. Or remove automatically by calling `reg.rmvApri(apri, force = True)`."
+                    "`rmv_apri` again. Or remove automatically by calling `reg.rmv_apri(info, force = True)`."
                 )
 
             else:
@@ -1206,24 +1191,24 @@ class Register(ABC):
         if _debug == 3:
             raise KeyboardInterrupt
 
-        with lmdbPrefixIter(txn, _ID_APRI_KEY_PREFIX) as it:
+        with lmdb_prefix_iter(txn, _ID_APRI_KEY_PREFIX) as it:
 
-            for _, _apri_json in it:
+            for _, apri_json_ in it:
 
-                _apri = ApriInfo.fromJson(_apri_json.decode("ASCII"))
+                apri_ = relational_decode_info(self, ApriInfo, apri_json_, txn)
 
-                if apri in _apri and apri != _apri:
+                if apri in apri_ and apri != apri_:
 
                     if not force:
 
                         raise ValueError(
-                            f"{str(_apri)} is associated with {str(apri)}. Please remove the former first before "
-                            f"removing the latter. Or remove automatically by calling `reg.rmvApri(apri, "
+                            f"{str(apri_)} is associated with {str(apri)}. Please remove the former first before "
+                            f"removing the latter. Or remove automatically by calling `reg.rmv_apri(info, "
                             f"force = True)`."
                         )
 
                     else:
-                        self._rmvApriTxnHelper(txn, _apri, apris, aposs, blkDatas, True)
+                        self._rmv_apri_txn_helper(txn, apri_, apris, aposs, blk_datas, True)
 
             if _debug == 4:
                 raise KeyboardInterrupt
@@ -1231,15 +1216,15 @@ class Register(ABC):
     #################################
     #      PUBLIC APOS METHODS      #
 
-    def setApos(self, apri, apos):
+    def set_apos(self, apri, apos):
         """Set some `AposInfo` for corresponding `ApriInfo`.
 
         WARNING: This method will OVERWRITE any previous saved `AposInfo`. If you do not want to lose any previously
         saved data, then you should do something like the following:
 
-            apos = reg.apos(apri)
+            apos = reg.apos(info)
             apos.period_length = 5
-            reg.setApos(apos)
+            reg.set_apos(apos)
 
         :param apri: (type `ApriInfo`)
         :param apos: (type `AposInfo`)
@@ -1247,12 +1232,12 @@ class Register(ABC):
 
         # DEBUG : 1, 2
 
-        self._checkOpenRaise("setApos")
+        self._check_open_raise("set_apos")
 
-        self._checkReadwriteRaise("setApos")
+        self._check_readwrite_raise("set_apos")
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`")
+            raise TypeError("`info` must be of type `ApriInfo`")
 
         if not isinstance(apos, AposInfo):
             raise TypeError("`apos` must be of type `AposInfo`")
@@ -1264,51 +1249,51 @@ class Register(ABC):
 
             with self._db.begin(write = True) as txn:
 
-                self._setAposInfoTxn(apri, apos, txn)
+                self._set_apos_info_txn(apri, apos, txn)
 
                 if _debug == 2:
                     raise KeyboardInterrupt
 
         except lmdb.MapFullError as e:
-            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
     def apos(self, apri):
         """Get some `AposInfo` associated with a given `ApriInfo`.
 
         :param apri: (type `ApriInfo`)
-        :raises DataNotFoundError: If no `AposInfo` has been associated to `apri`.
+        :raises DataNotFoundError: If no `AposInfo` has been associated to `info`.
         :return: (type `AposInfo`)
         """
 
-        self._checkOpenRaise("apos")
+        self._check_open_raise("apos")
 
         if not isinstance(apri, ApriInfo):
             raise TypeError("`apri` must be of type `ApriInfo`")
 
-        key = self._getAposKey(apri, None, False)
-
         with self._db.begin() as txn:
+
+            key = self._get_apos_key(apri, None, False, txn)
             apos_json = txn.get(key, default=None)
 
-        if apos_json is not None:
-            return AposInfo.fromJson(apos_json.decode("ASCII"))
+            if apos_json is not None:
+                return relational_decode_info(self, AposInfo, apos_json, txn)
 
-        else:
-            raise DataNotFoundError(f"No `AposInfo` associated with `{str(apri)}`.")
+            else:
+                raise DataNotFoundError(f"No `AposInfo` associated with `{str(apri)}`.")
 
-    def rmvApos(self, apri, missingOk = False):
+    def rmv_apos(self, apri, missing_ok = False):
 
         # DEBUG : 1, 2
 
-        self._checkOpenRaise("rmvApos")
+        self._check_open_raise("rmv_apos")
 
-        self._checkReadwriteRaise("rmvApos")
+        self._check_readwrite_raise("rmv_apos")
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`.")
+            raise TypeError("`info` must be of type `ApriInfo`.")
 
-        if not isinstance(missingOk, bool):
-            raise TypeError("`missingOk` must be of type `bool`.")
+        if not isinstance(missing_ok, bool):
+            raise TypeError("`missing_ok` must be of type `bool`.")
 
         if _debug == 1:
             raise KeyboardInterrupt
@@ -1317,79 +1302,79 @@ class Register(ABC):
 
             with self._db.begin(write = True) as txn:
 
-                self._rmvAposInfoTxn(apri, txn)
+                self._rmv_apos_info_txn(apri, txn)
 
                 if _debug == 2:
                     raise KeyboardInterrupt
 
         except lmdb.MapFullError as e:
-            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
         except DataNotFoundError:
 
-            if not missingOk:
+            if not missing_ok:
                 raise
 
     #################################
     #      PROTEC APOS METHODS      #
 
-    def _setAposInfoTxn(self, apri, apos, txn):
+    def _set_apos_info_txn(self, apri, apos, txn):
 
-        key = self._getAposKey(apri, None, True, txn)
-        apos_json = apos.toJson().encode("ASCII")
+        key = self._get_apos_key(apri, None, True, txn)
+        apos_json = relational_encode_info(self, apos, txn)
         txn.put(key, apos_json)
 
         if 6 + 8 + _APOS_KEY_PREFIX_LEN +  len(apos_json) > 4096:
             warnings.warn(f"Long `AposInfo` result in disk memory inefficiency. Long `AposInfo`: {str(apri)}.")
 
-    def _rmvAposInfoTxn(self, apri, txn):
+    def _rmv_apos_info_txn(self, apri, txn):
 
-        key = self._getAposKey(apri, None, False, txn)
+        key = self._get_apos_key(apri, None, False, txn)
 
-        if lmdbHasKey(txn, key):
+        if lmdb_has_key(txn, key):
             txn.delete(key)
 
         else:
             raise DataNotFoundError(f"No `AposInfo` associated with `{str(apri)}`.")
 
-    def _getAposKey(self, apri, apriJson, missingOk, txn = None):
+    def _get_apos_key(self, apri, apri_json, missing_ok, txn = None):
         """Get a key for an `AposInfo` entry.
 
-        One of `apri` and `apriJson` can be `None`, but not both. If both are not `None`, then `apri` is used. If
-        `missingOk is True`, then create a new `ApriInfo` ID if one does not already exist for `apri`.
+        One of `apri` and `apri_json` can be `None`, but not both. If both are not `None`, then `apri` is used. If
+        `missing_ok is True`, then create a new `ApriInfo` ID if one does not already exist for `apri`.
 
         :param apri: (type `ApriInfo`)
-        :param apriJson: (type `bytes`)
-        :param missingOk: (type `bool`)
+        :param apri_json: (type `bytes`)
+        :param missing_ok: (type `bool`)
         :param txn: (type `lmbd.Transaction`, default `None`) The transaction to query. If `None`, then use open a new
         transaction and commit it after this method resolves.
-        :raises DataNotFoundError: If `missingOk is False` and `apri` is not known to this `Register`.
+        :raises DataNotFoundError: If `missing_ok is False` and `apri` is not known to this `Register`.
         :return: (type `bytes`)
         """
 
-        if apri is None and apriJson is None:
+        if apri is None and apri_json is None:
             raise ValueError
 
-        apri_id = self._getIdByApri(apri, apriJson, missingOk, txn)
+        apri_id = self._get_id_by_apri(apri, apri_json, missing_ok, txn)
 
         return _APOS_KEY_PREFIX + _KEY_SEP + apri_id
 
     #################################
     #  PUBLIC SUB-REGISTER METHODS  #
 
-    def addSubreg(self, subreg, existsOk = False):
+    def add_subreg(self, subreg, exists_ok = False):
 
         # DEBUG : 1, 2
 
-        self._checkOpenRaise("addSubreg")
+        self._check_open_raise("add_subreg")
 
-        self._checkReadwriteRaise("addSubreg")
+        self._check_readwrite_raise("add_subreg")
 
         if not isinstance(subreg, Register):
             raise TypeError("`subreg` must be of a `Register` derived type")
 
         if not subreg._created:
-            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("addSubreg"))
+            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("add_subreg"))
 
         if _debug == 1:
             raise KeyboardInterrupt
@@ -1397,37 +1382,37 @@ class Register(ABC):
         try:
 
             with self._db.begin(write = True) as txn:
-                self._addSubregTxn(subreg, txn)
+                self._add_subreg_txn(subreg, txn)
 
         except lmdb.MapFullError as e:
-            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
         except RegisterError as e:
 
             if str(e) == _REG_ALREADY_ADDED_ERROR_MESSAGE:
 
-                if not existsOk:
+                if not exists_ok:
                     raise
 
             else:
                 raise
 
-    def rmvSubreg(self, subreg, missingOk = False):
+    def rmv_subreg(self, subreg, missing_ok = False):
         """
         :param subreg: (type `Register`)
         """
 
         # DEBUG : 1, 2
 
-        self._checkOpenRaise("rmvSubreg")
+        self._check_open_raise("rmv_subreg")
 
-        self._checkReadwriteRaise("rmvSubreg")
+        self._check_readwrite_raise("rmv_subreg")
 
         if not isinstance(subreg, Register):
             raise TypeError("`subreg` must be of a `Register` derived type.")
 
-        if not isinstance(missingOk, bool):
-            raise TypeError("`missingOk` must be of type `bool`.")
+        if not isinstance(missing_ok, bool):
+            raise TypeError("`missing_ok` must be of type `bool`.")
 
         if _debug == 1:
             raise KeyboardInterrupt
@@ -1436,32 +1421,32 @@ class Register(ABC):
 
             with self._db.begin(write = True) as txn:
 
-                self._rmvSubregTxn(subreg, txn)
+                self._rmv_subreg_txn(subreg, txn)
 
                 if _debug == 2:
                     raise KeyboardInterrupt
 
         except lmdb.MapFullError as e:
-            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
         except DataNotFoundError:
 
-            if not missingOk:
+            if not missing_ok:
                 raise
 
     def subregs(self):
-        return list(self._iterSubregs())
+        return list(self._iter_subregs())
 
     #################################
     #  PROTEC SUB-REGISTER METHODS  #
 
-    def _addSubregTxn(self, subreg, txn):
+    def _add_subreg_txn(self, subreg, txn):
 
-        key = subreg._getSubregKey()
+        key = subreg._get_subreg_key()
 
-        if not lmdbHasKey(txn, key):
+        if not lmdb_has_key(txn, key):
 
-            if subreg._checkNoCyclesFrom(self):
+            if subreg._check_no_cycles_from(self):
 
                 txn.put(key, _SUB_VAL)
 
@@ -1480,17 +1465,17 @@ class Register(ABC):
         else:
             raise RegisterError(_REG_ALREADY_ADDED_ERROR_MESSAGE)
 
-    def _rmvSubregTxn(self, subreg, txn):
+    def _rmv_subreg_txn(self, subreg, txn):
 
-        key = subreg._getSubregKey()
+        key = subreg._get_subreg_key()
 
-        if lmdbHasKey(txn, key):
+        if lmdb_has_key(txn, key):
             txn.delete(key)
 
         else:
             raise RegisterError(f"No subregister found with the following message : {str(subreg)}")
 
-    def _checkNoCyclesFrom(self, original, touched = None):
+    def _check_no_cycles_from(self, original, touched = None):
         """Checks if adding `self` as a subregister to `original` would not create any directed cycles containing the
         arc `original` -> `self` in the subregister relation.
 
@@ -1504,7 +1489,7 @@ class Register(ABC):
         """
 
         if not self._created or not original._created:
-            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_checkNoCyclesFrom"))
+            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_check_no_cycles_from"))
 
         if self is original:
             return False
@@ -1512,51 +1497,51 @@ class Register(ABC):
         if touched is None:
             touched = set()
 
-        with self._recursiveOpen(True) as reg:
+        with self._recursive_open(True) as reg:
 
             if any(
                 original is subreg
-                for subreg in reg._iterSubregs()
+                for subreg in reg._iter_subregs()
             ):
                 return False
 
-            for subreg in reg._iterSubregs():
+            for subreg in reg._iter_subregs():
 
                 if subreg not in touched:
 
                     touched.add(subreg)
-                    if not subreg._checkNoCyclesFrom(original, touched):
+                    if not subreg._check_no_cycles_from(original, touched):
                         return False
 
 
             else:
                 return True
 
-    def _iterSubregs(self):
+    def _iter_subregs(self):
 
-        with lmdbPrefixIter(self._db, _SUB_KEY_PREFIX) as it:
+        with lmdb_prefix_iter(self._db, _SUB_KEY_PREFIX) as it:
 
             for key, _ in it:
 
-                localDir = Path(key[_SUB_KEY_PREFIX_LEN : ].decode("ASCII"))
-                subreg = Register._fromLocalDir(localDir)
+                local_dir = Path(key[_SUB_KEY_PREFIX_LEN : ].decode("ASCII"))
+                subreg = Register._from_local_dir(local_dir)
                 yield subreg
 
-    def _getSubregKey(self):
-        return _SUB_KEY_PREFIX + self._localDirBytes
+    def _get_subreg_key(self):
+        return _SUB_KEY_PREFIX + self._local_dir_bytes
 
     #################################
     #    PUBLIC DISK BLK METHODS    #
 
     @classmethod
     @abstractmethod
-    def dumpDiskData(cls, data, filename, **kwargs):
+    def dump_disk_data(cls, data, filename, **kwargs):
         """Dump data to the disk.
 
         This method should not change any properties of any `Register`, which is why it is a class-method and
         not an instance-method. It merely takes `data`, processes it, and dumps it to disk.
 
-        Most use-cases prefer the instance-method `addDiskBlk`.
+        Most use-cases prefer the instance-method `add_disk_blk`.
 
         :param data: (any type) The raw data to dump.
         :param filename: (type `pathlib.Path`) The filename to dump to. You may edit this filename if
@@ -1566,7 +1551,7 @@ class Register(ABC):
 
     @classmethod
     @abstractmethod
-    def loadDiskData(cls, filename, **kwargs):
+    def load_disk_data(cls, filename, **kwargs):
         """Load raw data from the disk.
 
         This method should not change any properties of any `Register`, which is why it is a classmethod and
@@ -1582,13 +1567,13 @@ class Register(ABC):
         """
 
     @classmethod
-    def cleanDiskData(cls, filename, **kwargs):
+    def clean_disk_data(cls, filename, **kwargs):
         """Remove raw data from the disk.
 
         This method should not change any properties of any `Register`, which is why it is a classmethod and
         not an instancemethod. It merely removes the raw data.
 
-        Most use-cases prefer the method `rmvDiskBlk`.
+        Most use-cases prefer the method `rmv_disk_blk`.
 
         :param filename: (type `pathlib.Path`) Where to remove the raw data.
         :raises DataNotFoundError: If the data could not be cleaned because it doesn't exist.
@@ -1601,50 +1586,50 @@ class Register(ABC):
 
     @classmethod
     @abstractmethod
-    def withSuffix(cls, filename):
+    def with_suffix(cls, filename):
         """Adds a suffix to a filename and returns it.
 
         :param filename: (type `pathlib.Path`)
         :return: (type `pathlib.Path`)
         """
 
-    def addDiskBlk(self, blk, existsOk = False, retMetadata = False, **kwargs):
+    def add_disk_blk(self, blk, exists_ok = False, ret_metadata = False, **kwargs):
         """Save a `Block` to disk and link it with this `Register`.
 
         :param blk: (type `Block`)
-        :param retMetadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
+        :param ret_metadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
         contains file creation date/time and size of dumped data to the disk.
         :raises RegisterError: If a duplicate `Block` already exists in this `Register`.
         """
 
         #DEBUG : 1, 2, 3, 4, 5
 
-        self._checkOpenRaise("addDiskBlk")
-        self._checkReadwriteRaise("addDiskBlk")
+        self._check_open_raise("add_disk_blk")
+        self._check_readwrite_raise("add_disk_blk")
 
         if not isinstance(blk, Block):
             raise TypeError("`blk` must be of type `Block`.")
 
-        if not isinstance(existsOk, bool):
-            raise TypeError("`existsOk` must be of type `bool`.")
+        if not isinstance(exists_ok, bool):
+            raise TypeError("`exists_ok` must be of type `bool`.")
 
-        if not isinstance(retMetadata, bool):
-            raise TypeError("`retMetadata` must be of type `bool`.")
+        if not isinstance(ret_metadata, bool):
+            raise TypeError("`ret_metadata` must be of type `bool`.")
 
-        startnHead = blk.startn() // self._startnTailMod
+        startn_head = blk.startn() // self._startn_tail_mod
 
-        if startnHead != self._startnHead :
+        if startn_head != self._startn_head :
 
             raise IndexError(
                 "The `startn_` for the passed `Block` does not have the correct head:\n"
-                f"`tailLen`       : {self._startnTailLength}\n"
-                f"expected `head` : {self._startnHead}\n"
+                f"`tail_len`       : {self._startn_tail_length}\n"
+                f"expected `head` : {self._startn_head}\n"
                 f"`startn_`       : {blk.startn()}\n"
-                f"`startn_` head  : {startnHead}\n"
-                "Please see the method `setStartnInfo` to troubleshoot this error."
+                f"`startn_` head  : {startn_head}\n"
+                "Please see the method `set_startn_info` to troubleshoot this error."
             )
 
-        if len(blk) > self._maxLength:
+        if len(blk) > self._max_length:
             raise ValueError
 
         if _debug == 1:
@@ -1660,7 +1645,7 @@ class Register(ABC):
 
             with ReversibleTransaction(self._db).begin(write = True) as txn:
 
-                filename = self._addDiskBlkTxn(blk, txn)
+                filename = self._add_disk_blk_txn(blk, txn)
 
                 if _debug == 3:
                     raise KeyboardInterrupt
@@ -1668,14 +1653,14 @@ class Register(ABC):
             if _debug == 4:
                 raise KeyboardInterrupt
 
-            type(self).dumpDiskData(blk.segment(), filename, **kwargs)
+            type(self).dump_disk_data(blk.segment(), filename, **kwargs)
 
             if _debug == 5:
                 raise KeyboardInterrupt
 
         except BaseException as e:
 
-            if not isinstance(e, RegisterError) or not existsOk or not "exist" in str(e):
+            if not isinstance(e, RegisterError) or not exists_ok or not "exist" in str(e):
 
                 try:
 
@@ -1698,26 +1683,26 @@ class Register(ABC):
                 else:
 
                     if isinstance(e, lmdb.MapFullError):
-                        raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+                        raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
                     else:
                         raise e
 
-        if retMetadata:
-            return self.blkMetadata(blk.apri(), blk.startn(), len(blk), False)
+        if ret_metadata:
+            return self.blk_metadata(blk.apri(), blk.startn(), len(blk), False)
 
         else:
             return None
 
-    def appendDiskBlk(self, blk, existsOk = False, retMetadata = False, **kwargs):
+    def append_disk_blk(self, blk, exists_ok = False, ret_metadata = False, **kwargs):
         """Add a `Block` to disk and link it with this `Register`.
 
         If no disk `Block`s with the same `ApriInfo` as `blk` have previously been added to disk, then `blk` will be
-        added to this `Register` via the method `addDiskBlk`. If not, then `startn_` will be set to one more than the
+        added to this `Register` via the method `add_disk_blk`. If not, then `startn_` will be set to one more than the
         largest index among all disk `Block`s with the same `ApriInfo` as `blk`.
 
         :param blk: (type `Block`)
-        :param retMetadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
+        :param ret_metadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
         contains file creation date/time and size of dumped data to the disk.
         :raises RegisterError: If a duplicate `Block` already exists in this `Register`.
         """
@@ -1725,46 +1710,46 @@ class Register(ABC):
         if not isinstance(blk, Block):
             raise TypeError("`blk` must be of type `Block`.")
 
-        if not isinstance(existsOk, bool):
-            raise TypeError("`existsOk` must be of type `bool`.")
+        if not isinstance(exists_ok, bool):
+            raise TypeError("`exists_ok` must be of type `bool`.")
 
-        if not isinstance(retMetadata, bool):
-            raise TypeError("`retMetadata` must be of type `bool`.")
+        if not isinstance(ret_metadata, bool):
+            raise TypeError("`ret_metadata` must be of type `bool`.")
 
-        if self.numBlks(blk.apri(), diskonly = True) == 0:
-            return self.addDiskBlk(blk, existsOk, retMetadata, **kwargs)
+        if self.num_blks(blk.apri(), diskonly = True) == 0:
+            return self.add_disk_blk(blk, exists_ok, ret_metadata, **kwargs)
 
         else:
 
             startn = 0
 
-            for key, _ in self._iterDiskBlkPairs(_BLK_KEY_PREFIX, blk.apri(), None):
+            for key, _ in self._iter_disk_blk_pairs(_BLK_KEY_PREFIX, blk.apri(), None):
 
-                _, _startn, _length = self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key)
+                _, _startn, _length = self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
 
                 if startn < _startn + _length:
                     startn = _startn + _length
 
-            blk.setStartn(startn)
-            return self.addDiskBlk(blk, existsOk, retMetadata, **kwargs)
+            blk.set_startn(startn)
+            return self.add_disk_blk(blk, exists_ok, ret_metadata, **kwargs)
 
-    def rmvDiskBlk(self, apri, startn = None, length = None, missingOk = False, recursively = False, **kwargs):
+    def rmv_disk_blk(self, apri, startn = None, length = None, missing_ok = False, recursively = False, **kwargs):
         """Delete a disk `Block` and unlink it with this `Register`.
 
         :param apri: (type `ApriInfo`)
-        :param startn_: (type `int`) Non-negative.
-        :param length_: (type `int`) Non-negative.
+        :param startn: (type `int`) Non-negative.
+        :param length: (type `int`) Non-negative.
         :param recursively: (type `bool`)
         """
 
         # DEBUG : 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
 
-        self._checkOpenRaise("rmvDiskBlk")
-        self._checkReadwriteRaise("rmvDiskBlk")
-        startn, length = Register._checkApriStartnLengthRaise(apri, startn, length)
+        self._check_open_raise("rmv_disk_blk")
+        self._check_readwrite_raise("rmv_disk_blk")
+        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
 
         try:
-            startn_, length_ = self._resolveStartnLength(apri, startn, length, True)
+            startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
 
         except DataNotFoundError:
             pass
@@ -1791,7 +1776,7 @@ class Register(ABC):
                     if _debug == 4:
                         raise KeyboardInterrupt
 
-                    blkFilename, comprFilename = self._rmvDiskBlkTxn(apri, startn_, length_, txn)
+                    blkFilename, comprFilename = self._rmv_disk_blk_txn(apri, startn_, length_, txn)
 
                     if _debug == 5:
                         raise KeyboardInterrupt
@@ -1799,13 +1784,13 @@ class Register(ABC):
                 if _debug == 6:
                     raise KeyboardInterrupt
 
-                if not isDeletable(blkFilename):
+                if not is_deletable(blkFilename):
                     raise OSError(f"Cannot delete `Block` file `{str(blkFilename)}`.")
 
                 if _debug == 7:
                     raise KeyboardInterrupt
 
-                if comprFilename is not None and not isDeletable(comprFilename):
+                if comprFilename is not None and not is_deletable(comprFilename):
                     raise OSError(f"Cannot delete compressed `Block` file `{str(comprFilename)}`.")
 
                 if _debug == 8:
@@ -1821,7 +1806,7 @@ class Register(ABC):
                     comprFilename.unlink()
 
                 else:
-                    type(self).cleanDiskData(blkFilename, **kwargs)
+                    type(self).clean_disk_data(blkFilename, **kwargs)
 
                 return
 
@@ -1861,114 +1846,114 @@ class Register(ABC):
                 else:
 
                     if isinstance(e, lmdb.MapFullError):
-                        raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+                        raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
                     else:
                         raise e
 
         if recursively:
 
-            for subreg in self._iterSubregs():
+            for subreg in self._iter_subregs():
 
-                with subreg._recursiveOpen(False) as subreg:
+                with subreg._recursive_open(False) as subreg:
 
                     try:
-                        subreg.rmvDiskBlk(apri, startn, length, False, True, **kwargs)
+                        subreg.rmv_disk_blk(apri, startn, length, False, True, **kwargs)
                         return
 
                     except DataNotFoundError:
                         pass
 
-        if not missingOk:
-            raise DataNotFoundError(_blkNotFoundErrMsg(True, apri, None, startn, length))
+        if not missing_ok:
+            raise DataNotFoundError(_blk_not_found_err_msg(True, apri, None, startn, length))
 
-    def blkMetadata(self, apri, startn = None, length = None, recursively = False):
+    def blk_metadata(self, apri, startn = None, length = None, recursively = False):
 
-        self._checkOpenRaise("blkMetadata")
+        self._check_open_raise("blk_metadata")
 
-        startn, length = Register._checkApriStartnLengthRaise(apri, startn, length)
+        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
 
         if not isinstance(recursively, bool):
             raise TypeError("`recursively` must be of type `bool`.")
 
-        startn_, length_ = self._resolveStartnLength(apri, startn, length, True)
+        startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
 
         try:
-            blk_key, compressed_key = self._checkBlkCompressedKeysRaise(None, None, apri, None, startn_, length_)
+            blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, startn_, length_)
 
         except DataNotFoundError:
             pass
 
         else:
-            blk_filename, compressed_filename = self._checkBlkCompressedFilesRaise(
+            blk_filename, compressed_filename = self._check_blk_compressed_files_raise(
                 blk_key, compressed_key, apri, startn_, length_
             )
 
             if compressed_filename is not None:
-                return FileMetadata.fromPath(compressed_filename)
+                return FileMetadata.from_path(compressed_filename)
 
             else:
-                return FileMetadata.fromPath(blk_filename)
+                return FileMetadata.from_path(blk_filename)
 
         if recursively:
 
-            for subreg in self._iterSubregs():
+            for subreg in self._iter_subregs():
 
-                with subreg._recursiveOpen(True) as subreg:
+                with subreg._recursive_open(True) as subreg:
 
                     try:
-                        return subreg.blkMetadata(apri, startn_, length_, True)
+                        return subreg.blk_metadata(apri, startn_, length_, True)
 
                     except DataNotFoundError:
                         pass
 
         raise DataNotFoundError(
-            _blkNotFoundErrMsg(True, apri, None, startn, length)
+            _blk_not_found_err_msg(True, apri, None, startn, length)
         )
 
-    def compress(self, apri, startn = None, length = None, compressionLevel = 6, retMetadata = False):
+    def compress(self, apri, startn = None, length = None, compression_level = 6, ret_metadata = False):
         """Compress a `Block`.
 
         :param apri: (type `ApriInfo`)
         :param startn: (type `int`) Non-negative.
         :param length: (type `int`) Non-negative.
-        :param compressionLevel: (type `int`, default 6) Between 0 and 9, inclusive. 0 is for the fastest compression,
+        :param compression_level: (type `int`, default 6) Between 0 and 9, inclusive. 0 is for the fastest compression,
         but lowest compression ratio; 9 is slowest, but highest ratio. See
         https://docs.python.org/3/library/zlib.html#zlib.compressobj for more information.
-        :param retMetadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object that
+        :param ret_metadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object that
         describes the compressed file.
         :raises CompressionError: If the `Block` is already compressed.
-        :return: (type `File_Metadata`) If `retMetadata is True`.
+        :return: (type `File_Metadata`) If `ret_metadata is True`.
         """
 
         # DEBUG : 1, 2, 3, 4
 
         _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not recover successfully from a failed disk `Block` compress!"
 
-        self._checkOpenRaise("compress")
+        self._check_open_raise("compress")
 
-        self._checkReadwriteRaise("compress")
+        self._check_readwrite_raise("compress")
 
-        startn, length = Register._checkApriStartnLengthRaise(apri, startn, length)
+        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
 
-        if not isInt(compressionLevel):
-            raise TypeError("`compressionLevel` must be of type `int`.")
+        if not is_int(compression_level):
+            raise TypeError("`compression_level` must be of type `int`.")
         else:
-            compressionLevel = int(compressionLevel)
+            compression_level = int(compression_level)
 
-        if not isinstance(retMetadata, bool):
-            raise TypeError("`retMetadata` must be of type `bool`.")
+        if not isinstance(ret_metadata, bool):
+            raise TypeError("`ret_metadata` must be of type `bool`.")
 
-        if not (0 <= compressionLevel <= 9):
-            raise ValueError("`compressionLevel` must be between 0 and 9, inclusive.")
+        if not (0 <= compression_level <= 9):
+            raise ValueError("`compression_level` must be between 0 and 9, inclusive.")
 
-        startn_, length_ = self._resolveStartnLength(apri, startn, length, True)
+        startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
 
-        compressed_key = self._getDiskBlkKey(
+        compressed_key = self._get_disk_blk_key(
             _COMPRESSED_KEY_PREFIX, apri, None, startn_, length_, False
         )
 
-        blk_key, compressed_key = self._checkBlkCompressedKeysRaise(
+        blk_key, compressed_key = self._check_blk_compressed_keys_raise(
             None, compressed_key, apri, None, startn_, length_
         )
 
@@ -1983,9 +1968,9 @@ class Register(ABC):
             )
 
         with self._db.begin() as txn:
-            blk_filename = self._localDir / txn.get(blk_key).decode("ASCII")
+            blk_filename = self._local_dir / txn.get(blk_key).decode("ASCII")
 
-        compressed_filename = randomUniqueFilename(self._localDir, COMPRESSED_FILE_SUFFIX)
+        compressed_filename = random_unique_filename(self._local_dir, COMPRESSED_FILE_SUFFIX)
         compressed_val = compressed_filename.name.encode("ASCII")
 
         cleaned = False
@@ -2008,7 +1993,7 @@ class Register(ABC):
                 "x",  # zip mode (write, but don't overwrite)
                 zipfile.ZIP_DEFLATED,  # compression mode
                 True,  # use zip64
-                compressionLevel
+                compression_level
 
             ) as compressed_fh:
 
@@ -2020,7 +2005,7 @@ class Register(ABC):
             if _debug == 4:
                 raise KeyboardInterrupt
 
-            type(self).cleanDiskData(blk_filename)
+            type(self).clean_disk_data(blk_filename)
             cleaned = True
             blk_filename.touch()
 
@@ -2051,45 +2036,45 @@ class Register(ABC):
             else:
 
                 if isinstance(e, lmdb.MapFullError):
-                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
                 else:
                     raise e
 
-        if retMetadata:
-            return FileMetadata.fromPath(compressed_filename)
+        if ret_metadata:
+            return FileMetadata.from_path(compressed_filename)
 
         else:
             return None
 
-    def decompress(self, apri, startn = None, length = None, retMetadata = False):
+    def decompress(self, apri, startn = None, length = None, ret_metadata = False):
         """Decompress a `Block`.
 
         :param apri: (type `ApriInfo`)
         :param startn: (type `int`) Non-negative.
         :param length: (type `int`) Non-negative.
-        :param retMetadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object that
+        :param ret_metadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object that
         describes the decompressed file.
         :raise DecompressionError: If the `Block` is not compressed.
-        :return: (type `list`) If `retMetadata is True`.
+        :return: (type `list`) If `ret_metadata is True`.
         """
 
         # DEBUG : 1, 2, 3, 4
 
         _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not recover successfully from a failed disk `Block` decompress!"
 
-        self._checkOpenRaise("decompress")
+        self._check_open_raise("decompress")
 
-        self._checkReadwriteRaise("decompress")
+        self._check_readwrite_raise("decompress")
 
-        startn, length = Register._checkApriStartnLengthRaise(apri, startn, length)
+        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
 
-        if not isinstance(retMetadata, bool):
-            raise TypeError("`retMetadata` must be of type `bool`.")
+        if not isinstance(ret_metadata, bool):
+            raise TypeError("`ret_metadata` must be of type `bool`.")
 
-        startn_, length_ = self._resolveStartnLength(apri, startn, length, True)
+        startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
 
-        blk_key, compressed_key = self._checkBlkCompressedKeysRaise(None, None, apri, None, startn_, length_)
+        blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, startn_, length_)
 
         with self._db.begin() as txn:
             compressed_val = txn.get(compressed_key)
@@ -2104,14 +2089,14 @@ class Register(ABC):
         with self._db.begin() as txn:
             blk_filename = txn.get(blk_key).decode("ASCII")
 
-        blk_filename = self._localDir / blk_filename
-        compressed_filename = self._localDir / compressed_val.decode("ASCII")
+        blk_filename = self._local_dir / blk_filename
+        compressed_filename = self._local_dir / compressed_val.decode("ASCII")
         deleted = False
 
-        if not isDeletable(blk_filename):
+        if not is_deletable(blk_filename):
             raise OSError(f"Cannot delete ghost file `{str(blk_filename)}`.")
 
-        if not isDeletable(compressed_filename):
+        if not is_deletable(compressed_filename):
             raise OSError(f"Cannot delete compressed file `{str(compressed_filename)}`.")
 
         if _debug == 1:
@@ -2130,7 +2115,7 @@ class Register(ABC):
 
                 with zipfile.ZipFile(compressed_filename, "r") as compressed_fh:
 
-                    compressed_fh.extract(blk_filename.name, self._localDir)
+                    compressed_fh.extract(blk_filename.name, self._local_dir)
 
                     if _debug == 3:
                         raise KeyboardInterrupt
@@ -2168,40 +2153,40 @@ class Register(ABC):
             else:
 
                 if isinstance(e, lmdb.MapFullError):
-                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._dbMapSize)) from e
+                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
                 else:
                     raise e
 
-        if retMetadata:
-            return FileMetadata.fromPath(blk_filename)
+        if ret_metadata:
+            return FileMetadata.from_path(blk_filename)
 
         else:
             return None
 
-    def isCompressed(self, apri, startn = None, length = None):
+    def is_compressed(self, apri, startn = None, length = None):
 
-        self._checkOpenRaise("isCompressed")
+        self._check_open_raise("is_compressed")
 
-        self._checkApriStartnLengthRaise(apri, startn, length)
+        self._check_apri_startn_length_raise(apri, startn, length)
 
-        startn_, length_ = self._resolveStartnLength(apri, startn, length, True)
+        startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
 
         with self._db.begin() as txn:
             return txn.get(
-                self._getDiskBlkKey(_COMPRESSED_KEY_PREFIX, apri, None, startn_, length_, False, txn)
+                self._get_disk_blk_key(_COMPRESSED_KEY_PREFIX, apri, None, startn_, length_, False, txn)
             ) != _IS_NOT_COMPRESSED_VAL
 
-    # def setHashing(self, apri, hashing):
-    #     """Enable or disable automatic hashing for disk `Block`s with `apri`.
+    # def setHashing(self, info, hashing):
+    #     """Enable or disable automatic hashing for disk `Block`s with `info`.
     #
-    #     If `hashing` is set to `True`, then every disk `Block` with `apri` added to this `Register` will be hashed. A
+    #     If `hashing` is set to `True`, then every disk `Block` with `info` added to this `Register` will be hashed. A
     #     `Block` is hashed by calling `hash` on each of its entries. The hashes are saved to a hash-set on disk.
     #
-    #     If `hashing` is set to `False`, then all hashes associated to `apri` will be DELETED (if they exist) and no
+    #     If `hashing` is set to `False`, then all hashes associated to `info` will be DELETED (if they exist) and no
     #     future hashes are calculated.
     #
-    #     For best results, set hashing to `True` only before adding any disk `Block`s with `apri`.
+    #     For best results, set hashing to `True` only before adding any disk `Block`s with `info`.
     #
     #     :param hashing: (type `bool`)
     #     """
@@ -2209,44 +2194,44 @@ class Register(ABC):
     #################################
     #    PROTEC DISK BLK METHODS    #
 
-    def _addDiskBlkTxn(self, blk, txn):
+    def _add_disk_blk_txn(self, blk, txn):
 
         # DEBUG : 6,7,8,9, 10
 
-        apris = [apri for _, apri in blk.apri().iterInnerInfo() if isinstance(apri, ApriInfo)]
+        apris = [apri for _, apri in blk.apri().iter_inner_info() if isinstance(apri, ApriInfo)]
 
         if _debug == 6:
             raise KeyboardInterrupt
 
         # this will create ID's if necessary
         for i, apri in enumerate(apris):
-            self._getIdByApri(apri, None, True, txn)
+            self._get_id_by_apri(apri, None, True, txn)
 
         if _debug == 7:
             raise KeyboardInterrupt
 
-        blkKey = self._getDiskBlkKey(
+        blk_key = self._get_disk_blk_key(
             _BLK_KEY_PREFIX,
             blk.apri(), None, blk.startn(), len(blk),
             False, txn
         )
 
-        if not lmdbHasKey(txn, blkKey):
+        if not lmdb_has_key(txn, blk_key):
 
-            filename = randomUniqueFilename(self._localDir, length=6)
+            filename = random_unique_filename(self._local_dir, length=6)
 
             if _debug == 8:
                 raise KeyboardInterrupt
 
-            filename = type(self).withSuffix(filename)
+            filename = type(self).with_suffix(filename)
 
             if _debug == 9:
                 raise KeyboardInterrupt
 
             filename_bytes = str(filename.name).encode("ASCII")
-            compressed_key = _COMPRESSED_KEY_PREFIX + blkKey[_BLK_KEY_PREFIX_LEN:]
+            compressed_key = _COMPRESSED_KEY_PREFIX + blk_key[_BLK_KEY_PREFIX_LEN:]
 
-            txn.put(blkKey, filename_bytes)
+            txn.put(blk_key, filename_bytes)
             txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
 
             if _debug == 10:
@@ -2258,7 +2243,7 @@ class Register(ABC):
                     "Added a length_ 0 disk `Block` to this `Register`.\n" +
                     f"`Register` msg: {str(self)}\n" +
                     f"`Block`: {str(blk)}\n" +
-                    f"`Register` location: {str(self._localDir)}"
+                    f"`Register` location: {str(self._local_dir)}"
                 )
 
             return filename
@@ -2270,24 +2255,24 @@ class Register(ABC):
                 f"{str(blk.apri())}, startn_ = {blk.startn()}, length_ = {len(blk)}."
             )
 
-    def _rmvDiskBlkTxn(self, apri, startn, length, txn):
+    def _rmv_disk_blk_txn(self, apri, startn, length, txn):
 
         if _debug == 12:
             raise KeyboardInterrupt
 
         # raises DataNotFoundError
-        self._getIdByApri(apri, None, False, txn)
+        self._get_id_by_apri(apri, None, False, txn)
 
         if _debug == 13:
             raise KeyboardInterrupt
 
         # raises RegisterError and DataNotFoundError
-        blk_key, compressed_key = self._checkBlkCompressedKeysRaise(None, None, apri, None, startn, length, txn)
+        blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, startn, length, txn)
 
         if _debug == 14:
             raise KeyboardInterrupt
 
-        blkFilename, comprFilename = self._checkBlkCompressedFilesRaise(
+        blk_filename, compr_filename = self._check_blk_compressed_files_raise(
             blk_key, compressed_key, apri, startn, length, txn
         )
 
@@ -2304,72 +2289,72 @@ class Register(ABC):
         if _debug == 17:
             raise KeyboardInterrupt
 
-        return blkFilename, comprFilename
+        return blk_filename, compr_filename
 
-    def _getDiskBlkKey(self, prefix, apri, apriJson, startn, length, missingOk, txn = None):
+    def _get_disk_blk_key(self, prefix, apri, apri_json, startn, length, missing_ok, txn = None):
         """Get the database key for a disk `Block`.
 
-        One of `apri` and `apriJson` can be `None`, but not both. If both are not `None`, then `apri` is used.
-        `self._db` must be opened by the caller. This method only queries the database to obtain the `apri` ID.
+        One of `info` and `apri_json` can be `None`, but not both. If both are not `None`, then `info` is used.
+        `self._db` must be opened by the caller. This method only queries the database to obtain the `info` ID.
 
-        If `missingOk is True` and an ID for `apri` does not already exist, then a new one will be created. If
-        `missingOk is False` and an ID does not already exist, then an error is raised.
+        If `missing_ok is True` and an ID for `info` does not already exist, then a new one will be created. If
+        `missing_ok is False` and an ID does not already exist, then an error is raised.
 
         :param prefix: (type `bytes`)
         :param apri: (type `ApriInfo`)
-        :param apriJson: (types `bytes`)
+        :param apri_json: (types `bytes`)
         :param startn: (type `int`) The start index of the `Block`.
         :param length: (type `int`) The length_ of the `Block`.
-        :param missingOk: (type `bool`)
+        :param missing_ok: (type `bool`)
         :param txn: (type `lmbd.Transaction`, default `None`) The transaction to query. If `None`, then use open a new
         transaction and commit it after this method resolves.
-        :raises DataNotFoundError: If `missingOk is False` and `apri` is not known to this `Register`.
+        :raises DataNotFoundError: If `missing_ok is False` and `info` is not known to this `Register`.
         :return: (type `bytes`)
         """
 
-        if apri is None and apriJson is None:
+        if apri is None and apri_json is None:
             raise ValueError
 
-        _id = self._getIdByApri(apri, apriJson, missingOk, txn)
-        tail = startn % self._startnTailMod
-        tail = f"{tail:0{self._startnTailLength}d}".encode("ASCII")
-        opLength = self._maxLength - length
-        opLength = f"{opLength:0{self._lengthLength}d}".encode("ASCII")
+        id_ = self._get_id_by_apri(apri, apri_json, missing_ok, txn)
+        tail = startn % self._startn_tail_mod
+        tail = f"{tail:0{self._startn_tail_length}d}".encode("ASCII")
+        op_length = self._max_length - length
+        op_length = f"{op_length:0{self._length_length}d}".encode("ASCII")
 
         return (
                 prefix   +
-                _id      + _KEY_SEP +
+                id_      + _KEY_SEP +
                 tail     + _KEY_SEP +
-                opLength
+                op_length
         )
 
-    def _numDiskBlksTxn(self, apri, txn):
+    def _num_disk_blks_txn(self, apri, txn):
 
         try:
 
-            return lmdbCountKeys(
+            return lmdb_count_keys(
                 txn,
-                _BLK_KEY_PREFIX + self._getIdByApri(apri, None, False) + _KEY_SEP
+                _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False) + _KEY_SEP
             )
 
         except DataNotFoundError:
             return 0
 
-    def _iterDiskBlkPairs(self, prefix, apri, apriJson, txn = None):
+    def _iter_disk_blk_pairs(self, prefix, apri, apri_json, txn = None):
         """Iterate over key-value pairs for block entries.
 
         :param prefix: (type `bytes`)
         :param apri: (type `ApriInfo`)
-        :param apriJson: (type `bytes`)
+        :param apri_json: (type `bytes`)
         :param txn: (type `lmbd.Transaction`, default `None`) The transaction to query. If `None`, then use open a new
         transaction and commit it after this method resolves.
-        :raise DataNotFoundError: If `apri` is not a disk `ApriInfo`.
+        :raise DataNotFoundError: If `info` is not a disk `ApriInfo`.
         :return: (type `bytes`) key
         :return: (type `bytes`) val
         """
 
         try:
-            prefix += self._getIdByApri(apri, apriJson, False, txn)
+            prefix += self._get_id_by_apri(apri, apri_json, False, txn)
 
         except DataNotFoundError:
             pass
@@ -2378,79 +2363,100 @@ class Register(ABC):
 
             prefix += _KEY_SEP
 
-            with lmdbPrefixIter(txn if txn is not None else self._db, prefix) as it:
+            with lmdb_prefix_iter(txn if txn is not None else self._db, prefix) as it:
                 yield from it
 
     @staticmethod
-    def _splitDiskBlockKey(prefixLen, key):
-        return tuple(key[prefixLen:].split(_KEY_SEP))
+    def _split_disk_block_key(prefix_len, key):
+        return tuple(key[prefix_len:].split(_KEY_SEP))
 
     @staticmethod
-    def _joinDiskBlockData(prefix, apriJson, startnBytes, lenBytes):
+    def _join_disk_block_data(prefix, apri_json, startn_bytes, len_bytes):
         return (
                 prefix +
-                apriJson + _KEY_SEP +
-                startnBytes + _KEY_SEP +
-                lenBytes
+                apri_json + _KEY_SEP +
+                startn_bytes + _KEY_SEP +
+                len_bytes
         )
 
-    def _convertDiskBlockKey(self, prefixLen, key, apri = None, txn = None):
+    def _convert_disk_block_key(self, prefix_len, key, apri = None, txn = None):
         """
-        :param prefixLen: (type `int`) Positive.
+        :param prefix_len: (type `int`) Positive.
         :param key: (type `bytes`)
-        :param apri: (type `ApriInfo`, default None) If `None`, the relevant `apri` is acquired through a database
+        :param apri: (type `ApriInfo`, default None) If `None`, the relevant `info` is acquired through a database
         query.
         :param txn: (type `lmbd.Transaction`, default `None`) The transaction to query. If `None`, then use open a new
         transaction and commit it after this method resolves.
         :return: (type `ApriInfo`)
-        :return (type `int`) startn_
-        :return (type `int`) length_, non-negative
+        :return (type `int`) startn
+        :return (type `int`) length, non-negative
         """
 
-        apri_id, startn_bytes, opLength_bytes = Register._splitDiskBlockKey(prefixLen, key)
+        apri_id, startn_bytes, op_length_bytes = Register._split_disk_block_key(prefix_len, key)
 
-        if apri is None:
+        commit = apri is None and txn is None
 
-            apri_json = self._getApriJsonById(apri_id, txn)
-            apri = ApriInfo.fromJson(apri_json.decode("ASCII"))
+        if commit:
+            txn = self._db.begin()
+
+        try:
+
+            if apri is None:
+
+                apri_json = self._get_apri_json_by_id(apri_id, txn)
+                apri = relational_decode_info(self, ApriInfo, apri_json, txn)
+
+        finally:
+
+            if commit:
+                txn.commit()
 
         return (
             apri,
-            int(startn_bytes.decode("ASCII")) + self._startnHead * self._startnTailMod,
-            self._maxLength - int(opLength_bytes.decode("ASCII"))
+            int(startn_bytes.decode("ASCII")) + self._startn_head * self._startn_tail_mod,
+            self._max_length - int(op_length_bytes.decode("ASCII"))
         )
 
-    def _checkBlkCompressedKeysRaise(self, blkKey, compressedKey, apri, apriJson, startn, length, txn = None):
+    def _check_blk_compressed_keys_raise(self, blk_key, compressed_key, apri, apri_json, startn, length, txn = None):
 
-        if compressedKey is None and blkKey is None:
-            compressedKey = self._getDiskBlkKey(_COMPRESSED_KEY_PREFIX, apri, apriJson, startn, length, False, txn)
+        if compressed_key is None and blk_key is None:
+            compressed_key = self._get_disk_blk_key(_COMPRESSED_KEY_PREFIX, apri, apri_json, startn, length, False, txn)
 
-        if blkKey is not None and compressedKey is None:
-            compressedKey = _COMPRESSED_KEY_PREFIX + blkKey[_BLK_KEY_PREFIX_LEN:]
+        if blk_key is not None and compressed_key is None:
+            compressed_key = _COMPRESSED_KEY_PREFIX + blk_key[_BLK_KEY_PREFIX_LEN:]
 
-        elif compressedKey is not None and blkKey is None:
-            blkKey = _BLK_KEY_PREFIX + compressedKey[_COMPRESSED_KEY_PREFIX_LEN:]
+        elif compressed_key is not None and blk_key is None:
+            blk_key = _BLK_KEY_PREFIX + compressed_key[_COMPRESSED_KEY_PREFIX_LEN:]
 
-        if apri is None:
-            apri = ApriInfo.fromJson(apriJson.decode("ASCII"))
+        commit = txn is None
 
-        if txn is None:
-            txn = self._db
+        if commit:
+            txn = self._db.begin()
 
-        hasBlkKey = lmdbHasKey(txn, blkKey)
-        hasComprKey = lmdbHasKey(txn, compressedKey)
+        try:
 
-        if (not hasBlkKey and hasComprKey) or (hasBlkKey and not hasComprKey):
+            if apri is None:
+                apri = relational_decode_info(self, ApriInfo, apri_json, txn)
+
+            has_blk_key = lmdb_has_key(txn, blk_key)
+            has_compr_key = lmdb_has_key(txn, compressed_key)
+
+        finally:
+
+            if commit:
+                txn.commit()
+
+        if (not has_blk_key and has_compr_key) or (has_blk_key and not has_compr_key):
             raise RegisterError("Uncompressed/compressed `Block` key mismatch.")
 
-        if not hasBlkKey:
+        if not has_blk_key:
             raise DataNotFoundError(
-                _blkNotFoundErrMsg(True, apri, None, startn, length)
+                _blk_not_found_err_msg(True, apri, None, startn, length)
             )
 
-        return blkKey, compressedKey
+        return blk_key, compressed_key
 
-    def _checkBlkCompressedFilesRaise(self, blkKey, compressedKey, apri, startn, length, txn = None):
+    def _check_blk_compressed_files_raise(self, blk_key, compressed_key, apri, startn, length, txn = None):
 
         commit = txn is None
 
@@ -2459,13 +2465,13 @@ class Register(ABC):
             if commit:
                 txn = self._db.begin()
 
-            blk_val = txn.get(blkKey)
-            compressed_val = txn.get(compressedKey)
-            blk_filename = self._localDir / blk_val.decode("ASCII")
+            blk_val = txn.get(blk_key)
+            compressed_val = txn.get(compressed_key)
+            blk_filename = self._local_dir / blk_val.decode("ASCII")
 
             if compressed_val != _IS_NOT_COMPRESSED_VAL:
 
-                compressed_filename = self._localDir / compressed_val.decode("ASCII")
+                compressed_filename = self._local_dir / compressed_val.decode("ASCII")
 
                 if not compressed_filename.exists() or not blk_filename.exists():
 
@@ -2491,18 +2497,18 @@ class Register(ABC):
                 txn.commit()
 
     @staticmethod
-    def _checkApriStartnLengthRaise(apri, startn, length):
+    def _check_apri_startn_length_raise(apri, startn, length):
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`")
+            raise TypeError("`info` must be of type `ApriInfo`")
 
-        if not isInt(startn) and startn is not None:
+        if not is_int(startn) and startn is not None:
             raise TypeError("startn_` must be an `int`")
 
         elif startn is not None:
             startn = int(startn)
 
-        if not isInt(length) and length is not None:
+        if not is_int(length) and length is not None:
             raise TypeError("`length_` must be an `int`")
 
         elif length is not None:
@@ -2519,62 +2525,62 @@ class Register(ABC):
     #################################
     #    PUBLIC RAM BLK METHODS     #
 
-    def addRamBlk(self, blk):
+    def add_ram_blk(self, blk):
 
-        self._checkOpenRaise("addRamBlk")
+        self._check_open_raise("add_ram_blk")
 
         if not isinstance(blk, Block):
             raise TypeError("`blk` must be of type `Block`.")
 
-        if blk.apri() not in self._ramBlks.keys():
-            self._ramBlks[blk.apri()] = [blk]
+        if blk.apri() not in self._ram_blks.keys():
+            self._ram_blks[blk.apri()] = [blk]
 
-        elif len(self._ramBlks[blk.apri()]) == 0:
-            self._ramBlks[blk.apri()].append(blk)
+        elif len(self._ram_blks[blk.apri()]) == 0:
+            self._ram_blks[blk.apri()].append(blk)
 
         else:
 
-            for i, blk_ in enumerate(self._ramBlks[blk.apri()]):
+            for i, blk_ in enumerate(self._ram_blks[blk.apri()]):
 
                 if blk_ is blk:
                     break
 
                 elif blk.startn() < blk_.startn() or (blk.startn() == blk_.startn() and len(blk) > len(blk_)):
 
-                    self._ramBlks[blk.apri()].insert(i, blk)
+                    self._ram_blks[blk.apri()].insert(i, blk)
                     break
 
             else:
-                self._ramBlks[blk.apri()].append(blk)
+                self._ram_blks[blk.apri()].append(blk)
 
-    def rmvRamBlk(self, blk):
+    def rmv_ram_blk(self, blk):
 
-        self._checkOpenRaise("addRamBlk")
+        self._check_open_raise("add_ram_blk")
 
         if not isinstance(blk, Block):
             raise TypeError("`blk` must be of type `Block`.")
 
-        if blk.apri() not in self._ramBlks.keys():
+        if blk.apri() not in self._ram_blks.keys():
             raise DataNotFoundError(f"No RAM `Block` found with the following data: {str(blk.apri())}.")
 
-        for i, blk_ in enumerate(self._ramBlks[blk.apri()]):
+        for i, blk_ in enumerate(self._ram_blks[blk.apri()]):
 
             if blk_ is blk:
 
-                del self._ramBlks[blk.apri()][i]
+                del self._ram_blks[blk.apri()][i]
 
-                if len(self._ramBlks[blk.apri()]) == 0:
-                    del self._ramBlks[blk.apri()]
+                if len(self._ram_blks[blk.apri()]) == 0:
+                    del self._ram_blks[blk.apri()]
 
                 return
 
         else:
             raise DataNotFoundError(f"No matching RAM disk `Block` found.")
 
-    def rmvAllRamBlks(self):
+    def rmv_all_ram_blks(self):
 
-        self._checkOpenRaise("rmvAllRamBlks")
-        self._ramBlks = {}
+        self._check_open_raise("rmv_all_ram_blks")
+        self._ram_blks = {}
 
     #################################
     #    PROTEC RAM BLK METHODS     #
@@ -2582,14 +2588,14 @@ class Register(ABC):
     #################################
     # PUBLIC RAM & DISK BLK METHODS #
 
-    def blkByN(self, apri, n, diskonly = False, recursively = False, retMetadata = False, **kwargs):
+    def blk_by_n(self, apri, n, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
 
-        self._checkOpenRaise("blkByN")
+        self._check_open_raise("blk_by_n")
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`.")
+            raise TypeError("`info` must be of type `ApriInfo`.")
 
-        if not isInt(n):
+        if not is_int(n):
             raise TypeError("`n` must be of type `int`.")
 
         else:
@@ -2601,14 +2607,14 @@ class Register(ABC):
         if not isinstance(recursively, bool):
             raise TypeError("`recursively` must be of type `bool`.")
 
-        if not isinstance(retMetadata, bool):
-            raise TypeError("`retMetadata` must be of type `bool`.")
+        if not isinstance(ret_metadata, bool):
+            raise TypeError("`ret_metadata` must be of type `bool`.")
 
         if n < 0:
             raise IndexError("`n` must be non-negative.")
 
         try:
-            self._checkKnownApri(apri)
+            self._check_known_apri(apri)
 
         except DataNotFoundError:
 
@@ -2620,27 +2626,27 @@ class Register(ABC):
             for startn, length in self.intervals(apri, combine = False, diskonly = diskonly, recursively = False):
 
                 if startn <= n < startn + length:
-                    return self.blk(apri, startn, length, diskonly, False, retMetadata, **kwargs)
+                    return self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs)
 
         if recursively:
 
-            for subreg in self._iterSubregs():
+            for subreg in self._iter_subregs():
 
-                with subreg._recursiveOpen(True) as subreg:
+                with subreg._recursive_open(True) as subreg:
 
                     try:
-                        return subreg.blkByN(apri, n, diskonly, True, retMetadata, **kwargs)
+                        return subreg.blk_by_n(apri, n, diskonly, True, ret_metadata, **kwargs)
 
                     except DataNotFoundError:
                         pass
 
-        raise DataNotFoundError(_blkNotFoundErrMsg(diskonly, apri, n))
+        raise DataNotFoundError(_blk_not_found_err_msg(diskonly, apri, n))
 
-    def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, retMetadata = False, **kwargs):
+    def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
 
-        self._checkOpenRaise("blk")
+        self._check_open_raise("blk")
 
-        startn, length = Register._checkApriStartnLengthRaise(apri, startn, length)
+        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
 
         if not isinstance(diskonly, bool):
             raise TypeError("`diskonly` must be of type `bool`.")
@@ -2648,11 +2654,11 @@ class Register(ABC):
         if not isinstance(recursively, bool):
             raise TypeError("`recursively` must be of type `bool`.")
 
-        if not isinstance(retMetadata, bool):
-            raise TypeError("`retMetadata` must be of type `bool`.")
+        if not isinstance(ret_metadata, bool):
+            raise TypeError("`ret_metadata` must be of type `bool`.")
 
         try:
-            self._checkKnownApri(apri)
+            self._check_known_apri(apri)
 
         except DataNotFoundError:
 
@@ -2661,22 +2667,22 @@ class Register(ABC):
 
         else:
 
-            startn_, length_ = self._resolveStartnLength(apri, startn, length, diskonly)
+            startn_, length_ = self._resolve_startn_length(apri, startn, length, diskonly)
 
-            if not diskonly and apri in self._ramBlks.keys():
+            if not diskonly and apri in self._ram_blks.keys():
 
-                for blk in self._ramBlks[apri]:
+                for blk in self._ram_blks[apri]:
 
                     if blk.startn() == startn_ and len(blk) == length_:
 
-                        if retMetadata:
+                        if ret_metadata:
                             return blk, None
 
                         else:
                             return blk
 
             try:
-                blk_key, compressed_key = self._checkBlkCompressedKeysRaise(None, None, apri, None, startn_, length_)
+                blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, startn_, length_)
 
             except DataNotFoundError:
                 pass
@@ -2692,51 +2698,51 @@ class Register(ABC):
                             f"{apri}, startn = {startn_}, length = {length_}"
                         )
 
-                blk_filename, _ = self._checkBlkCompressedFilesRaise(blk_key, compressed_key, apri, startn_, length_)
-                blk_filename = self._localDir / blk_filename
-                data = type(self).loadDiskData(blk_filename, **kwargs)
+                blk_filename, _ = self._check_blk_compressed_files_raise(blk_key, compressed_key, apri, startn_, length_)
+                blk_filename = self._local_dir / blk_filename
+                data = type(self).load_disk_data(blk_filename, **kwargs)
                 blk = Block(data, apri, startn_)
 
-                if retMetadata:
-                    return blk, FileMetadata.fromPath(blk_filename)
+                if ret_metadata:
+                    return blk, FileMetadata.from_path(blk_filename)
 
                 else:
                     return blk
 
         if recursively:
 
-            for subreg in self._iterSubregs():
+            for subreg in self._iter_subregs():
 
-                with subreg._recursiveOpen(True) as subreg:
+                with subreg._recursive_open(True) as subreg:
 
                     try:
-                        return subreg.blk(apri, startn, length, retMetadata, retMetadata=True)
+                        return subreg.blk(apri, startn, length, ret_metadata, ret_metadata=True)
 
                     except DataNotFoundError:
                         pass
 
         raise DataNotFoundError(
-            _blkNotFoundErrMsg(diskonly, str(apri), None, startn, length)
+            _blk_not_found_err_msg(diskonly, str(apri), None, startn, length)
         )
 
-    def blks(self, apri, sort = False, diskonly = False, recursively = False, retMetadata = False, **kwargs):
+    def blks(self, apri, sort = False, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
 
-        self._checkOpenRaise("blks")
+        self._check_open_raise("blks")
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`.")
+            raise TypeError("`info` must be of type `ApriInfo`.")
 
         if not isinstance(diskonly, bool):
             raise TypeError("`diskonly` must be of type `bool`.")
 
-        if not isinstance(retMetadata, bool):
-            raise TypeError("`retMetadata` must be of type `bool`.")
+        if not isinstance(ret_metadata, bool):
+            raise TypeError("`ret_metadata` must be of type `bool`.")
 
         if not isinstance(recursively, bool):
             raise TypeError("`recursively` must be of type `bool`.")
 
         try:
-            self._checkKnownApri(apri)
+            self._check_known_apri(apri)
 
         except DataNotFoundError:
 
@@ -2748,72 +2754,72 @@ class Register(ABC):
             for startn, length in self.intervals(apri, combine = False, diskonly = diskonly, recursively = recursively):
 
                 try:
-                    yield self.blk(apri, startn, length, diskonly, False, retMetadata, **kwargs)
+                    yield self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs)
 
                 except DataNotFoundError:
                     pass
 
         if recursively:
 
-            for subreg in self._iterSubregs():
+            for subreg in self._iter_subregs():
 
-                with subreg._recursiveOpen(True) as subreg:
-                    yield from subreg.blks(apri, sort, diskonly, True, retMetadata, **kwargs)
+                with subreg._recursive_open(True) as subreg:
+                    yield from subreg.blks(apri, sort, diskonly, True, ret_metadata, **kwargs)
 
-    def __getitem__(self, apriNDiskonlyRecursively):
+    def __getitem__(self, apri_n_diskonly_recursively):
 
-        if not isinstance(apriNDiskonlyRecursively, tuple) or len(apriNDiskonlyRecursively) <= 1:
+        if not isinstance(apri_n_diskonly_recursively, tuple) or len(apri_n_diskonly_recursively) <= 1:
             raise TypeError("Must pass at least two arguments to `reg[]`.")
 
-        if len(apriNDiskonlyRecursively) >= 5:
+        if len(apri_n_diskonly_recursively) >= 5:
             raise TypeError("Must pass at most four arguments to `reg[]`.")
 
-        if len(apriNDiskonlyRecursively) == 2:
+        if len(apri_n_diskonly_recursively) == 2:
 
-            apri, n = apriNDiskonlyRecursively
+            apri, n = apri_n_diskonly_recursively
             diskonly = False
             recursively = False
 
-        elif len(apriNDiskonlyRecursively) == 3:
+        elif len(apri_n_diskonly_recursively) == 3:
 
-            apri, n, diskonly = apriNDiskonlyRecursively
+            apri, n, diskonly = apri_n_diskonly_recursively
             recursively = False
 
         else:
-            apri, n, diskonly, recursively = apriNDiskonlyRecursively
+            apri, n, diskonly, recursively = apri_n_diskonly_recursively
 
         return self.get(apri, n, diskonly, recursively)
 
     def get(self, apri, n, diskonly = False, recursively = False, **kwargs):
 
-        self._checkOpenRaise("get")
+        self._check_open_raise("get")
 
         if not isinstance(apri, ApriInfo):
             raise TypeError("The first argument to `reg[]` must be an `ApriInfo.")
 
-        if not isInt(n) and not isinstance(n, slice):
+        if not is_int(n) and not isinstance(n, slice):
             raise TypeError("The second argument to `reg[]` must be an `int` or a `slice`.")
 
-        elif isInt(n):
+        elif is_int(n):
             n = int(n)
 
         else:
 
             _n = [None]*3
 
-            if n.start is not None and not isInt(n.start):
+            if n.start is not None and not is_int(n.start):
                 raise TypeError("Start index of slice must be an `int`.")
 
             elif n.start is not None:
                 _n[0] = int(n.start)
 
-            if n.stop is not None and not isInt(n.stop):
+            if n.stop is not None and not is_int(n.stop):
                 raise TypeError("Stop index of slice must be an `int`.")
 
             elif n.stop is not None:
                 _n[1] = int(n.stop)
 
-            if n.step is not None and not isInt(n.step):
+            if n.step is not None and not is_int(n.step):
                 raise TypeError("Step index of slice must be an `int`.")
 
             elif n.step is not None:
@@ -2836,7 +2842,7 @@ class Register(ABC):
                 raise ValueError("Stop index cannot be negative.")
 
         try:
-            self._checkKnownApri(apri)
+            self._check_known_apri(apri)
 
         except DataNotFoundError:
 
@@ -2851,7 +2857,7 @@ class Register(ABC):
 
             else:
 
-                blk = self.blkByN(apri, n, diskonly, recursively, False, **kwargs)
+                blk = self.blk_by_n(apri, n, diskonly, recursively, False, **kwargs)
                 ret = blk[n]
 
                 if isinstance(blk, ReleaseBlock):
@@ -2861,9 +2867,9 @@ class Register(ABC):
 
         if recursively:
 
-            for subreg in self._iterSubregs():
+            for subreg in self._iter_subregs():
 
-                with subreg._recursiveOpen(True) as subreg:
+                with subreg._recursive_open(True) as subreg:
 
                     try:
                         return subreg.get(apri, n, diskonly, recursively, **kwargs)
@@ -2872,15 +2878,15 @@ class Register(ABC):
                         pass
 
         raise DataNotFoundError(
-            _blkNotFoundErrMsg(diskonly, str(apri), n)
+            _blk_not_found_err_msg(diskonly, str(apri), n)
         )
 
     def intervals(self, apri, sort = False, combine = False, diskonly = False, recursively = False):
 
-        self._checkOpenRaise("intervals")
+        self._check_open_raise("intervals")
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`.")
+            raise TypeError("`info` must be of type `ApriInfo`.")
 
         if not isinstance(sort, bool):
             raise TypeError("`sort` must be of type `bool`.")
@@ -2897,7 +2903,7 @@ class Register(ABC):
         if not sort and not combine:
 
             try:
-                self._checkKnownApri(apri)
+                self._check_known_apri(apri)
 
             except DataNotFoundError:
 
@@ -2906,19 +2912,19 @@ class Register(ABC):
 
             else:
 
-                if not diskonly and apri in self._ramBlks.keys():
+                if not diskonly and apri in self._ram_blks.keys():
 
-                    for blk in self._ramBlks[apri]:
+                    for blk in self._ram_blks[apri]:
                         yield blk.startn(), len(blk)
 
-                for key, _ in self._iterDiskBlkPairs(_BLK_KEY_PREFIX, apri, None):
-                    yield self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key, apri)[1:]
+                for key, _ in self._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri, None):
+                    yield self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri)[1:]
 
             if recursively:
 
-                for subreg in self._iterSubregs():
+                for subreg in self._iter_subregs():
 
-                    with subreg._recursiveOpen(True) as subreg:
+                    with subreg._recursive_open(True) as subreg:
                         yield from subreg.intervals(apri, sort = False, combine = False, diskonly = diskonly, recursively = True)
 
         elif combine:
@@ -2941,12 +2947,12 @@ class Register(ABC):
                 key = lambda t: (t[0], -t[1])
             )
 
-    def totalLen(self, apri, diskonly = False, recursively = False):
+    def total_len(self, apri, diskonly = False, recursively = False):
 
-        self._checkOpenRaise("totalLen")
+        self._check_open_raise("total_len")
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`.")
+            raise TypeError("`info` must be of type `ApriInfo`.")
 
         if not isinstance(diskonly, bool):
             raise TypeError("`diskonly` must be of type `bool`.")
@@ -2960,12 +2966,12 @@ class Register(ABC):
         except DataNotFoundError:
             return 0
 
-    def numBlks(self, apri, diskonly = False, recursively = False):
+    def num_blks(self, apri, diskonly = False, recursively = False):
 
-        self._checkOpenRaise("numBlks")
+        self._check_open_raise("num_blks")
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`.")
+            raise TypeError("`info` must be of type `ApriInfo`.")
 
         if not isinstance(diskonly, bool):
             raise TypeError("`diskonly` must be of type `bool`.")
@@ -2974,7 +2980,7 @@ class Register(ABC):
             raise TypeError("`recursively` must be of type `bool`.")
 
         try:
-            self._checkKnownApri(apri)
+            self._check_known_apri(apri)
 
         except DataNotFoundError:
 
@@ -2984,27 +2990,27 @@ class Register(ABC):
         else:
 
             with self._db.begin() as txn:
-                ret = self._numDiskBlksTxn(apri, txn)
+                ret = self._num_disk_blks_txn(apri, txn)
 
             if not diskonly:
-                ret += sum(len(val) for val in self._ramBlks.values())
+                ret += sum(len(val) for val in self._ram_blks.values())
 
         if recursively:
 
-            for subreg in self._iterSubregs():
+            for subreg in self._iter_subregs():
 
-                with subreg._recursiveOpen(True) as subreg:
-                    ret += subreg.numBlks(apri, diskonly, True)
+                with subreg._recursive_open(True) as subreg:
+                    ret += subreg.num_blks(apri, diskonly, True)
 
 
         return ret
 
     def maxn(self, apri, diskonly = False, recursively = False):
 
-        self._checkOpenRaise("maxn")
+        self._check_open_raise("maxn")
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`.")
+            raise TypeError("`info` must be of type `ApriInfo`.")
 
         if not isinstance(diskonly, bool):
             raise TypeError("`diskonly` must be of type `bool`.")
@@ -3015,7 +3021,7 @@ class Register(ABC):
         ret = -1
 
         try:
-            self._checkKnownApri(apri)
+            self._check_known_apri(apri)
 
         except DataNotFoundError:
 
@@ -3029,9 +3035,9 @@ class Register(ABC):
 
         if recursively:
 
-            for subreg in self._iterSubregs():
+            for subreg in self._iter_subregs():
 
-                with subreg._recursiveOpen(True) as subreg:
+                with subreg._recursive_open(True) as subreg:
 
                     try:
                         ret = max(ret, subreg.maxn(apri, diskonly = diskonly, recursively = True))
@@ -3040,7 +3046,7 @@ class Register(ABC):
                         pass
 
         if ret == -1:
-            raise DataNotFoundError(_blkNotFoundErrMsg(diskonly, apri))
+            raise DataNotFoundError(_blk_not_found_err_msg(diskonly, apri))
 
         else:
             return ret
@@ -3048,12 +3054,12 @@ class Register(ABC):
     #################################
     # PROTEC RAM & DISK BLK METHODS #
 
-    def _resolveStartnLength(self, apri, startn, length, diskonly, txn = None):
+    def _resolve_startn_length(self, apri, startn, length, diskonly, txn = None):
         """
         :param apri: (type `ApriInfo`)
         :param startn: (type `int` or `NoneType`) Non-negative.
         :param length: (type `int` or `NoneType`) Positive.
-        :raise DataNotFoundError: If `apri` is not known to this register, or if no data is found matching startn and
+        :raise DataNotFoundError: If `info` is not known to this register, or if no data is found matching startn and
         length.
         :raise ValueError: If `startn_ is None and length_ is not None`.
         :return: (type `int`) Resolved `startn`, always `int`.
@@ -3066,55 +3072,55 @@ class Register(ABC):
         elif startn is not None and length is not None:
             return startn, length
 
-        if not diskonly and apri in self._ramBlks.keys():
+        if not diskonly and apri in self._ram_blks.keys():
 
             if startn is not None and length is None:
 
-                for blk in self._ramBlks[apri]:
+                for blk in self._ram_blks[apri]:
 
                     if blk.startn() == startn:
                         return startn, len(blk)
 
             else:
-                return self._ramBlks[apri][0].startn(), len(self._ramBlks[apri][0])
+                return self._ram_blks[apri][0].startn(), len(self._ram_blks[apri][0])
 
         if startn is not None and length is None:
 
-            key = self._getDiskBlkKey(_BLK_KEY_PREFIX, apri, None, startn, 1, False, txn) # raises DataNotFoundError
+            key = self._get_disk_blk_key(_BLK_KEY_PREFIX, apri, None, startn, 1, False, txn) # raises DataNotFoundError
             first_key_sep_index = key.find(_KEY_SEP)
             second_key_sep_index = key.find(_KEY_SEP, first_key_sep_index + 1)
             prefix = key [ : second_key_sep_index + 1]
 
-            with lmdbPrefixIter(txn if txn is not None else self._db, prefix) as it:
+            with lmdb_prefix_iter(txn if txn is not None else self._db, prefix) as it:
 
                 for key, _ in it:
-                    return self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key, apri, None)[1:]
+                    return self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, None)[1:]
 
                 else:
                     raise DataNotFoundError(
-                        _blkNotFoundErrMsg(True, apri, None, startn, None)
+                        _blk_not_found_err_msg(True, apri, None, startn, None)
                     )
 
         else:
 
-            prefix = _BLK_KEY_PREFIX + self._getIdByApri(apri, None, False) + _KEY_SEP
+            prefix = _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False) + _KEY_SEP
 
-            with lmdbPrefixIter(self._db, prefix) as it:
+            with lmdb_prefix_iter(self._db, prefix) as it:
 
                 for key, _ in it:
-                    return self._convertDiskBlockKey(_BLK_KEY_PREFIX_LEN, key, apri, None)[1:]
+                    return self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, None)[1:]
 
                 else:
-                    raise DataNotFoundError(_blkNotFoundErrMsg(True, apri))
+                    raise DataNotFoundError(_blk_not_found_err_msg(True, apri))
 
 class PickleRegister(Register):
 
     @classmethod
-    def withSuffix(cls, filename):
+    def with_suffix(cls, filename):
         return filename.with_suffix(".pkl")
 
     @classmethod
-    def dumpDiskData(cls, data, filename, **kwargs):
+    def dump_disk_data(cls, data, filename, **kwargs):
 
         if len(kwargs) > 0:
             raise KeyError("This method accepts no keyword-arguments.")
@@ -3123,7 +3129,7 @@ class PickleRegister(Register):
             pickle.dump(data, fh)
 
     @classmethod
-    def loadDiskData(cls, filename, **kwargs):
+    def load_disk_data(cls, filename, **kwargs):
 
         if len(kwargs) > 0:
             raise KeyError("`Pickle_Register.blk` accepts no keyword-arguments.")
@@ -3131,12 +3137,12 @@ class PickleRegister(Register):
         with filename.open("rb") as fh:
             return pickle.load(fh), filename
 
-Register.addSubclass(PickleRegister)
+Register.add_subclass(PickleRegister)
 
 class NumpyRegister(Register):
 
     @classmethod
-    def dumpDiskData(cls, data, filename, **kwargs):
+    def dump_disk_data(cls, data, filename, **kwargs):
 
         if len(kwargs) > 0:
             raise KeyError("This method accepts no keyword-arguments.")
@@ -3144,7 +3150,7 @@ class NumpyRegister(Register):
         np.save(filename, data, allow_pickle = False, fix_imports = False)
 
     @classmethod
-    def loadDiskData(cls, filename, **kwargs):
+    def load_disk_data(cls, filename, **kwargs):
 
         if "mmap_mode" in kwargs:
             mmap_mode = kwargs["mmap_mode"]
@@ -3165,34 +3171,34 @@ class NumpyRegister(Register):
         return np.load(filename, mmap_mode = mmap_mode, allow_pickle = False, fix_imports = False)
 
     @classmethod
-    def cleanDiskData(cls, filename, **kwargs):
+    def clean_disk_data(cls, filename, **kwargs):
 
         if len(kwargs) > 0:
             raise KeyError("This method accepts no keyword-arguments.")
 
         filename = filename.with_suffix(".npy")
-        return Register.cleanDiskData(filename)
+        return Register.clean_disk_data(filename)
 
     @classmethod
-    def withSuffix(cls, filename):
+    def with_suffix(cls, filename):
         return filename.with_suffix(".npy")
 
-    def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, retMetadata = False, **kwargs):
+    def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
         """
         :param apri: (type `ApriInfo`)
         :param startn: (type `int`)
         :param length: (type `length_`) non-negative
-        :param retMetadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
+        :param ret_metadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
         contains file creation date/time and size of dumped saved on the disk.
         :param recursively: (type `bool`, default `False`) Search all subregisters for the `Block`.
         :param mmap_mode: (type `str`, optional) Load the Numpy file using memory mapping, see
         https://numpy.org/doc/stable/reference/generated/numpy.memmap.html#numpy.memmap for more information.
-        :return: (type `File_Metadata`) If `retMetadata is True`.
+        :return: (type `File_Metadata`) If `ret_metadata is True`.
         """
 
-        ret = super().blk(apri, startn, length, diskonly, recursively, retMetadata,  **kwargs)
+        ret = super().blk(apri, startn, length, diskonly, recursively, ret_metadata, **kwargs)
 
-        if retMetadata:
+        if ret_metadata:
             blk = ret[0]
 
         else:
@@ -3201,20 +3207,20 @@ class NumpyRegister(Register):
         if isinstance(blk.segment(), np.memmap):
             blk = MemmapBlock(blk.segment(), blk.apri(), blk.startn())
 
-        if retMetadata:
+        if ret_metadata:
             return blk, ret[1]
 
         else:
             return blk
 
-    def concatDiskBlks(self, apri, startn = None, length = None, delete = False, retMetadata = False):
+    def concat_disk_blks(self, apri, startn = None, length = None, delete = False, ret_metadata = False):
         """Concatenate several `Block`s into a single `Block` along axis 0 and save the new one to the disk.
 
         If `delete = True`, then the smaller `Block`s are deleted automatically.
 
         The interval `range(startn, startn + length)` must be the disjoint union of intervals of the form
         `range(blk.startn(), blk.startn() + len(blk))`, where `blk` is a disk `Block` with `ApriInfo`
-        given by `apri`.
+        given by `info`.
 
         Length-0 `Block`s are ignored.
 
@@ -3227,29 +3233,29 @@ class NumpyRegister(Register):
         :param startn: (type `int`) Non-negative.
         :param length: (type `int`) Positive.
         :param delete: (type `bool`, default `False`)
-        :param retMetadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
+        :param ret_metadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
         contains file creation date/time and size of dumped dumped to the disk.
         :raise DataNotFoundError: If the union of the intervals of relevant disk `Block`s does not equal
         `range(startn, startn + length)`.
         :raise ValueError: If any two intervals of relevant disk `Block`s intersect.
         :raise ValueError: If any two relevant disk `Block` segments have inequal shapes.
-        :return: (type `File_Metadata`) If `retMetadata is True`.
+        :return: (type `File_Metadata`) If `ret_metadata is True`.
         """
 
         _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not successfully recover from a failed disk `Block` concatenation!"
 
-        self._checkOpenRaise("concatDiskBlks")
+        self._check_open_raise("concat_disk_blks")
 
-        self._checkReadwriteRaise("concatDiskBlks")
+        self._check_readwrite_raise("concat_disk_blks")
 
-        startn, length = Register._checkApriStartnLengthRaise(apri, startn, length)
+        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
 
-        if not isinstance(retMetadata, bool):
-            raise TypeError("`retMetadata` must be of type `bool`.")
+        if not isinstance(ret_metadata, bool):
+            raise TypeError("`ret_metadata` must be of type `bool`.")
 
-        self._checkKnownApri(apri)
+        self._check_known_apri(apri)
         # infer startn
-        startn, _ = self._resolveStartnLength(apri, startn, length, True)
+        startn, _ = self._resolve_startn_length(apri, startn, length, True)
         # this implementation depends on `intervals` returning smaller startn before larger
         # ones and, when ties occur, larger lengths before smaller ones.
         if length is None:
@@ -3258,41 +3264,41 @@ class NumpyRegister(Register):
             current_segment = False
             length = 0
 
-            for _startn, _length in self.intervals(apri, combine = False, diskonly = False):
+            for startn_, length_ in self.intervals(apri, combine = False, diskonly = False):
 
-                if _length > 0:
+                if length_ > 0:
 
                     if current_segment:
 
-                        if startn > _startn:
+                        if startn > startn_:
                             raise RuntimeError("Could not infer a value for `length`.")
 
-                        elif startn == _startn:
+                        elif startn == startn_:
                             raise ValueError(
                                 f"Overlapping `Block` intervals found with {str(apri)}."
                             )
 
                         else:
 
-                            if startn + length > _startn:
+                            if startn + length > startn_:
                                 raise ValueError(
                                     f"Overlapping `Block` intervals found with {str(apri)}."
                                 )
 
-                            elif startn + length == _startn:
-                                length += _length
+                            elif startn + length == startn_:
+                                length += length_
 
                             else:
                                 break
 
                     else:
 
-                        if startn < _startn:
-                            raise DataNotFoundError(_blkNotFoundErrMsg(True, apri, None, startn))
+                        if startn < startn_:
+                            raise DataNotFoundError(_blk_not_found_err_msg(True, apri, None, startn))
 
-                        elif startn == _startn:
+                        elif startn == startn_:
 
-                            length += _length
+                            length += length_
                             current_segment = True
 
             if length == 0:
@@ -3303,93 +3309,93 @@ class NumpyRegister(Register):
         combined_interval = None
 
         last_check = False
-        last__startn = None
-        _startn = None
-        _length = None
+        last_startn_ = None
+        startn_ = None
+        length_ = None
         intervals_to_get = []
 
-        for _startn, _length in self.intervals(apri, combine = False, diskonly = True):
+        for startn_, length_ in self.intervals(apri, combine = False, diskonly = True):
             # infer blocks to combine
 
             if last_check:
 
-                if last__startn == _startn and _length > 0:
+                if last_startn_ == startn_ and length_ > 0:
                     raise ValueError(f"Overlapping `Block` intervals found with {str(apri)}.")
 
                 else:
                     break
 
-            if _length > 0:
+            if length_ > 0:
 
-                last__startn = _startn
+                last_startn_ = startn_
 
-                if _startn < startn:
+                if startn_ < startn:
 
-                    if startn < _startn + _length:
+                    if startn < startn_ + length_:
                         raise ValueError(
                             f"The first `Block` does not have the right size. Try again by calling "
-                            f"`reg.concatDiskBlks({str(apri)}, {_startn}, {length - (_startn - startn)})`."
+                            f"`reg.concat_disk_blks({str(apri)}, {startn_}, {length - (startn_ - startn)})`."
                         )
 
                 else:
 
                     if combined_interval is None:
 
-                        if _startn > startn:
+                        if startn_ > startn:
 
                             raise DataNotFoundError(
                                 f"No disk `Block` found with the following data: `{str(apri)}, startn = {startn}`."
                             )
 
-                        elif _startn == startn:
+                        elif startn_ == startn:
 
-                            combined_interval = (_startn, _length)
-                            intervals_to_get.append((_startn, _length))
-                            last_check = _startn + _length == startn + length
+                            combined_interval = (startn_, length_)
+                            intervals_to_get.append((startn_, length_))
+                            last_check = startn_ + length_ == startn + length
 
                         else:
                             raise RuntimeError("Something went wrong trying to combine `Block`s.")
 
                     else:
 
-                        if _startn > sum(combined_interval):
+                        if startn_ > sum(combined_interval):
 
                             raise DataNotFoundError(
                                 f"No `Block` found covering indices {sum(combined_interval)} through "
-                                f"{_startn-1} (inclusive) with {str(apri)}."
+                                f"{startn_-1} (inclusive) with {str(apri)}."
                             )
 
-                        elif _startn == sum(combined_interval):
+                        elif startn_ == sum(combined_interval):
 
-                            if _startn + _length > startn + length:
+                            if startn_ + length_ > startn + length:
                                 raise ValueError(
                                     f"The last `Block` does not have the right size. Try again by calling "
-                                    f"`reg.concatDiskBlks({str(apri)}, {startn}, "
-                                    f"{length - (_startn + _length - (startn + length))})`."
+                                    f"`reg.concat_disk_blks({str(apri)}, {startn}, "
+                                    f"{length - (startn_ + length_ - (startn + length))})`."
                                 )
 
-                            combined_interval = (startn, combined_interval[1] + _length)
-                            intervals_to_get.append((_startn, _length))
-                            last_check = _startn + _length == startn + length
+                            combined_interval = (startn, combined_interval[1] + length_)
+                            intervals_to_get.append((startn_, length_))
+                            last_check = startn_ + length_ == startn + length
 
                         else:
                             raise ValueError(f"Overlapping `Block` intervals found with {str(apri)}.")
 
         else:
 
-            if _startn is None:
-                raise DataNotFoundError(_blkNotFoundErrMsg(True, apri))
+            if startn_ is None:
+                raise DataNotFoundError(_blk_not_found_err_msg(True, apri))
 
-            elif _startn + _length != startn + length:
+            elif startn_ + length_ != startn + length:
                 raise ValueError(
                     f"The last `Block` does not have the right size. "
-                    f"Try again by calling `reg.concatDiskBlks(apri, {startn}, {_startn + _length})`."
+                    f"Try again by calling `reg.concat_disk_blks(info, {startn}, {startn_ + length_})`."
                 )
 
         if len(intervals_to_get) == 1:
 
-            if retMetadata:
-                return self.blkMetadata(apri, *intervals_to_get)
+            if ret_metadata:
+                return self.blk_metadata(apri, *intervals_to_get)
 
             else:
                 return None
@@ -3402,10 +3408,10 @@ class NumpyRegister(Register):
 
         try:
 
-            for _startn, _length in intervals_to_get:
+            for startn_, length_ in intervals_to_get:
                 # check that blocks have the correct shape
 
-                blk = self.blk(apri, _startn, _length, True, False, False, mmap_mode="r")
+                blk = self.blk(apri, startn_, length_, True, False, False, mmap_mode="r")
                 blks.append(blk)
 
                 if fixed_shape is None:
@@ -3420,14 +3426,14 @@ class NumpyRegister(Register):
                         "shape:\n" +
                         f"{str(apri)}, startn = {ref_blk.startn()}, length = {len(ref_blk)}\n, shape = " +
                         f"{str(fixed_shape)}\n" +
-                        f"{str(apri)}, startn = {_startn}, length = {_length}\n, shape = " +
+                        f"{str(apri)}, startn = {startn_}, length = {length_}\n, shape = " +
                         f"{str(blk.segment().shape)}\n"
 
                     )
 
             combined_blk = np.concatenate([blk.segment() for blk in blks], axis=0)
             combined_blk = Block(combined_blk, apri, startn)
-            ret = self.addDiskBlk(combined_blk, retMetadata)
+            ret = self.add_disk_blk(combined_blk, ret_metadata)
 
             if _debug == 1:
                 raise KeyboardInterrupt
@@ -3436,11 +3442,11 @@ class NumpyRegister(Register):
 
                 for blk in blks:
 
-                    _startn = blk.startn()
-                    _length = len(blk)
+                    startn_ = blk.startn()
+                    length_ = len(blk)
                     blk.release()
-                    self.rmvDiskBlk(apri, _startn, _length, False)
-                    failure_reinsert_indices.append((_startn, _length))
+                    self.rmv_disk_blk(apri, startn_, length_, False)
+                    failure_reinsert_indices.append((startn_, length_))
 
                     if _debug == 2:
                         raise KeyboardInterrupt
@@ -3451,8 +3457,8 @@ class NumpyRegister(Register):
 
                 if combined_blk is not None and isinstance(combined_blk, Block) and delete:
 
-                    for _startn, _length in failure_reinsert_indices:
-                        self.addDiskBlk(combined_blk[_startn: _startn + _length])
+                    for startn_, length_ in failure_reinsert_indices:
+                        self.add_disk_blk(combined_blk[startn_: startn_ + length_])
 
             except BaseException:
                 raise RegisterRecoveryError(_FAIL_NO_RECOVER_ERROR_MESSAGE)
@@ -3467,7 +3473,7 @@ class NumpyRegister(Register):
 
         return ret
 
-Register.addSubclass(NumpyRegister)
+Register.add_subclass(NumpyRegister)
 
 class _ElementIter:
 
@@ -3484,18 +3490,18 @@ class _ElementIter:
         self.intervals = None
         self.curr_n = slc.start if slc.start else 0
 
-    def updateIntervalsCalculated(self):
+    def update_intervals_calculated(self):
 
         self.intervals = list(
             self.reg.intervals(self.apri, sort = True, combine = False, diskonly = self.diskonly, recursively = self.recursively)
         )
 
-    def getNextBlk(self):
+    def get_next_blk(self):
 
         if self.curr_blk is not None and isinstance(self.curr_blk, ReleaseBlock):
             self.curr_blk.release()
 
-        return self.reg.blkByN(self.apri, self.curr_n, self.diskonly, self.recursively, False, **self.kwargs)
+        return self.reg.blk_by_n(self.apri, self.curr_n, self.diskonly, self.recursively, False, **self.kwargs)
 
     def __iter__(self):
         return self
@@ -3507,7 +3513,7 @@ class _ElementIter:
 
         elif self.curr_blk is None:
 
-            self.updateIntervalsCalculated()
+            self.update_intervals_calculated()
 
             if len(self.intervals) == 0:
                 raise StopIteration
@@ -3515,7 +3521,7 @@ class _ElementIter:
             self.curr_n = max(self.intervals[0][0], self.curr_n)
 
             try:
-                self.curr_blk = self.getNextBlk()
+                self.curr_blk = self.get_next_blk()
 
             except DataNotFoundError:
                 raise StopIteration
@@ -3523,11 +3529,11 @@ class _ElementIter:
         elif self.curr_n not in self.curr_blk:
 
             try:
-                self.curr_blk = self.getNextBlk()
+                self.curr_blk = self.get_next_blk()
 
             except DataNotFoundError:
 
-                self.updateIntervalsCalculated()
+                self.update_intervals_calculated()
 
                 for startn, length in self.intervals:
 
@@ -3539,7 +3545,7 @@ class _ElementIter:
                 else:
                     raise StopIteration
 
-                self.curr_blk = self.getNextBlk()
+                self.curr_blk = self.get_next_blk()
 
         ret = self.curr_blk[self.curr_n]
         self.curr_n += self.step
@@ -3548,11 +3554,11 @@ class _ElementIter:
 class _CopyRegister(Register):
 
     @classmethod
-    def withSuffix(cls, filename):
+    def with_suffix(cls, filename):
         return filename
 
     @classmethod
-    def dumpDiskData(cls, data, filename, **kwargs):
+    def dump_disk_data(cls, data, filename, **kwargs):
 
         if not isinstance(data, Path):
             raise TypeError("`data` must of of type `Path`.")
@@ -3565,177 +3571,163 @@ class _CopyRegister(Register):
         return filename
 
     @classmethod
-    def loadDiskData(cls, filename, **kwargs):
+    def load_disk_data(cls, filename, **kwargs):
         raise NotImplementedError
 
     def setClsName(self, clsName):
 
-        with self._clsFilepath.open() as fh:
+        with self._cls_filepath.open() as fh:
             fh.write(clsName)
 
-# def updateRegVersion(ident):
-#
-#     from venv import EnvBuilder
-#     from subprocess import check_call, DEVNULL
-#     import importlib
-#     import string
-#     import re
-#
-#     ident = Path(ident)
-#
-#     if not ident.absolute():
-#         ident = Path.cwd() / ident
-#
-#     checkRegStructure(ident)
-#
-#     with (ident / VERSION_FILEPATH).open("r") as fh:
-#         oldVers = fh.read()
-#
-#     if oldVers in COMPATIBLE_VERSIONS:
-#
-#         print(f"Register version at {ident} is up-to-date.")
-#         return
-#
-#     builder = EnvBuilder(with_pip = True)
-#     print("Setting up temporary venv....")
-#     envDir = randomUniqueFilename(Path.home())
-#     oldCorniferName = None
-#
-#     try:
-#
-#         builder.create(envDir)
-#         print("... done.")
-#         print("Downloading old cornifer version....")
-#         oldCorniferDir = randomUniqueFilename(Path.home(), length = 25)
-#         oldCorniferDir.mkdir(exist_ok = False)
-#         check_call(
-#             ["git", "clone", "--depth", "1", "--branch", oldVers, "https://github.com/automorphis/cornifer.git", str(oldCorniferDir)],
-#             stderr = DEVNULL, stdout = DEVNULL
-#         )
-#         print("... done.")
-#         print("Installing old cornifer.... ")
-#
-#         # this name is not guaranteed to be a unique package name, but it will be with extremely high probability
-#         oldCorniferName = (
-#             "cornifer_" +
-#             randomUniqueFilename(Path.home(), length = 25, alphabet = string.ascii_uppercase + string.ascii_lowercase).name
-#         )
-#
-#         for filename in oldCorniferDir.glob("**/*.py"):
-#
-#             with filename.open("r") as fh:
-#                 editedText = re.sub("cornifer", oldCorniferName, fh.read())
-#
-#             with filename.open("w") as fh:
-#                 fh.write(editedText)
-#
-#         (oldCorniferDir / "lib" / "cornifer").rename(oldCorniferDir / "lib" / oldCorniferName)
-#         check_call(
-#             ["pip", "install", str(oldCorniferDir)],
-#             stderr = DEVNULL, stdout = DEVNULL
-#         )
-#         importlib.invalidate_caches()
-#         print("... done.")
-#         print("Updating register....")
-#
-#         if oldVers in ["0.1.0", "0.2", "0.3"]:
-#
-#             oldRegLoader = importlib.import_module(".register_loader", oldCorniferName)
-#             dbMapSize = 25 * BYTES_PER_MB
-#
-#         else:
-#
-#             with (ident / MAP_SIZE_FILEPATH).open("r") as fh:
-#                 dbMapSize = int(fh.read())
-#
-#             oldRegLoader = importlib.import_module(".regloader", oldCorniferName)
-#
-#         with (ident / CLS_FILEPATH).open("r") as fh:
-#             clsName = fh.read()
-#
-#         with (ident / MSG_FILEPATH).open("r") as fh:
-#             msg = fh.read()
-#
-#         oldErrors = importlib.import_module(".errors", oldCorniferName)
-#         newReg = _CopyRegister(ident.parent, msg, dbMapSize)
-#         oldReg = oldRegLoader.load(ident)
-#
-#         with oldReg.open() as oldReg:
-#
-#             with newReg.open() as newReg:
-#
-#                 if oldVers in ["0.1.0", "0.2", "0.3"]:
-#
-#                     for apri in oldReg:
-#
-#                         for startn, length in oldReg.disk_intervals(apri):
-#
-#                             metadata = oldReg.get_disk_block_metadata(apri, startn, length)
-#                             apri = ApriInfo.fromJson(apri.to_json())
-#                             newReg.addDiskBlk(Block(blk.get_segment(), apri, blk.get_start_n()))
-#
-#                         try:
-#                             apos = oldReg.get_apos_info()
-#
-#                         except oldErrors.Data_Not_Found_Error:
-#                             pass
-#
-#                         else:
-#                             newReg.setApos(apos)
-#
-#                 else:
-#
-#                     for apri in oldReg:
-#
-#                         for blk in oldReg.diskBlks(apri):
-#
-#                             apri = ApriInfo.fromJson(blk.apri().toJson())
-#                             newReg.addDiskBlk(Block(blk.segment(), apri, blk.startn()))
-#
-#                         try:
-#                             apos = oldReg.apos(apri)
-#
-#                         except oldErrors.DataNotFoundError:
-#                             pass
-#
-#                         else:
-#                             newReg.setApos(apos)
-#
-#         newReg.setClsName(clsName)
-#         print("... done.")
-#         print("Deleting old register....")
-#         shutil.rmtree(ident)
-#         newReg._localDir.rename(ident.name)
-#         print("... done.")
-#
-#     except:
-#
-#         erroredOut = True
-#         raise
-#
-#     else:
-#         erroredOut = False
-#
-#     finally:
-#
-#         if erroredOut:
-#             print("Encountered an error, cleaning up...")
-#
-#         if oldCorniferName is not None:
-#
-#             print("Uninstalling old cornifer....")
-#             check_call(
-#                 ["pip", "uninstall", oldCorniferName],
-#                 stderr = DEVNULL, stdout = DEVNULL
-#             )
-#             print("... done.")
-#
-#         print("Removing temporary venv...")
-#
-#         if envDir.exists():
-#             shutil.rmtree(envDir)
-#
-#         print("... done.")
-#
-#         if not erroredOut:
-#             print("Update successful!")
+###################
+# RELATIONAL INFO #
+###################
+
+_RELATIONAL_APRI_PREFIX = (_APRI_ID_KEY_PREFIX + _KEY_SEP).decode("ASCII")
+_RELATIONAL_APRI_PREFIX_LEN = len(_RELATIONAL_APRI_PREFIX)
+
+class _RelationalInfoJsonEncoder(_InfoJsonEncoder):
+
+    def __init__(self, *args, **kwargs):
+
+        if len(args) < 2:
+            raise RuntimeError("Must give at least two optional args, a `Register` followed by `lmdb.Transaction`.")
+
+        self._reg, self._txn = args[:2]
+
+        if not isinstance(self._reg, Register):
+            raise TypeError("The first argument must have type `Register`.")
+
+        if not is_transaction(self._txn):
+            raise TypeError("The second argument must have type `lmdb.transaction`.")
+
+        super().__init__(*args[2:], **kwargs)
+
+    def default(self, obj):
+
+        if isinstance(obj, ApriInfo):
+            return _RELATIONAL_APRI_PREFIX + self._reg._get_id_by_apri(obj, None, False, self._txn).decode("ASCII")
+
+        else:
+            return super().default(obj)
+
+
+class _RelationalInfoJsonDecoder(_InfoJsonDecoder):
+
+    def __init__(self, *args, **kwargs):
+
+        if len(args) < 2:
+            raise RuntimeError("Must give at least two optional args, a `Register` followed by `lmdb.Transaction`.")
+
+        self._reg, self._txn = args
+
+        if not isinstance(self._reg, Register):
+            raise TypeError("The first argument must have type `Register`.")
+
+        if not is_transaction(self._txn):
+            raise TypeError("The second argument must have type `lmdb.transaction`.")
+
+        super().__init__(*args[2:], **kwargs)
+
+    @staticmethod
+    def check_return_apri_id(str_):
+
+        check = len(str_) > _RELATIONAL_APRI_PREFIX_LEN and str_[:_RELATIONAL_APRI_PREFIX_LEN] == _RELATIONAL_APRI_PREFIX
+        return check, str_[_RELATIONAL_APRI_PREFIX_LEN:].encode("ASCII") if check else None
+
+    def object_hook(self, obj):
+
+        if isinstance(obj, str):
+
+            obj = obj.strip(" \t")
+
+            check_apri, apri_id = _RelationalInfoJsonDecoder.check_return_apri_id(obj)
+            check_apos, apos_json = _InfoJsonDecoder.check_return_apos_info_json(obj)
+
+            if check_apri:
+
+                apri_json = self._reg._get_apri_json_by_id(apri_id, self._txn).decode("ASCII")
+
+                try:
+                    return ApriInfo(**self.decode(apri_json))
+
+                except:
+                    raise
+
+            elif check_apos:
+                return AposInfo(**self.decode(apos_json))
+
+            else:
+                return obj
+
+        else:
+            return super().object_hook(obj)
+
+
+def relational_encode_info(reg, info, txn = None):
+
+    if not isinstance(reg, Register):
+        raise TypeError("`reg` must be of type `Register`.")
+
+    if not isinstance(info, _Info):
+        raise TypeError("`info` must be an instance of a concrete subclass of `_Info`.")
+
+    if txn is not None and not is_transaction(txn):
+        raise TypeError("`txn` must be of type `lmdb.Transaction`.")
+
+    if txn is None:
+
+        txn = reg._db.begin()
+        commit = True
+
+    else:
+        commit = False
+
+    try:
+
+        encoder = _RelationalInfoJsonEncoder(reg, txn,
+            ensure_ascii = True,
+            allow_nan = True,
+            indent = None,
+            separators = (',', ':')
+        )
+        info.set_encoder(encoder)
+        return info.to_json().encode("ASCII")
+
+    finally:
+
+        if commit:
+            txn.commit()
+
+
+def relational_decode_info(reg, cls, json, txn = None):
+
+    if not isinstance(reg, Register):
+        raise TypeError("`reg` must be of type `Register`.")
+
+    if not issubclass(cls, _Info):
+        raise TypeError("`cls` must be a subclass of `_Info`.")
+
+    if not isinstance(json, bytes):
+        raise TypeError("`json` must of of type `bytes`.")
+
+    if txn is not None and not is_transaction(txn):
+        raise TypeError("`txn` must be of type `lmdb.Transaction`.")
+
+    if txn is None:
+
+        commit = True
+        txn = reg._db.begin()
+
+    else:
+        commit = False
+
+    try:
+
+        decoder = _RelationalInfoJsonDecoder(reg, txn)
+        return cls.from_json(json.decode("ASCII"), decoder)
+
+    finally:
+
+        if commit:
+            txn.commit()

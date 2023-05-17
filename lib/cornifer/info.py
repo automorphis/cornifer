@@ -1,33 +1,38 @@
-"""
-    Cornifer, an intuitive data manager for empirical and computational mathematics.
-    Copyright (C) 2021 Michael P. Lane
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-"""
-
-
 import json
 from abc import ABC, abstractmethod
 from copy import copy, deepcopy
 
-from ._utilities import orderJsonObj, isInt
+from ._utilities import is_int, order_json_obj
+
+_APRI_ENCODED_PREFIX = "ApriInfo.from_json("
+_APRI_ENCODED_SUFFIX = ")"
+_APRI_ENCODED_PREFIX_LEN = len(_APRI_ENCODED_PREFIX)
+_APRI_ENCODED_SUFFIX_LEN = len(_APRI_ENCODED_SUFFIX)
+_APRI_ENCODED_PRE_SUFFIX_LEN = _APRI_ENCODED_PREFIX_LEN + _APRI_ENCODED_SUFFIX_LEN
+_APOS_ENCODED_PREFIX = "AposInfo.from_json("
+_APOS_ENCODED_SUFFIX = ")"
+_APOS_ENCODED_PREFIX_LEN = len(_APOS_ENCODED_PREFIX)
+_APOS_ENCODED_SUFFIX_LEN = len(_APOS_ENCODED_SUFFIX)
+_APOS_ENCODED_PRE_SUFFIX_LEN = _APOS_ENCODED_PREFIX_LEN + _APOS_ENCODED_SUFFIX_LEN
+
+
+class JSONDecoderWithRoot(json.JSONDecoder, ABC):
+
+    @abstractmethod
+    def decode_root(self, obj):pass
+
 
 class _InfoJsonEncoder(json.JSONEncoder):
 
     def default(self, obj):
 
-        if isinstance(obj, _Info):
-            return obj.__class__.__name__ + ".fromJson(" + obj.toJson() + ")"
+        if isinstance(obj, ApriInfo):
+            return _APRI_ENCODED_PREFIX + obj.to_json() + _APRI_ENCODED_SUFFIX
 
-        elif isInt(obj):
+        elif isinstance(obj, AposInfo):
+            return _APOS_ENCODED_PREFIX + obj.to_json() + _APOS_ENCODED_SUFFIX
+
+        elif is_int(obj):
             return int(obj)
 
         elif isinstance(obj, tuple):
@@ -36,27 +41,59 @@ class _InfoJsonEncoder(json.JSONEncoder):
         else:
             return super().default(obj)
 
-class _InfoJsonDecoder(json.JSONDecoder):
+
+class _InfoJsonDecoder(JSONDecoderWithRoot):
 
     def __init__(self, *args, **kwargs):
         super().__init__(object_hook=self.object_hook, *args, **kwargs)
+
+    @staticmethod
+    def check_return_apri_info_json(str_):
+
+        check = (
+            len(str_) > _APRI_ENCODED_PRE_SUFFIX_LEN and
+            str_[ : _APRI_ENCODED_PREFIX_LEN] == _APRI_ENCODED_PREFIX and
+            str_[-_APRI_ENCODED_SUFFIX_LEN : ] == _APRI_ENCODED_SUFFIX
+        )
+        return (
+            check,
+            str_[_APRI_ENCODED_PREFIX_LEN : -_APRI_ENCODED_SUFFIX_LEN].strip(" \t") if check else None
+        )
+
+    @staticmethod
+    def check_return_apos_info_json(str_):
+
+        check = (
+            len(str_) > _APOS_ENCODED_PRE_SUFFIX_LEN and
+            str_[ : _APOS_ENCODED_PREFIX_LEN] == _APOS_ENCODED_PREFIX and
+            str_[-_APOS_ENCODED_SUFFIX_LEN : ] == _APOS_ENCODED_SUFFIX
+        )
+        return (
+            check,
+            str_[_APOS_ENCODED_PREFIX_LEN : -_APOS_ENCODED_SUFFIX_LEN].strip(" \t") if check else None
+        )
 
     def object_hook(self, obj):
 
         if isinstance(obj, str):
 
             obj = obj.strip(" \t")
-            if (obj[:8] == "ApriInfo" or obj[:8] == "AposInfo") and obj[8:18] == ".fromJson(" and obj[-1] == ")":
 
-                json_str = obj[18:-1].strip(" \t")
+            check_apri, apri_json = _InfoJsonDecoder.check_return_apri_info_json(obj)
+            check_apos, apos_json = _InfoJsonDecoder.check_return_apos_info_json(obj)
+
+            if check_apri:
 
                 try:
+                    return ApriInfo(**self.decode(apri_json))
 
-                    if obj[:8] == "ApriInfo":
-                        return ApriInfo.fromJson(json_str)
+                except json.JSONDecodeError:
+                    return obj
 
-                    else:
-                        return AposInfo.fromJson(json_str)
+            elif check_apos:
+
+                try:
+                    return AposInfo(**self.decode(apos_json))
 
                 except json.JSONDecodeError:
                     return obj
@@ -73,78 +110,102 @@ class _InfoJsonDecoder(json.JSONDecoder):
         else:
             return obj
 
+    def decode_root(self, obj):
+
+        try:
+            decoded_json = self.decode(obj)
+
+        except:
+            raise
+
+        if not isinstance(decoded_json, dict):
+            raise ValueError(
+                "The outermost layer of the passed JSON string must be a JavaScript `object`, that is, " +
+                f"a Python `dict`. The outermost layer of the passed `json_string` is: " +
+                f"`{decoded_json.__class__.__name__}`."
+            )
+
+        return decoded_json
+
+
 class _Info(ABC):
 
-    _reservedKws = ["_json", "_str"]
+    _reserved_kws = ["_memoize_json", "_str", "_json", "_encoder"]
+    _default_encoder = _InfoJsonEncoder(
+        ensure_ascii = True,
+        allow_nan = True,
+        indent = None,
+        separators = (',', ':')
+    )
+    _default_decoder = _InfoJsonDecoder()
+
+    def __init_subclass__(cls, reserved_kws = None, **kwargs):
+
+        super().__init_subclass__(**kwargs)
+
+        if reserved_kws is None:
+            cls._reserved_kws = _Info._reserved_kws
+
+        else:
+            cls._reserved_kws = _Info._reserved_kws + reserved_kws
 
     def __init__(self, **kwargs):
 
         if len(kwargs) == 0:
             raise ValueError("must pass at least one keyword argument.")
 
-        type(self)._checkReservedKws(kwargs)
-
+        type(self)._check_reserved_kws(kwargs)
         self.__dict__.update(kwargs)
-
         self._json = None
-
         self._str = None
+        self._memoize_json = False
+        self._encoder = _Info._default_encoder
 
     @classmethod
-    def _checkReservedKws(cls, kwargs):
+    def _check_reserved_kws(cls, kwargs):
 
-        if any(kw in kwargs for kw in cls._reservedKws):
+        if any(kw in kwargs for kw in cls._reserved_kws):
 
             raise ValueError(
-
                 "The following keyword-argument keys are reserved. Choose a different key.\n" +
-                f"{', '.join(cls._reservedKws)}"
+                f"{', '.join(cls._reserved_kws)}"
             )
 
     @classmethod
-    def fromJson(cls, jsonStr):
+    def from_json(cls, json_str, decoder = None):
 
-        decoded_json = _InfoJsonDecoder().decode(jsonStr)
+        if decoder is None:
+            decoder = cls._default_decoder
 
-        if not isinstance(decoded_json, dict):
-            raise ValueError(
-                "The outermost layer of the passed `json_string` must be a JavaScript `object`, that is, " +
-                f"a Python `dict`. The outermost layer of the passed `json_string` is: " +
-                f"`{decoded_json.__class__.__name__}`."
-            )
+        if not isinstance(decoder, JSONDecoderWithRoot):
+            raise TypeError("`decoder` must subclass `JSONDecoderWithRoot`.")
 
-        return cls(**decoded_json)
+        decoded = decoder.decode_root(json_str)
+        return cls(**decoded)
 
-    def toJson(self):
+    def to_json(self):
 
-        if self._json is not None:
+        if self._memoize_json and self._json is not None:
             return self._json
 
         else:
 
             kwargs = copy(self.__dict__)
 
-            for kw in type(self)._reservedKws:
+            for kw in type(self)._reserved_kws:
                 kwargs.pop(kw,None)
 
-            kwargs = orderJsonObj(kwargs)
+            kwargs = order_json_obj(kwargs)
 
             try:
-                json_rep = _InfoJsonEncoder(
-
-                    ensure_ascii = True,
-                    allow_nan = True,
-                    indent = None,
-                    separators = (',', ':')
-
-                ).encode(kwargs)
+                json_rep = self._encoder.encode(kwargs)
 
             except (TypeError, ValueError) as e:
 
                 raise ValueError(
                     "One of the keyword arguments used to construct this instance cannot be encoded into " +
                     "JSON. Use different keyword arguments, or override the " +
-                    f"classmethod `{self.__class__.__name__}.fromJson` and the instancemethod " +
+                    f"classmethod `{self.__class__.__name__}.from_json` and the instancemethod " +
                     f"`{self.__class__.__name__}.toJson`."
                 ) from e
 
@@ -155,46 +216,82 @@ class _Info(ABC):
                     "'\\0'."
                 )
 
-            self._json = json_rep
+            if self._memoize_json:
+                self._json = json_rep
 
             return json_rep
 
-    def iterInnerInfo(self, _rootCall = True):
+    def _iter_inner_info_bfs(self, root_call):
 
-        if not isinstance(_rootCall, bool):
-            raise TypeError("`_rootCall` must be of type `bool`.")
-
-        if _rootCall:
+        if root_call:
             yield None, self
+
+        subinfos = []
 
         for key, val in self.__dict__.items():
 
-            if key not in type(self)._reservedKws and isinstance(val, _Info):
+            if key not in type(self)._reserved_kws and isinstance(val, _Info):
 
+                subinfos.append((key, val))
                 yield key, val
 
-                for inner in val.iterInnerInfo(_rootCall= False):
-                    yield inner
+        for key, val in subinfos:
+            yield from val._iter_inner_info_bfs(False)
 
-    def changeInfo(self, oldInfo, newInfo, _rootCall = True):
+    def _iter_inner_info_dfs(self, root_call):
 
-        if not isinstance(oldInfo, _Info):
-            raise TypeError("`oldInfo` must be of type `_Info`.")
+        for key, val in self.__dict__.items():
 
-        if not isinstance(newInfo, _Info):
-            raise TypeError("`newInfo` must be of type `_Info`.")
+            if key not in type(self)._reserved_kws and isinstance(val, _Info):
 
-        if not isinstance(_rootCall, bool):
+                yield from val._iter_inner_info_dfs(False)
+                yield key, val
+
+        if root_call:
+            yield None, self
+
+    def iter_inner_info(self, mode = "dfs"):
+        """Iterate over `_Info` contained within this `_Info`.
+
+        :param mode: (type `str`) Optional, default "dfs". Whether to return depth- (dfs) or breadth-first (bfs).
+        :return: (type `str`) Keyword names, or `None` for the root.
+        :return: (type `_Info`) Keyword values, `self` for the root.
+        """
+
+        if not isinstance(mode, str):
+            raise TypeError("`mode` must be of type `str`.")
+
+        if mode != "dfs" and mode != "bfs":
+            raise ValueError("`mode` must be either 'dfs' or 'bfs'.")
+
+        if mode == "dfs":
+            yield from self._iter_inner_info_dfs(True)
+
+        else:
+            yield from self._iter_inner_info_bfs(True)
+
+
+
+
+    def change_info(self, old_info, new_info, _root_call = True):
+
+        if not isinstance(old_info, _Info):
+            raise TypeError("`old_info` must be of type `_Info`.")
+
+        if not isinstance(new_info, _Info):
+            raise TypeError("`new_info` must be of type `_Info`.")
+
+        if not isinstance(_root_call, bool):
             raise TypeError("`_rootCall` must be of type `bool`.")
 
-        if _rootCall:
+        if _root_call:
             replaced_info = deepcopy(self)
 
         else:
             replaced_info = self
 
-        if self == oldInfo:
-            return newInfo
+        if self == old_info:
+            return new_info
 
         else:
 
@@ -202,32 +299,39 @@ class _Info(ABC):
 
             for key, val in replaced_info.__dict__.items():
 
-                if key not in type(self)._reservedKws:
+                if key not in type(self)._reserved_kws:
 
-                    if val == oldInfo:
-                        kw[key] = newInfo
+                    if val == old_info:
+                        kw[key] = new_info
 
                     elif isinstance(val, _Info):
-                        kw[key] = val.changeInfo(oldInfo, newInfo)
+                        kw[key] = val.change_info(old_info, new_info)
 
                     else:
                         kw[key] = val
 
             return type(self)(**kw)
 
+    def set_encoder(self, encoder):
+
+        if not isinstance(encoder, json.JSONEncoder):
+            raise TypeError("`encoder` must be of type `json.JSONEncoder`.")
+
+        self._encoder = encoder
+
     def __iter__(self):
 
         for key, val in self.__dict__.items():
 
-            if key not in type(self)._reservedKws:
+            if key not in type(self)._reserved_kws:
                 yield key, val
 
     def __contains__(self, apri):
 
         if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`.")
+            raise TypeError("`info` must be of type `ApriInfo`.")
 
-        return any(inner == apri for _, inner in self.iterInnerInfo())
+        return any(inner == apri for _, inner in self.iter_inner_info())
 
     def __lt__(self, other):
 
@@ -236,8 +340,8 @@ class _Info(ABC):
 
         else:
 
-            self_kwargs = sorted([key for key in self.__dict__.keys() if key not in type(self)._reservedKws])
-            other_kwargs = sorted([key for key in other.__dict__.keys() if key not in type(other)._reservedKws])
+            self_kwargs = sorted([key for key in self.__dict__.keys() if key not in type(self)._reserved_kws])
+            other_kwargs = sorted([key for key in other.__dict__.keys() if key not in type(other)._reserved_kws])
 
             for self_kw, other_kw in zip(self_kwargs, other_kwargs):
 
@@ -271,7 +375,31 @@ class _Info(ABC):
     def __hash__(self):pass
 
     def __eq__(self, other):
-        return type(self) == type(other) and self.toJson() == other.toJson()
+
+        if type(self) != type(other):
+            return False
+
+        if (
+            self._memoize_json and other._memoize_json and
+            self._json is not None and other._json is not None
+        ):
+            return self._json == other._json
+
+        if len(self.__dict__) != len(other.__dict__):
+            return False
+
+        for key, val in self.__dict__.items():
+
+            if key not in type(self)._reserved_kws:
+
+                if key not in other.__dict__.keys():
+                    return False
+
+                elif val != other.__dict__[key]:
+                    return False
+
+        else:
+            return True
 
     def __str__(self):
 
@@ -282,12 +410,14 @@ class _Info(ABC):
 
             ret = f"{self.__class__.__name__}("
             ordered = sorted(
-                [(key, val) for key, val in self.__dict__.items() if key not in type(self)._reservedKws],
+                [(key, val) for key, val in self.__dict__.items() if key not in type(self)._reserved_kws],
                 key = lambda t: t[0]
             )
             ret += ", ".join(f"{key}={repr(val)}" for key, val in ordered)
             ret += ")"
+
             self._str = ret
+
             return self._str
 
     def __repr__(self):
@@ -302,20 +432,19 @@ class _Info(ABC):
     def __deepcopy__(self, memo):
         return self.__copy__()
 
-class ApriInfo(_Info):
 
-    _reservedKws = ["_json", "_hash", "_str"]
+class ApriInfo(_Info, reserved_kws = ["_hash"]):
 
     def __init__(self, **kwargs):
 
         super().__init__(**kwargs)
-
-        self._hash = hash(type(self))
+        hash_ = hash(type(self))
+        self._memoize_json = True
 
         for key,val in kwargs.items():
 
             try:
-                self._hash += hash(val)
+                hash_ += hash(val)
 
             except (TypeError, AttributeError):
 
@@ -324,11 +453,16 @@ class ApriInfo(_Info):
                     f"not a hashable type. The type of that argument is `{val.__class__.__name__}`."
                 )
 
+            if self._memoize_json and isinstance(val, _Info):
+                self._memoize_json = False
+
+        self._hash = hash_
+
     def __hash__(self):
         return self._hash
+
 
 class AposInfo(_Info):
 
     def __hash__(self):
         raise TypeError("`Apos_Info` is not a hashable type.")
-
