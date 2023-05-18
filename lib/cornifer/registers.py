@@ -193,16 +193,21 @@ class Register(ABC):
 
         self._created = False
 
-    @staticmethod
-    def add_subclass(subclass):
+    def __init_subclass__(cls, **kwargs):
 
-        if not inspect.isclass(subclass):
-            raise TypeError(f"The `subclass` argument must be a class, not a {type(subclass)}.")
+        super().__init_subclass__()
+        Register._constructors[cls.__name__] = cls
 
-        if not issubclass(subclass, Register):
-            raise TypeError(f"The class `{subclass.__name__}` must be a subclass of `Register`.")
-
-        Register._constructors[subclass.__name__] = subclass
+    # @staticmethod
+    # def add_subclass(subclass):
+    #
+    #     if not inspect.isclass(subclass):
+    #         raise TypeError(f"The `subclass` argument must be a class, not a {type(subclass)}.")
+    #
+    #     if not issubclass(subclass, Register):
+    #         raise TypeError(f"The class `{subclass.__name__}` must be a subclass of `Register`.")
+    #
+    #     Register._constructors[subclass.__name__] = subclass
 
     #################################
     #     PROTEC INITIALIZATION     #
@@ -3137,8 +3142,6 @@ class PickleRegister(Register):
         with filename.open("rb") as fh:
             return pickle.load(fh), filename
 
-Register.add_subclass(PickleRegister)
-
 class NumpyRegister(Register):
 
     @classmethod
@@ -3472,8 +3475,6 @@ class NumpyRegister(Register):
                 blk.release()
 
         return ret
-
-Register.add_subclass(NumpyRegister)
 
 class _ElementIter:
 

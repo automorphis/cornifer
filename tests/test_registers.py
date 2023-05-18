@@ -139,8 +139,6 @@ class Testy_Register(Register):
 
         except RegisterError:pass
 
-Register.add_subclass(Testy_Register)
-
 class Testy_Register2(Register):
 
     @classmethod
@@ -190,27 +188,27 @@ class Test_Register(TestCase):
 
         self.assertEqual(Testy_Register(SAVES_DIR, "sup")._version, CURRENT_VERSION)
 
-    def test_add_subclass(self):
-
-        with self.assertRaisesRegex(TypeError, "must be a class"):
-            Register.add_subclass(0)
-
-        class Hello:pass
-
-        with self.assertRaisesRegex(TypeError, "subclass of `Register`"):
-            Register.add_subclass(Hello)
-
-        Register.add_subclass(Testy_Register2)
-
-        self.assertIn(
-            "Testy_Register2",
-            Register._constructors.keys()
-        )
-
-        self.assertEqual(
-            Register._constructors["Testy_Register2"],
-            Testy_Register2
-        )
+    # def test_add_subclass(self):
+    #
+    #     with self.assertRaisesRegex(TypeError, "must be a class"):
+    #         Register.add_subclass(0)
+    #
+    #     class Hello:pass
+    #
+    #     with self.assertRaisesRegex(TypeError, "subclass of `Register`"):
+    #         Register.add_subclass(Hello)
+    #
+    #     Register.add_subclass(Testy_Register2)
+    #
+    #     self.assertIn(
+    #         "Testy_Register2",
+    #         Register._constructors.keys()
+    #     )
+    #
+    #     self.assertEqual(
+    #         Register._constructors["Testy_Register2"],
+    #         Testy_Register2
+    #     )
 
     def test__split_disk_block_key(self):
 
@@ -2238,365 +2236,365 @@ class Test_Register(TestCase):
                 reg.blk(apri1, 0, 5)
             )
 
-    # def test__check_no_cycles_from(self):
-    #
-    #     reg = Testy_Register(SAVES_DIR, "hello")
-    #     with self.assertRaises(RegisterError):
-    #         reg._check_no_cycles_from(reg)
-    #
-    #     reg = Testy_Register(SAVES_DIR, "hello")
-    #     with reg.open() as reg:pass
-    #
-    #     # loop
-    #     self.assertFalse(
-    #         reg._check_no_cycles_from(reg)
-    #     )
-    #
-    #     reg1 = Testy_Register(SAVES_DIR, "hello")
-    #     reg2 = Testy_Register(SAVES_DIR, "hello")
-    #     reg3 = Testy_Register(SAVES_DIR, "hello")
-    #     reg4 = Testy_Register(SAVES_DIR, "hello")
-    #     reg5 = Testy_Register(SAVES_DIR, "hello")
-    #     reg6 = Testy_Register(SAVES_DIR, "hello")
-    #     reg7 = Testy_Register(SAVES_DIR, "hello")
-    #     with reg1.open(): pass
-    #     with reg2.open(): pass
-    #     with reg3.open(): pass
-    #     with reg4.open(): pass
-    #     with reg5.open(): pass
-    #     with reg6.open(): pass
-    #     with reg7.open(): pass
-    #
-    #     # disjoint
-    #     self.assertTrue(
-    #         reg2._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     # 1-path (1 -> 2)
-    #     with reg1.open() as reg1:
-    #         with reg1._db.begin(write = True) as txn:
-    #             txn.put(reg2._get_subreg_key(), _SUB_VAL)
-    #
-    #     self.assertFalse(
-    #         reg1._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg2._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg2._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg1._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg3._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg2._check_no_cycles_from(reg3)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg3._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg1._check_no_cycles_from(reg3)
-    #     )
-    #
-    #     # 2-path (1 -> 2 -> 3)
-    #     with reg2.open() as reg2:
-    #         with reg2._db.begin(write=True) as txn:
-    #             txn.put(reg3._get_subreg_key(), _SUB_VAL)
-    #
-    #     self.assertFalse(
-    #         reg1._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg2._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg3._check_no_cycles_from(reg3)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg1._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg2._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg1._check_no_cycles_from(reg3)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg3._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg2._check_no_cycles_from(reg3)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg3._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg4._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg4._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg4._check_no_cycles_from(reg3)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg1._check_no_cycles_from(reg4)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg2._check_no_cycles_from(reg4)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg3._check_no_cycles_from(reg4)
-    #     )
-    #
-    #
-    #     # 2-cycle (4 -> 5 -> 4)
-    #
-    #     with reg4.open() as reg4:
-    #
-    #         with reg4._db.begin(write = True) as txn:
-    #             txn.put(reg5._get_subreg_key(), _SUB_VAL)
-    #
-    #     with reg5.open() as reg5:
-    #
-    #         with reg5._db.begin(write=True) as txn:
-    #             txn.put(reg4._get_subreg_key(), _SUB_VAL)
-    #
-    #     self.assertFalse(
-    #         reg4._check_no_cycles_from(reg4)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg5._check_no_cycles_from(reg5)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg4._check_no_cycles_from(reg5)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg5._check_no_cycles_from(reg4)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg6._check_no_cycles_from(reg5)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg6._check_no_cycles_from(reg4)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg5._check_no_cycles_from(reg6)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg4._check_no_cycles_from(reg6)
-    #     )
-    #
-    #     # 2 cycle with tail (4 -> 5 -> 4 -> 6)
-    #
-    #     with reg4.open() as reg4:
-    #
-    #         with reg4._db.begin(write = True) as txn:
-    #             txn.put(reg6._get_subreg_key(), _SUB_VAL)
-    #
-    #     self.assertFalse(
-    #         reg4._check_no_cycles_from(reg4)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg5._check_no_cycles_from(reg5)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg6._check_no_cycles_from(reg6)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg4._check_no_cycles_from(reg5)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg5._check_no_cycles_from(reg4)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg4._check_no_cycles_from(reg6)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg6._check_no_cycles_from(reg4)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg5._check_no_cycles_from(reg6)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg6._check_no_cycles_from(reg5)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg7._check_no_cycles_from(reg4)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg7._check_no_cycles_from(reg5)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg7._check_no_cycles_from(reg6)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg4._check_no_cycles_from(reg7)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg5._check_no_cycles_from(reg7)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg6._check_no_cycles_from(reg7)
-    #     )
-    #
-    #     # 3-cycle (1 -> 2 -> 3 -> 1)
-    #
-    #     with reg3.open() as reg2:
-    #         with reg3._db.begin(write=True) as txn:
-    #             txn.put(reg1._get_subreg_key(), _SUB_VAL)
-    #
-    #     self.assertFalse(
-    #         reg1._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg2._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg3._check_no_cycles_from(reg3)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg1._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg2._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg1._check_no_cycles_from(reg3)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg3._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg2._check_no_cycles_from(reg3)
-    #     )
-    #
-    #     self.assertFalse(
-    #         reg3._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg7._check_no_cycles_from(reg1)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg7._check_no_cycles_from(reg2)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg7._check_no_cycles_from(reg3)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg1._check_no_cycles_from(reg7)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg2._check_no_cycles_from(reg7)
-    #     )
-    #
-    #     self.assertTrue(
-    #         reg3._check_no_cycles_from(reg7)
-    #     )
-    #
-    #     # long path (0 -> 1 -> ... -> N)
-    #
-    #     N = 10
-    #
-    #     regs = [NumpyRegister(SAVES_DIR, f"{i}") for i in range(N + 2)]
-    #
-    #     for reg in regs:
-    #         with reg.open():pass
-    #
-    #     for i in range(N):
-    #         with regs[i].open() as reg:
-    #             with reg._db.begin(write=True) as txn:
-    #                 txn.put(regs[i+1]._get_subreg_key(), _SUB_VAL)
-    #
-    #     for i, j in product(range(N+1), repeat = 2):
-    #
-    #         val = regs[i]._check_no_cycles_from(regs[j])
-    #
-    #         if i == j:
-    #             self.assertFalse(val)
-    #
-    #         elif i > j:
-    #             self.assertTrue(val)
-    #
-    #         else:
-    #             self.assertFalse(val)
-    #
-    #     for i in range(N+1):
-    #
-    #         self.assertTrue(
-    #             regs[i]._check_no_cycles_from(regs[N + 1])
-    #         )
-    #
-    #         self.assertTrue(
-    #             regs[N+1]._check_no_cycles_from(regs[i])
-    #         )
-    #
-    #     # adding arc between 2 cycle with tail (4 -> 5 -> 4 -> 6) to 3-cycle (1 -> 2 -> 3 -> 1)
-    #
-    #     for i, j in product([1,2,3], [4,5,6]):
-    #
-    #         regi = eval(f"reg{i}")
-    #         regj = eval(f"reg{j}")
-    #
-    #         self.assertTrue(regi._check_no_cycles_from(regj))
+    def test__check_no_cycles_from(self):
+
+        reg = Testy_Register(SAVES_DIR, "hello")
+        with self.assertRaises(RegisterError):
+            reg._check_no_cycles_from(reg)
+
+        reg = Testy_Register(SAVES_DIR, "hello")
+        with reg.open() as reg:pass
+
+        # loop
+        self.assertFalse(
+            reg._check_no_cycles_from(reg)
+        )
+
+        reg1 = Testy_Register(SAVES_DIR, "hello")
+        reg2 = Testy_Register(SAVES_DIR, "hello")
+        reg3 = Testy_Register(SAVES_DIR, "hello")
+        reg4 = Testy_Register(SAVES_DIR, "hello")
+        reg5 = Testy_Register(SAVES_DIR, "hello")
+        reg6 = Testy_Register(SAVES_DIR, "hello")
+        reg7 = Testy_Register(SAVES_DIR, "hello")
+        with reg1.open(): pass
+        with reg2.open(): pass
+        with reg3.open(): pass
+        with reg4.open(): pass
+        with reg5.open(): pass
+        with reg6.open(): pass
+        with reg7.open(): pass
+
+        # disjoint
+        self.assertTrue(
+            reg2._check_no_cycles_from(reg1)
+        )
+
+        # 1-path (1 -> 2)
+        with reg1.open() as reg1:
+            with reg1._db.begin(write = True) as txn:
+                txn.put(reg2._get_subreg_key(), _SUB_VAL)
+
+        self.assertFalse(
+            reg1._check_no_cycles_from(reg2)
+        )
+
+        self.assertTrue(
+            reg2._check_no_cycles_from(reg1)
+        )
+
+        self.assertFalse(
+            reg2._check_no_cycles_from(reg2)
+        )
+
+        self.assertFalse(
+            reg1._check_no_cycles_from(reg1)
+        )
+
+        self.assertTrue(
+            reg3._check_no_cycles_from(reg2)
+        )
+
+        self.assertTrue(
+            reg2._check_no_cycles_from(reg3)
+        )
+
+        self.assertTrue(
+            reg3._check_no_cycles_from(reg1)
+        )
+
+        self.assertTrue(
+            reg1._check_no_cycles_from(reg3)
+        )
+
+        # 2-path (1 -> 2 -> 3)
+        with reg2.open() as reg2:
+            with reg2._db.begin(write=True) as txn:
+                txn.put(reg3._get_subreg_key(), _SUB_VAL)
+
+        self.assertFalse(
+            reg1._check_no_cycles_from(reg1)
+        )
+
+        self.assertFalse(
+            reg2._check_no_cycles_from(reg2)
+        )
+
+        self.assertFalse(
+            reg3._check_no_cycles_from(reg3)
+        )
+
+        self.assertFalse(
+            reg1._check_no_cycles_from(reg2)
+        )
+
+        self.assertTrue(
+            reg2._check_no_cycles_from(reg1)
+        )
+
+        self.assertFalse(
+            reg1._check_no_cycles_from(reg3)
+        )
+
+        self.assertTrue(
+            reg3._check_no_cycles_from(reg1)
+        )
+
+        self.assertFalse(
+            reg2._check_no_cycles_from(reg3)
+        )
+
+        self.assertTrue(
+            reg3._check_no_cycles_from(reg2)
+        )
+
+        self.assertTrue(
+            reg4._check_no_cycles_from(reg1)
+        )
+
+        self.assertTrue(
+            reg4._check_no_cycles_from(reg2)
+        )
+
+        self.assertTrue(
+            reg4._check_no_cycles_from(reg3)
+        )
+
+        self.assertTrue(
+            reg1._check_no_cycles_from(reg4)
+        )
+
+        self.assertTrue(
+            reg2._check_no_cycles_from(reg4)
+        )
+
+        self.assertTrue(
+            reg3._check_no_cycles_from(reg4)
+        )
+
+
+        # 2-cycle (4 -> 5 -> 4)
+
+        with reg4.open() as reg4:
+
+            with reg4._db.begin(write = True) as txn:
+                txn.put(reg5._get_subreg_key(), _SUB_VAL)
+
+        with reg5.open() as reg5:
+
+            with reg5._db.begin(write=True) as txn:
+                txn.put(reg4._get_subreg_key(), _SUB_VAL)
+
+        self.assertFalse(
+            reg4._check_no_cycles_from(reg4)
+        )
+
+        self.assertFalse(
+            reg5._check_no_cycles_from(reg5)
+        )
+
+        self.assertFalse(
+            reg4._check_no_cycles_from(reg5)
+        )
+
+        self.assertFalse(
+            reg5._check_no_cycles_from(reg4)
+        )
+
+        self.assertTrue(
+            reg6._check_no_cycles_from(reg5)
+        )
+
+        self.assertTrue(
+            reg6._check_no_cycles_from(reg4)
+        )
+
+        self.assertTrue(
+            reg5._check_no_cycles_from(reg6)
+        )
+
+        self.assertTrue(
+            reg4._check_no_cycles_from(reg6)
+        )
+
+        # 2 cycle with tail (4 -> 5 -> 4 -> 6)
+
+        with reg4.open() as reg4:
+
+            with reg4._db.begin(write = True) as txn:
+                txn.put(reg6._get_subreg_key(), _SUB_VAL)
+
+        self.assertFalse(
+            reg4._check_no_cycles_from(reg4)
+        )
+
+        self.assertFalse(
+            reg5._check_no_cycles_from(reg5)
+        )
+
+        self.assertFalse(
+            reg6._check_no_cycles_from(reg6)
+        )
+
+        self.assertFalse(
+            reg4._check_no_cycles_from(reg5)
+        )
+
+        self.assertFalse(
+            reg5._check_no_cycles_from(reg4)
+        )
+
+        self.assertFalse(
+            reg4._check_no_cycles_from(reg6)
+        )
+
+        self.assertTrue(
+            reg6._check_no_cycles_from(reg4)
+        )
+
+        self.assertFalse(
+            reg5._check_no_cycles_from(reg6)
+        )
+
+        self.assertTrue(
+            reg6._check_no_cycles_from(reg5)
+        )
+
+        self.assertTrue(
+            reg7._check_no_cycles_from(reg4)
+        )
+
+        self.assertTrue(
+            reg7._check_no_cycles_from(reg5)
+        )
+
+        self.assertTrue(
+            reg7._check_no_cycles_from(reg6)
+        )
+
+        self.assertTrue(
+            reg4._check_no_cycles_from(reg7)
+        )
+
+        self.assertTrue(
+            reg5._check_no_cycles_from(reg7)
+        )
+
+        self.assertTrue(
+            reg6._check_no_cycles_from(reg7)
+        )
+
+        # 3-cycle (1 -> 2 -> 3 -> 1)
+
+        with reg3.open() as reg2:
+            with reg3._db.begin(write=True) as txn:
+                txn.put(reg1._get_subreg_key(), _SUB_VAL)
+
+        self.assertFalse(
+            reg1._check_no_cycles_from(reg1)
+        )
+
+        self.assertFalse(
+            reg2._check_no_cycles_from(reg2)
+        )
+
+        self.assertFalse(
+            reg3._check_no_cycles_from(reg3)
+        )
+
+        self.assertFalse(
+            reg1._check_no_cycles_from(reg2)
+        )
+
+        self.assertFalse(
+            reg2._check_no_cycles_from(reg1)
+        )
+
+        self.assertFalse(
+            reg1._check_no_cycles_from(reg3)
+        )
+
+        self.assertFalse(
+            reg3._check_no_cycles_from(reg1)
+        )
+
+        self.assertFalse(
+            reg2._check_no_cycles_from(reg3)
+        )
+
+        self.assertFalse(
+            reg3._check_no_cycles_from(reg2)
+        )
+
+        self.assertTrue(
+            reg7._check_no_cycles_from(reg1)
+        )
+
+        self.assertTrue(
+            reg7._check_no_cycles_from(reg2)
+        )
+
+        self.assertTrue(
+            reg7._check_no_cycles_from(reg3)
+        )
+
+        self.assertTrue(
+            reg1._check_no_cycles_from(reg7)
+        )
+
+        self.assertTrue(
+            reg2._check_no_cycles_from(reg7)
+        )
+
+        self.assertTrue(
+            reg3._check_no_cycles_from(reg7)
+        )
+
+        # long path (0 -> 1 -> ... -> N)
+
+        N = 10
+
+        regs = [NumpyRegister(SAVES_DIR, f"{i}") for i in range(N + 2)]
+
+        for reg in regs:
+            with reg.open():pass
+
+        for i in range(N):
+            with regs[i].open() as reg:
+                with reg._db.begin(write=True) as txn:
+                    txn.put(regs[i+1]._get_subreg_key(), _SUB_VAL)
+
+        for i, j in product(range(N+1), repeat = 2):
+
+            val = regs[i]._check_no_cycles_from(regs[j])
+
+            if i == j:
+                self.assertFalse(val)
+
+            elif i > j:
+                self.assertTrue(val)
+
+            else:
+                self.assertFalse(val)
+
+        for i in range(N+1):
+
+            self.assertTrue(
+                regs[i]._check_no_cycles_from(regs[N + 1])
+            )
+
+            self.assertTrue(
+                regs[N+1]._check_no_cycles_from(regs[i])
+            )
+
+        # adding arc between 2 cycle with tail (4 -> 5 -> 4 -> 6) to 3-cycle (1 -> 2 -> 3 -> 1)
+
+        for i, j in product([1,2,3], [4,5,6]):
+
+            regi = eval(f"reg{i}")
+            regj = eval(f"reg{j}")
+
+            self.assertTrue(regi._check_no_cycles_from(regj))
 
     def test_add_subregister(self):
 
@@ -2948,41 +2946,41 @@ class Test_Register(TestCase):
 
     def test__iter_ram_and_disk_block_datas(self):pass
 
-    # def test_apri_infos(self):
-    #
-    #     reg = Testy_Register(SAVES_DIR, "tests")
-    #
-    #     with self.assertRaisesRegex(RegisterError, "open.*apris"):
-    #         reg.apris()
-    #
-    #     for i in range(200):
-    #
-    #         apri1 = ApriInfo(name = i)
-    #         apri2 = ApriInfo(name =f"{i}")
-    #
-    #         with reg.open() as reg:
-    #
-    #             reg.add_disk_blk(Block([1], apri1))
-    #             reg.add_ram_blk(Block([1], apri2))
-    #
-    #             get = reg.apris()
-    #
-    #         self.assertEqual(
-    #             2*(i+1),
-    #             len(get)
-    #         )
-    #
-    #         for j in range(i+1):
-    #
-    #             self.assertIn(
-    #                 ApriInfo(name = i),
-    #                 get
-    #             )
-    #
-    #             self.assertIn(
-    #                 ApriInfo(name =f"{i}"),
-    #                 get
-    #             )
+    def test_apri_infos(self):
+
+        reg = Testy_Register(SAVES_DIR, "tests")
+
+        with self.assertRaisesRegex(RegisterError, "open.*apris"):
+            reg.apris()
+
+        for i in range(200):
+
+            apri1 = ApriInfo(name = i)
+            apri2 = ApriInfo(name =f"{i}")
+
+            with reg.open() as reg:
+
+                reg.add_disk_blk(Block([1], apri1))
+                reg.add_ram_blk(Block([1], apri2))
+
+                get = reg.apris()
+
+            self.assertEqual(
+                2*(i+1),
+                len(get)
+            )
+
+            for j in range(i+1):
+
+                self.assertIn(
+                    ApriInfo(name = i),
+                    get
+                )
+
+                self.assertIn(
+                    ApriInfo(name =f"{i}"),
+                    get
+                )
 
     def _is_compressed_helper(self, reg, apri, start_n, length, data_file_bytes = None):
 
