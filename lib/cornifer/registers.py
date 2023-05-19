@@ -3475,7 +3475,7 @@ class _ElementIter:
     def update_intervals_calculated(self):
 
         self.intervals = list(
-            self.reg.intervals(self.apri, sort = True, combine = False, diskonly = self.diskonly, recursively = self.recursively)
+            self.reg.intervals(self.apri, combine = False, diskonly = self.diskonly, recursively = self.recursively)
         )
 
     def get_next_blk(self):
