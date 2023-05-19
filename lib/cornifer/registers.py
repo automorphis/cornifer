@@ -975,7 +975,7 @@ class Register(ABC):
         try:
 
             try:
-                self._get_id_by_apri(apri, None, False, None, txn)
+                self._get_id_by_apri(apri, None, False, txn, None)
 
             except DataNotFoundError:
                 pass
@@ -1120,7 +1120,7 @@ class Register(ABC):
                 self._rmv_apri_txn(apri, False, txn)
 
         apri_json = relational_encode_info(self, apri, txn)
-        apri_id = self._get_id_by_apri(apri, apri_json, False, txn)
+        apri_id = self._get_id_by_apri(apri, apri_json, False, txn, None)
         txn.delete(_ID_APRI_KEY_PREFIX + apri_id)
         txn.delete(_APRI_ID_KEY_PREFIX + apri_json)
 
@@ -1349,7 +1349,7 @@ class Register(ABC):
         if apri is None and apri_json is None:
             raise ValueError
 
-        apri_id = self._get_id_by_apri(apri, apri_json, missing_ok, txn)
+        apri_id = self._get_id_by_apri(apri, apri_json, missing_ok, txn, None)
 
         return _APOS_KEY_PREFIX + _KEY_SEP + apri_id
 
@@ -2199,7 +2199,7 @@ class Register(ABC):
 
         # this will create ID's if necessary
         for i, apri in enumerate(apris):
-            self._get_id_by_apri(apri, None, True, txn)
+            self._get_id_by_apri(apri, None, True, txn, None)
 
         if _debug == 7:
             raise KeyboardInterrupt
@@ -2255,7 +2255,7 @@ class Register(ABC):
             raise KeyboardInterrupt
 
         # raises DataNotFoundError
-        self._get_id_by_apri(apri, None, False, txn)
+        self._get_id_by_apri(apri, None, False, txn, None)
 
         if _debug == 13:
             raise KeyboardInterrupt
@@ -2309,7 +2309,7 @@ class Register(ABC):
         if apri is None and apri_json is None:
             raise ValueError
 
-        id_ = self._get_id_by_apri(apri, apri_json, missing_ok, txn)
+        id_ = self._get_id_by_apri(apri, apri_json, missing_ok, txn, None)
         tail = startn % self._startn_tail_mod
         tail = f"{tail:0{self._startn_tail_length}d}".encode("ASCII")
         op_length = self._max_length - length
@@ -2328,7 +2328,7 @@ class Register(ABC):
 
             return lmdb_count_keys(
                 txn,
-                _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False) + _KEY_SEP
+                _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False, txn, None) + _KEY_SEP
             )
 
         except DataNotFoundError:
@@ -2348,7 +2348,7 @@ class Register(ABC):
         """
 
         try:
-            prefix += self._get_id_by_apri(apri, apri_json, False, txn)
+            prefix += self._get_id_by_apri(apri, apri_json, False, txn, None)
 
         except DataNotFoundError:
             pass
@@ -2916,7 +2916,7 @@ class Register(ABC):
                 for subreg in self._iter_subregs():
 
                     with subreg._recursive_open(True) as subreg:
-                        yield from subreg.intervals(apri, sort = False, combine = False, diskonly = diskonly, recursively = True)
+                        yield from subreg.intervals(apri, combine = False, diskonly = diskonly, recursively = True)
 
         else:
 
@@ -3089,7 +3089,7 @@ class Register(ABC):
 
         else:
 
-            prefix = _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False) + _KEY_SEP
+            prefix = _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False, txn, None) + _KEY_SEP
 
             with lmdb_prefix_iter(self._db, prefix) as it:
 
@@ -3588,7 +3588,7 @@ class _RelationalInfoJsonEncoder(_InfoJsonEncoder):
     def default(self, obj):
 
         if isinstance(obj, ApriInfo):
-            return _RELATIONAL_APRI_PREFIX + self._reg._get_id_by_apri(obj, None, False, self._txn).decode("ASCII")
+            return _RELATIONAL_APRI_PREFIX + self._reg._get_id_by_apri(obj, None, False, self._txn, None).decode("ASCII")
 
         else:
             return super().default(obj)
