@@ -198,17 +198,6 @@ class Register(ABC):
         super().__init_subclass__()
         Register._constructors[cls.__name__] = cls
 
-    # @staticmethod
-    # def add_subclass(subclass):
-    #
-    #     if not inspect.isclass(subclass):
-    #         raise TypeError(f"The `subclass` argument must be a class, not a {type(subclass)}.")
-    #
-    #     if not issubclass(subclass, Register):
-    #         raise TypeError(f"The class `{subclass.__name__}` must be a subclass of `Register`.")
-    #
-    #     Register._constructors[subclass.__name__] = subclass
-
     #################################
     #     PROTEC INITIALIZATION     #
 
@@ -2730,7 +2719,7 @@ class Register(ABC):
             _blk_not_found_err_msg(diskonly, str(apri), None, startn, length)
         )
 
-    def blks(self, apri, sort = False, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
+    def blks(self, apri, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
 
         self._check_open_raise("blks")
 
@@ -2769,7 +2758,7 @@ class Register(ABC):
             for subreg in self._iter_subregs():
 
                 with subreg._recursive_open(True) as subreg:
-                    yield from subreg.blks(apri, sort, diskonly, True, ret_metadata, **kwargs)
+                    yield from subreg.blks(apri, diskonly, True, ret_metadata, **kwargs)
 
     def __getitem__(self, apri_n_diskonly_recursively):
 
@@ -2886,15 +2875,12 @@ class Register(ABC):
             _blk_not_found_err_msg(diskonly, str(apri), n)
         )
 
-    def intervals(self, apri, sort = False, combine = False, diskonly = False, recursively = False):
+    def intervals(self, apri, combine = False, diskonly = False, recursively = False):
 
         self._check_open_raise("intervals")
 
         if not isinstance(apri, ApriInfo):
             raise TypeError("`info` must be of type `ApriInfo`.")
-
-        if not isinstance(sort, bool):
-            raise TypeError("`sort` must be of type `bool`.")
 
         if not isinstance(combine, bool):
             raise TypeError("`combine` must be of type `bool`.")
@@ -2905,7 +2891,7 @@ class Register(ABC):
         if not isinstance(recursively, bool):
             raise TypeError("`recursively` must be of type `bool`.")
 
-        if not sort and not combine:
+        if not combine:
 
             try:
                 self._check_known_apri(apri)
@@ -2932,10 +2918,11 @@ class Register(ABC):
                     with subreg._recursive_open(True) as subreg:
                         yield from subreg.intervals(apri, sort = False, combine = False, diskonly = diskonly, recursively = True)
 
-        elif combine:
+        else:
 
             ret = []
-            intervals_sorted = self.intervals(apri, sort = True, combine = False, diskonly = diskonly, recursively = recursively)
+            intervals_sorted = self.intervals(apri, combine = False, diskonly = diskonly, recursively = recursively)
+
             for startn, length in intervals_sorted:
 
                 if len(ret) == 0:
@@ -2945,12 +2932,6 @@ class Register(ABC):
                     ret[-1] = (ret[-1][0], max(startn + length - ret[-1][0], ret[-1][1]))
 
             yield from ret
-
-        else:
-            yield from sorted(
-                list(self.intervals(apri, sort = False, combine = False, diskonly = diskonly, recursively = recursively)),
-                key = lambda t: (t[0], -t[1])
-            )
 
     def total_len(self, apri, diskonly = False, recursively = False):
 
@@ -3035,7 +3016,7 @@ class Register(ABC):
 
         else:
 
-            for startn, length in self.intervals(apri, sort = False, combine = False, diskonly = diskonly, recursively = recursively):
+            for startn, length in self.intervals(apri, combine = False, diskonly = diskonly, recursively = recursively):
                 ret = startn + length - 1
 
         if recursively:
