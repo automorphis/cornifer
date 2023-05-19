@@ -2454,10 +2454,10 @@ class Register(ABC):
 
         commit = txn is None
 
-        try:
+        if commit:
+            txn = self._db.begin()
 
-            if commit:
-                txn = self._db.begin()
+        try:
 
             blk_val = txn.get(blk_key)
             compressed_val = txn.get(compressed_key)
@@ -3657,13 +3657,10 @@ def relational_encode_info(reg, info, txn = None):
     if txn is not None and not is_transaction(txn):
         raise TypeError("`txn` must be of type `lmdb.Transaction`.")
 
-    if txn is None:
+    commit = txn is None
 
+    if commit:
         txn = reg._db.begin()
-        commit = True
-
-    else:
-        commit = False
 
     try:
 
@@ -3696,13 +3693,10 @@ def relational_decode_info(reg, cls, json, txn = None):
     if txn is not None and not is_transaction(txn):
         raise TypeError("`txn` must be of type `lmdb.Transaction`.")
 
-    if txn is None:
+    commit = txn is None
 
-        commit = True
+    if commit:
         txn = reg._db.begin()
-
-    else:
-        commit = False
 
     try:
 
