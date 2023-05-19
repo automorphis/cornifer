@@ -3556,7 +3556,7 @@ class _CopyRegister(Register):
     def load_disk_data(cls, filename, **kwargs):
         raise NotImplementedError
 
-    def setClsName(self, clsName):
+    def set_cls_name(self, clsName):
 
         with self._cls_filepath.open() as fh:
             fh.write(clsName)
@@ -3592,7 +3592,6 @@ class _RelationalInfoJsonEncoder(_InfoJsonEncoder):
 
         else:
             return super().default(obj)
-
 
 class _RelationalInfoJsonDecoder(_InfoJsonDecoder):
 
@@ -3645,7 +3644,6 @@ class _RelationalInfoJsonDecoder(_InfoJsonDecoder):
         else:
             return super().object_hook(obj)
 
-
 def relational_encode_info(reg, info, txn = None):
 
     if not isinstance(reg, Register):
@@ -3677,7 +3675,6 @@ def relational_encode_info(reg, info, txn = None):
 
         if commit:
             txn.commit()
-
 
 def relational_decode_info(reg, cls, json, txn = None):
 

@@ -270,9 +270,6 @@ class _Info(ABC):
         else:
             yield from self._iter_inner_info_bfs(True)
 
-
-
-
     def change_info(self, old_info, new_info, _root_call = True):
 
         if not isinstance(old_info, _Info):
