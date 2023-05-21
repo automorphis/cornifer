@@ -3184,9 +3184,9 @@ class Test_Register(TestCase):
         #
         #     reg2.compress(apri1)
         #
-        #     for key, val in reg2._iter_disk_blk_pairs(_COMPRESSED_KEY_PREFIX, apri1, None):
+        #     for key, value in reg2._iter_disk_blk_pairs(_COMPRESSED_KEY_PREFIX, apri1, None):
         #
-        #         compr_filename = reg2._localDir / val.decode("ASCII")
+        #         compr_filename = reg2._localDir / value.decode("ASCII")
         #
         #         with reg2._db.begin() as txn:
         #             data_filename = txn.get(_BLK_KEY_PREFIX + key[ : _COMPRESSED_KEY_PREFIX_LEN])
@@ -3199,9 +3199,9 @@ class Test_Register(TestCase):
         #         self._is_compressed_helper(reg2, apri1, 0, 10, data_filename)
         #         break
         #
-        #     for _, val in reg2._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri1, None):
+        #     for _, value in reg2._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri1, None):
         #
-        #         filename = reg2._localDir / val.decode("ASCII")
+        #         filename = reg2._localDir / value.decode("ASCII")
         #
         #         with filename.open("a"):
         #

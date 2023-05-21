@@ -709,7 +709,7 @@ class Register(ABC):
     #
     #     current_size = stat.psize * (stat.leaf_pages + stat.branch_pages + stat.overflow_pages)
     #
-    #     entry_size_bytes = sum(len(key) + len(val) for key, val in zip(keys, vals)) * BYTES_PER_CHAR
+    #     entry_size_bytes = sum(len(key) + len(value) for key, value in zip(keys, vals)) * BYTES_PER_CHAR
     #
     #     if current_size + entry_size_bytes >= Register._MEMORY_FULL_PROP * self._dbMapSize:
     #
@@ -2344,7 +2344,7 @@ class Register(ABC):
         transaction and commit it after this method resolves.
         :raise DataNotFoundError: If `info` is not a disk `ApriInfo`.
         :return: (type `bytes`) key
-        :return: (type `bytes`) val
+        :return: (type `bytes`) value
         """
 
         try:
@@ -2761,28 +2761,7 @@ class Register(ABC):
                     yield from subreg.blks(apri, diskonly, True, ret_metadata, **kwargs)
 
     def __getitem__(self, apri_n_diskonly_recursively):
-
-        if not isinstance(apri_n_diskonly_recursively, tuple) or len(apri_n_diskonly_recursively) <= 1:
-            raise TypeError("Must pass at least two arguments to `reg[]`.")
-
-        if len(apri_n_diskonly_recursively) >= 5:
-            raise TypeError("Must pass at most four arguments to `reg[]`.")
-
-        if len(apri_n_diskonly_recursively) == 2:
-
-            apri, n = apri_n_diskonly_recursively
-            diskonly = False
-            recursively = False
-
-        elif len(apri_n_diskonly_recursively) == 3:
-
-            apri, n, diskonly = apri_n_diskonly_recursively
-            recursively = False
-
-        else:
-            apri, n, diskonly, recursively = apri_n_diskonly_recursively
-
-        return self.get(apri, n, diskonly, recursively)
+        return self.get(*Register._resolve_apri_n_diskonly_recursively(apri_n_diskonly_recursively))
 
     def get(self, apri, n, diskonly = False, recursively = False, **kwargs):
 
@@ -2867,6 +2846,68 @@ class Register(ABC):
 
                     try:
                         return subreg.get(apri, n, diskonly, recursively, **kwargs)
+
+                    except DataNotFoundError:
+                        pass
+
+        raise DataNotFoundError(
+            _blk_not_found_err_msg(diskonly, str(apri), n)
+        )
+
+    def __setitem__(self, apri_n_diskonly_recursively, value):
+
+        apri, n, diskonly, recursively = Register._resolve_apri_n_diskonly_recursively(apri_n_diskonly_recursively)
+        self.set(apri, n, value, diskonly, recursively)
+
+    def set(self, apri, n, value, diskonly = False, recursively = False, **kwargs):
+
+        if not isinstance(apri, ApriInfo):
+            raise TypeError("`apri' must be of type `ApriInfo`.")
+
+        if isinstance(n, slice):
+            raise NotImplementedError("support for slices for Register.set coming soon.")
+
+        if not is_int(n):
+            raise TypeError("`n` must be of type `int`.")
+
+        else:
+            n = int(n)
+
+        if not isinstance(diskonly, bool):
+            raise TypeError("`diskonly` must be of type `bool`.")
+
+        if not isinstance(recursively, bool):
+            raise TypeError("`recursively` must be of type `bool`.")
+
+        if not diskonly:
+
+            for blk in self._ram_blks:
+
+                if n in blk:
+                    blk[n] = value
+                    return
+
+        try:
+            blk = self.blk_by_n(apri, n, diskonly, False, False, **kwargs)
+
+        except DataNotFoundError:
+            pass
+
+        else:
+
+            blk[n] = value
+            self.rmv_disk_blk(apri, blk.startn(), len(blk), False, False)
+            self.add_disk_blk(blk)
+            return
+
+        if recursively:
+
+            for subreg in self._iter_subregs():
+
+                with subreg._recursive_open(True) as subreg:
+
+                    try:
+                        return subreg.set(apri, n, value, diskonly, recursively, **kwargs)
 
                     except DataNotFoundError:
                         pass
@@ -3039,6 +3080,31 @@ class Register(ABC):
 
     #################################
     # PROTEC RAM & DISK BLK METHODS #
+
+    @staticmethod
+    def _resolve_apri_n_diskonly_recursively(apri_n_diskonly_recursively):
+
+        if not isinstance(apri_n_diskonly_recursively, tuple) or len(apri_n_diskonly_recursively) <= 1:
+            raise TypeError("Must pass at least two arguments to `reg[]`.")
+
+        if len(apri_n_diskonly_recursively) >= 5:
+            raise TypeError("Must pass at most four arguments to `reg[]`.")
+
+        if len(apri_n_diskonly_recursively) == 2:
+
+            apri, n = apri_n_diskonly_recursively
+            diskonly = False
+            recursively = False
+
+        elif len(apri_n_diskonly_recursively) == 3:
+
+            apri, n, diskonly = apri_n_diskonly_recursively
+            recursively = False
+
+        else:
+            apri, n, diskonly, recursively = apri_n_diskonly_recursively
+
+        return apri, n, diskonly, recursively
 
     def _resolve_startn_length(self, apri, startn, length, diskonly, txn = None):
         """

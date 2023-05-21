@@ -126,12 +126,16 @@ class Block:
 
     def __getitem__(self, item):
 
-        if isinstance(item, tuple):
-            raise IndexError(
-                "`blk[]` cannot take more than one index."
-            )
+        if not is_int(item) and not isinstance(item, slice):
+            raise TypeError("`item` must be either of type `int` or `slice`.")
 
-        elif isinstance(item, slice):
+        elif is_int(item):
+            item = int(item)
+
+        if isinstance(item, tuple):
+            raise IndexError("`blk[]` cannot take more than one index.")
+
+        if isinstance(item, slice):
 
             apri = self.apri()
             startn = self.startn()
@@ -164,7 +168,32 @@ class Block:
                 return self._seg[item]
 
     def __setitem__(self, key, value):
-        """TODO"""
+
+        if isinstance(key, slice):
+            raise NotImplementedError("Support for slices coming soon.")
+
+        if not is_int(key):
+            raise TypeError("`key` must be of type `int`.")
+
+        else:
+            key = int(key)
+
+        if isinstance(key, tuple):
+            raise IndexError("`blk[]` cannot take more than one index.")
+
+        key -= self.startn()
+
+        if key not in self:
+            raise IndexError(
+                f"Indices must be between {self.startn()} and {self.startn() + len(self) - 1}" +
+                ", inclusive."
+            )
+
+        if not check_has_method(self._seg, "__setitem__"):
+            self._seg[key, ...] = value
+
+        else:
+            raise NotImplementedError
 
     def __len__(self):
 
