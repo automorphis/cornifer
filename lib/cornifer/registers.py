@@ -32,7 +32,8 @@ from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, 
 from .info import ApriInfo, AposInfo, _InfoJsonEncoder, _InfoJsonDecoder, _Info
 from .blocks import Block, MemmapBlock, ReleaseBlock
 from .filemetadata import FileMetadata
-from ._utilities import random_unique_filename, is_int, resolve_path, BYTES_PER_MB, is_deletable
+from ._utilities import random_unique_filename, is_int, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
+    check_return_int_None_default, check_Path, check_return_int
 from ._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, open_lmdb, lmdb_is_closed, lmdb_count_keys, \
     ReversibleTransaction, is_transaction, lmdb_prefix_list
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
@@ -114,6 +115,7 @@ _REG_ALREADY_ADDED_ERROR_MESSAGE = "Already added as subregister."
 
 _NO_APRI_ERROR_MESSAGE = "The following `ApriInfo` is not known to this `Register` : {0}"
 
+
 #################################
 #           CONSTANTS           #
 
@@ -139,20 +141,11 @@ class Register(ABC):
         to be very large (e.g. 1 TB).
         """
 
-        if not isinstance(saves_dir, (str, Path)):
-            raise TypeError("`savesDir` must be a string or a `pathlib.Path`.")
-
-        if not isinstance(msg, str):
-            raise TypeError("`msg` must be a string.")
-
-        if initial_reg_size is not None and not is_int(initial_reg_size):
-            raise TypeError("`initialRegSize` must be of type `int`.")
-
-        elif initial_reg_size is not None:
-            initial_reg_size = int(initial_reg_size)
-
-        else:
-            initial_reg_size = _INITIAL_REGISTER_SIZE_DEFAULT
+        check_Path(saves_dir, "saves_dir")
+        check_type(msg, "msg", str)
+        initial_reg_size = check_return_int_None_default(
+            initial_reg_size, "initial_reg_size", _INITIAL_REGISTER_SIZE_DEFAULT
+        )
 
         if initial_reg_size <= 0:
             raise ValueError("`initialRegSize` must be positive.")
@@ -360,9 +353,7 @@ class Register(ABC):
         :param message: (type `str`)
         """
 
-        if not isinstance(message, str):
-            raise TypeError("`msg` must be a string.")
-
+        check_type(message, "message", str)
         self._msg = message
 
         if self._created:
@@ -769,12 +760,8 @@ class Register(ABC):
     def apris(self, diskonly = False, recursively = False):
 
         self._check_open_raise("apris")
-
-        if not isinstance(diskonly, bool):
-            raise TypeError("`diskonly` must be of type `bool`")
-
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`")
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
 
         ret = []
 
@@ -913,17 +900,10 @@ class Register(ABC):
         # DEBUG : 1, 2, 3, 4, 5
 
         self._check_open_raise("rmv_apri")
-
         self._check_readwrite_raise("rmv_apri")
-
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`.")
-
-        if not isinstance(force, bool):
-            raise TypeError("`force` must be of type `bool`.")
-
-        if not isinstance(missing_ok, bool):
-            raise TypeError("`missing_ok` must be of type `bool`.")
+        check_type(apri, "apri", ApriInfo)
+        check_type(force, "force", bool)
+        check_type(missing_ok, "missing_ok", bool)
 
         if not missing_ok:
             self._check_known_apri(apri)
@@ -1227,14 +1207,9 @@ class Register(ABC):
         # DEBUG : 1, 2
 
         self._check_open_raise("set_apos")
-
         self._check_readwrite_raise("set_apos")
-
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`")
-
-        if not isinstance(apos, AposInfo):
-            raise TypeError("`apos` must be of type `AposInfo`")
+        check_type(apri, "apri", ApriInfo)
+        check_type(apos, "apos", AposInfo)
 
         if _debug == 1:
             raise KeyboardInterrupt
@@ -1260,9 +1235,7 @@ class Register(ABC):
         """
 
         self._check_open_raise("apos")
-
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri` must be of type `ApriInfo`")
+        check_type(apri, "apri", ApriInfo)
 
         with self._db.begin() as txn:
 
@@ -1280,14 +1253,9 @@ class Register(ABC):
         # DEBUG : 1, 2
 
         self._check_open_raise("rmv_apos")
-
         self._check_readwrite_raise("rmv_apos")
-
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`.")
-
-        if not isinstance(missing_ok, bool):
-            raise TypeError("`missing_ok` must be of type `bool`.")
+        check_type(apri, "apri", ApriInfo)
+        check_type(missing_ok, "missing_ok", bool)
 
         if _debug == 1:
             raise KeyboardInterrupt
@@ -1361,11 +1329,9 @@ class Register(ABC):
         # DEBUG : 1, 2
 
         self._check_open_raise("add_subreg")
-
         self._check_readwrite_raise("add_subreg")
-
-        if not isinstance(subreg, Register):
-            raise TypeError("`subreg` must be of a `Register` derived type")
+        check_type(subreg, "subreg", Register)
+        check_type(exists_ok, "exists_ok", bool)
 
         if not subreg._created:
             raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("add_subreg"))
@@ -1399,14 +1365,9 @@ class Register(ABC):
         # DEBUG : 1, 2
 
         self._check_open_raise("rmv_subreg")
-
         self._check_readwrite_raise("rmv_subreg")
-
-        if not isinstance(subreg, Register):
-            raise TypeError("`subreg` must be of a `Register` derived type.")
-
-        if not isinstance(missing_ok, bool):
-            raise TypeError("`missing_ok` must be of type `bool`.")
+        check_type(subreg, "Register", Register)
+        check_type(missing_ok, "missing_ok", bool)
 
         if _debug == 1:
             raise KeyboardInterrupt
@@ -1600,16 +1561,9 @@ class Register(ABC):
 
         self._check_open_raise("add_disk_blk")
         self._check_readwrite_raise("add_disk_blk")
-
-        if not isinstance(blk, Block):
-            raise TypeError("`blk` must be of type `Block`.")
-
-        if not isinstance(exists_ok, bool):
-            raise TypeError("`exists_ok` must be of type `bool`.")
-
-        if not isinstance(ret_metadata, bool):
-            raise TypeError("`ret_metadata` must be of type `bool`.")
-
+        check_type(blk, "blk", Block)
+        check_type(exists_ok, "exists_ok", bool)
+        check_type(ret_metadata, "ret_metadata", bool)
         startn_head = blk.startn() // self._startn_tail_mod
 
         if startn_head != self._startn_head :
@@ -1701,14 +1655,9 @@ class Register(ABC):
         :raises RegisterError: If a duplicate `Block` already exists in this `Register`.
         """
 
-        if not isinstance(blk, Block):
-            raise TypeError("`blk` must be of type `Block`.")
-
-        if not isinstance(exists_ok, bool):
-            raise TypeError("`exists_ok` must be of type `bool`.")
-
-        if not isinstance(ret_metadata, bool):
-            raise TypeError("`ret_metadata` must be of type `bool`.")
+        check_type(blk, "blk", Block)
+        check_type(exists_ok, "exists_ok", bool)
+        check_type(ret_metadata, "ret_metadata", bool)
 
         if self.num_blks(blk.apri(), diskonly = True) == 0:
             return self.add_disk_blk(blk, exists_ok, ret_metadata, **kwargs)
@@ -1740,7 +1689,17 @@ class Register(ABC):
 
         self._check_open_raise("rmv_disk_blk")
         self._check_readwrite_raise("rmv_disk_blk")
-        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
+        check_type(apri, "apri", ApriInfo)
+        startn = check_return_int_None_default(startn, "startn", None)
+        length = check_return_int_None_default(length, "length", None)
+        check_type(missing_ok, "missing_ok", bool)
+        check_type(recursively, "recursively", bool)
+
+        if startn is not None and startn < 0:
+            raise ValueError("`startn` must be non-negative.")
+
+        if length is not None and length < 0:
+            raise ValueError("`length` must be non-negative.")
 
         try:
             startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
@@ -1864,30 +1823,43 @@ class Register(ABC):
     def blk_metadata(self, apri, startn = None, length = None, recursively = False):
 
         self._check_open_raise("blk_metadata")
+        check_type(apri, "apri", ApriInfo)
+        startn = check_return_int_None_default(startn, "startn", None)
+        length = check_return_int_None_default(length, "length", None)
+        check_type(recursively, "recursively", bool)
 
-        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
+        if startn is not None and startn < 0:
+            raise ValueError("`startn` must be non-negative.")
 
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`.")
-
-        startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
+        if length is not None and length < 0:
+            raise ValueError("`length` must be non-negative.")
 
         try:
-            blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, startn_, length_)
+            startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
 
         except DataNotFoundError:
             pass
 
         else:
-            blk_filename, compressed_filename = self._check_blk_compressed_files_raise(
-                blk_key, compressed_key, apri, startn_, length_
-            )
 
-            if compressed_filename is not None:
-                return FileMetadata.from_path(compressed_filename)
+            try:
+                blk_key, compressed_key = self._check_blk_compressed_keys_raise(
+                    None, None, apri, None, startn_, length_
+                )
+
+            except DataNotFoundError:
+                pass
 
             else:
-                return FileMetadata.from_path(blk_filename)
+                blk_filename, compressed_filename = self._check_blk_compressed_files_raise(
+                    blk_key, compressed_key, apri, startn_, length_
+                )
+
+                if compressed_filename is not None:
+                    return FileMetadata.from_path(compressed_filename)
+
+                else:
+                    return FileMetadata.from_path(blk_filename)
 
         if recursively:
 
@@ -1896,7 +1868,7 @@ class Register(ABC):
                 with subreg._recursive_open(True) as subreg:
 
                     try:
-                        return subreg.blk_metadata(apri, startn_, length_, True)
+                        return subreg.blk_metadata(apri, startn, length, True)
 
                     except DataNotFoundError:
                         pass
@@ -1923,20 +1895,19 @@ class Register(ABC):
         # DEBUG : 1, 2, 3, 4
 
         _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not recover successfully from a failed disk `Block` compress!"
-
         self._check_open_raise("compress")
-
         self._check_readwrite_raise("compress")
+        check_type(apri, "apri", ApriInfo)
+        startn = check_return_int_None_default(startn, "startn", None)
+        length = check_return_int_None_default(length, "length", None)
+        compression_level = check_return_int(compression_level, "compression_level")
+        check_type(ret_metadata, "ret_metadata", bool)
 
-        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
+        if startn is not None and startn < 0:
+            raise ValueError("`startn` must be non-negative.")
 
-        if not is_int(compression_level):
-            raise TypeError("`compression_level` must be of type `int`.")
-        else:
-            compression_level = int(compression_level)
-
-        if not isinstance(ret_metadata, bool):
-            raise TypeError("`ret_metadata` must be of type `bool`.")
+        if length is not None and length < 0:
+            raise ValueError("`length` must be non-negative.")
 
         if not (0 <= compression_level <= 9):
             raise ValueError("`compression_level` must be between 0 and 9, inclusive.")
@@ -2056,18 +2027,20 @@ class Register(ABC):
         # DEBUG : 1, 2, 3, 4
 
         _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not recover successfully from a failed disk `Block` decompress!"
-
         self._check_open_raise("decompress")
-
         self._check_readwrite_raise("decompress")
+        check_type(apri, "apri", ApriInfo)
+        startn = check_return_int_None_default(startn, "startn", None)
+        length = check_return_int_None_default(length, "length", None)
+        check_type(ret_metadata, "ret_metadata", bool)
 
-        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
+        if startn is not None and startn < 0:
+            raise ValueError("`startn` must be non-negative.")
 
-        if not isinstance(ret_metadata, bool):
-            raise TypeError("`ret_metadata` must be of type `bool`.")
+        if length is not None and length < 0:
+            raise ValueError("`length` must be non-negative.")
 
         startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
-
         blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, startn_, length_)
 
         with self._db.begin() as txn:
@@ -2161,8 +2134,15 @@ class Register(ABC):
     def is_compressed(self, apri, startn = None, length = None):
 
         self._check_open_raise("is_compressed")
+        check_type(apri, "apri", ApriInfo)
+        startn = check_return_int_None_default(startn, "startn", None)
+        length = check_return_int_None_default(length, "length", None)
 
-        self._check_apri_startn_length_raise(apri, startn, length)
+        if startn is not None and startn < 0:
+            raise ValueError("`startn` must be non-negative.")
+
+        if length is not None and length < 0:
+            raise ValueError("`length` must be non-negative.")
 
         startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
 
@@ -2490,41 +2470,13 @@ class Register(ABC):
             if commit:
                 txn.commit()
 
-    @staticmethod
-    def _check_apri_startn_length_raise(apri, startn, length):
-
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`")
-
-        if not is_int(startn) and startn is not None:
-            raise TypeError("startn_` must be an `int`")
-
-        elif startn is not None:
-            startn = int(startn)
-
-        if not is_int(length) and length is not None:
-            raise TypeError("`length_` must be an `int`")
-
-        elif length is not None:
-            length = int(length)
-
-        if startn is not None and startn < 0:
-            raise ValueError("`startn_` must be non-negative")
-
-        if length is not None and length < 0:
-            raise ValueError("`length_` must be non-negative")
-
-        return startn, length
-
     #################################
     #    PUBLIC RAM BLK METHODS     #
 
     def add_ram_blk(self, blk):
 
         self._check_open_raise("add_ram_blk")
-
-        if not isinstance(blk, Block):
-            raise TypeError("`blk` must be of type `Block`.")
+        check_type(blk, "blk", Block)
 
         if blk.apri() not in self._ram_blks.keys():
             self._ram_blks[blk.apri()] = [blk]
@@ -2550,9 +2502,7 @@ class Register(ABC):
     def rmv_ram_blk(self, blk):
 
         self._check_open_raise("add_ram_blk")
-
-        if not isinstance(blk, Block):
-            raise TypeError("`blk` must be of type `Block`.")
+        check_type(blk, "blk", Block)
 
         if blk.apri() not in self._ram_blks.keys():
             raise DataNotFoundError(f"No RAM `Block` found with the following data: {str(blk.apri())}.")
@@ -2585,24 +2535,11 @@ class Register(ABC):
     def blk_by_n(self, apri, n, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
 
         self._check_open_raise("blk_by_n")
-
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`.")
-
-        if not is_int(n):
-            raise TypeError("`n` must be of type `int`.")
-
-        else:
-            n = int(n)
-
-        if not isinstance(diskonly, bool):
-            raise TypeError("`diskonly` must be of type `bool`.")
-
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`.")
-
-        if not isinstance(ret_metadata, bool):
-            raise TypeError("`ret_metadata` must be of type `bool`.")
+        check_type(apri, "apri", ApriInfo)
+        n = check_return_int(n, "n")
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
+        check_type(ret_metadata, "ret_metadata", bool)
 
         if n < 0:
             raise IndexError("`n` must be non-negative.")
@@ -2640,16 +2577,18 @@ class Register(ABC):
 
         self._check_open_raise("blk")
 
-        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
+        check_type(apri, "apri", ApriInfo)
+        startn = check_return_int_None_default(startn, "startn", None)
+        length = check_return_int_None_default(length, "length", None)
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
+        check_type(ret_metadata, "ret_metadata", bool)
 
-        if not isinstance(diskonly, bool):
-            raise TypeError("`diskonly` must be of type `bool`.")
+        if startn is not None and startn < 0:
+            raise ValueError("`startn` must be non-negative.")
 
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`.")
-
-        if not isinstance(ret_metadata, bool):
-            raise TypeError("`ret_metadata` must be of type `bool`.")
+        if length is not None and length < 0:
+            raise ValueError("`length` must be non-negative.")
 
         try:
             self._check_known_apri(apri)
@@ -2722,18 +2661,10 @@ class Register(ABC):
     def blks(self, apri, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
 
         self._check_open_raise("blks")
-
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`.")
-
-        if not isinstance(diskonly, bool):
-            raise TypeError("`diskonly` must be of type `bool`.")
-
-        if not isinstance(ret_metadata, bool):
-            raise TypeError("`ret_metadata` must be of type `bool`.")
-
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`.")
+        check_type(apri, "apri", ApriInfo)
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
+        check_type(ret_metadata, "ret_metadata", bool)
 
         try:
             self._check_known_apri(apri)
@@ -2861,23 +2792,17 @@ class Register(ABC):
 
     def set(self, apri, n, value, diskonly = False, recursively = False, **kwargs):
 
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri' must be of type `ApriInfo`.")
+        check_type(apri, "apri", ApriInfo)
 
         if isinstance(n, slice):
             raise NotImplementedError("support for slices for Register.set coming soon.")
 
-        if not is_int(n):
-            raise TypeError("`n` must be of type `int`.")
+        n = check_return_int(n, "n")
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
 
-        else:
-            n = int(n)
-
-        if not isinstance(diskonly, bool):
-            raise TypeError("`diskonly` must be of type `bool`.")
-
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`.")
+        if n < 0:
+            raise ValueError("`n` must be non-negative.")
 
         if not diskonly:
 
@@ -2919,18 +2844,9 @@ class Register(ABC):
     def intervals(self, apri, combine = False, diskonly = False, recursively = False):
 
         self._check_open_raise("intervals")
-
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`.")
-
-        if not isinstance(combine, bool):
-            raise TypeError("`combine` must be of type `bool`.")
-
-        if not isinstance(diskonly, bool):
-            raise TypeError("`diskonly` must be of type `bool`.")
-
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`.")
+        check_type(apri, "apri", ApriInfo)
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
 
         if not combine:
 
@@ -2977,15 +2893,9 @@ class Register(ABC):
     def total_len(self, apri, diskonly = False, recursively = False):
 
         self._check_open_raise("total_len")
-
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`.")
-
-        if not isinstance(diskonly, bool):
-            raise TypeError("`diskonly` must be of type `bool`.")
-
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`.")
+        check_type(apri, "apri", ApriInfo)
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
 
         try:
             return sum(t[1] for t in self.intervals(apri, combine = True, diskonly = diskonly, recursively = recursively))
@@ -2997,14 +2907,9 @@ class Register(ABC):
 
         self._check_open_raise("num_blks")
 
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`.")
-
-        if not isinstance(diskonly, bool):
-            raise TypeError("`diskonly` must be of type `bool`.")
-
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`.")
+        check_type(apri, "apri", ApriInfo)
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
 
         try:
             self._check_known_apri(apri)
@@ -3035,16 +2940,9 @@ class Register(ABC):
     def maxn(self, apri, diskonly = False, recursively = False):
 
         self._check_open_raise("maxn")
-
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`.")
-
-        if not isinstance(diskonly, bool):
-            raise TypeError("`diskonly` must be of type `bool`.")
-
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`.")
-
+        check_type(apri, "apri", ApriInfo)
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
         ret = -1
 
         try:
@@ -3233,6 +3131,34 @@ class NumpyRegister(Register):
     def with_suffix(cls, filename):
         return filename.with_suffix(".npy")
 
+    def set(self, apri, n, value, diskonly = False, recursively = False, **kwargs):
+
+        if not isinstance(apri, ApriInfo):
+            raise TypeError("`apri' must be of type `ApriInfo`.")
+
+        if isinstance(n, slice):
+            raise NotImplementedError("support for slices for Register.set coming soon.")
+
+        if not is_int(n):
+            raise TypeError("`n` must be of type `int`.")
+
+        else:
+            n = int(n)
+
+        if not isinstance(diskonly, bool):
+            raise TypeError("`diskonly` must be of type `bool`.")
+
+        if not isinstance(recursively, bool):
+            raise TypeError("`recursively` must be of type `bool`.")
+
+        try:
+            mmap_mode = kwargs['mmap_mode']
+
+        except KeyError:
+            mmap_mode = None
+
+
+
     def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
         """
         :param apri: (type `ApriInfo`)
@@ -3293,15 +3219,18 @@ class NumpyRegister(Register):
         """
 
         _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not successfully recover from a failed disk `Block` concatenation!"
-
         self._check_open_raise("concat_disk_blks")
-
         self._check_readwrite_raise("concat_disk_blks")
+        check_type(apri, "apri", ApriInfo)
+        startn = check_return_int_None_default(startn, "startn", None)
+        length = check_return_int_None_default(length, "length", None)
+        check_type(ret_metadata, "ret_metadata", bool)
 
-        startn, length = Register._check_apri_startn_length_raise(apri, startn, length)
+        if startn is not None and startn < 0:
+            raise ValueError("`startn` must be non-negative.")
 
-        if not isinstance(ret_metadata, bool):
-            raise TypeError("`ret_metadata` must be of type `bool`.")
+        if length is not None and length < 0:
+            raise ValueError("`length` must be non-negative.")
 
         self._check_known_apri(apri)
         # infer startn
@@ -3608,8 +3537,7 @@ class _CopyRegister(Register):
     @classmethod
     def dump_disk_data(cls, data, filename, **kwargs):
 
-        if not isinstance(data, Path):
-            raise TypeError("`data` must of of type `Path`.")
+        check_type(data, "data", Path)
 
         if not data.absolute():
             raise ValueError("`data` must be an absolute `Path`.")
@@ -3712,11 +3640,8 @@ class _RelationalInfoJsonDecoder(_InfoJsonDecoder):
 
 def relational_encode_info(reg, info, txn = None):
 
-    if not isinstance(reg, Register):
-        raise TypeError("`reg` must be of type `Register`.")
-
-    if not isinstance(info, _Info):
-        raise TypeError("`info` must be an instance of a concrete subclass of `_Info`.")
+    check_type(reg, "reg", "Register")
+    check_type(info, "info", _Info)
 
     if txn is not None and not is_transaction(txn):
         raise TypeError("`txn` must be of type `lmdb.Transaction`.")
@@ -3744,14 +3669,11 @@ def relational_encode_info(reg, info, txn = None):
 
 def relational_decode_info(reg, cls, json, txn = None):
 
-    if not isinstance(reg, Register):
-        raise TypeError("`reg` must be of type `Register`.")
+    check_type(reg, "reg", Register)
+    check_type(json, "json", bytes)
 
     if not issubclass(cls, _Info):
         raise TypeError("`cls` must be a subclass of `_Info`.")
-
-    if not isinstance(json, bytes):
-        raise TypeError("`json` must of of type `bytes`.")
 
     if txn is not None and not is_transaction(txn):
         raise TypeError("`txn` must be of type `lmdb.Transaction`.")
