@@ -114,7 +114,7 @@ def load(identifier):
         warnings.warn(
             f"The register at `{reg._local_dir}` has an incompatible version.\n"
             f"Current Cornifer version: {CURRENT_VERSION}\n"
-            f"Compatible versions:      {str(COMPATIBLE_VERSIONS)}\n"
+            f"Compatible version(s):    {', '.join(COMPATIBLE_VERSIONS)}\n"
             f"Loaded register version:  {reg._version}"
         )
 
