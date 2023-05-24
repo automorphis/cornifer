@@ -235,8 +235,8 @@ class Register(ABC):
 
             if con is None:
                 raise TypeError(
-                    f"`Register` is not aware of a subclass called `{cls_name}`. Please add the subclass to "+
-                    f"`Register` via `Register.addSubclass({cls_name})`."
+                    f"`Register` is not aware of a subclass called `{cls_name}`. Please be sure that `{cls_name}` properly "
+                    f"subclasses `Register` and that `{cls_name}` is in the namespace by importing it."
                 )
 
             with (local_dir / MSG_FILEPATH).open("r") as fh:
@@ -3109,13 +3109,7 @@ class NumpyRegister(Register):
         if len(kwargs) > 1:
             raise KeyError("`Numpy_Register.get_disk_data` only accepts the keyword-argument `mmap_mode`.")
 
-        if mmap_mode not in [None, "r+", "r", "w+", "c"]:
-            raise ValueError(
-                "The keyword-argument `mmap_mode` for `Numpy_Register.blk` can only have the values " +
-                "`None`, 'r+', 'r', 'w+', 'c'. Please see " +
-                "https://numpy.org/doc/stable/reference/generated/numpy.memmap.html#numpy.memmap for more information."
-            )
-
+        NumpyRegister._check_mmap_mode_raise(mmap_mode)
         return np.load(filename, mmap_mode = mmap_mode, allow_pickle = False, fix_imports = False)
 
     @classmethod
@@ -3131,25 +3125,26 @@ class NumpyRegister(Register):
     def with_suffix(cls, filename):
         return filename.with_suffix(".npy")
 
+    @staticmethod
+    def _check_mmap_mode_raise(mmap_mode):
+
+        if mmap_mode not in [None, "r+", "r", "w+", "c"]:
+            raise ValueError(
+                "The keyword-argument `mmap_mode` for `Numpy_Register.blk` can only have the values " +
+                "`None`, 'r+', 'r', 'w+', 'c'. Please see " +
+                "https://numpy.org/doc/stable/reference/generated/numpy.memmap.html#numpy.memmap for more information."
+            )
+
     def set(self, apri, n, value, diskonly = False, recursively = False, **kwargs):
 
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`apri' must be of type `ApriInfo`.")
+        check_type(apri, "apri", ApriInfo)
 
         if isinstance(n, slice):
-            raise NotImplementedError("support for slices for Register.set coming soon.")
+            raise NotImplementedError("support for slices for NumpyRegister.set coming soon.")
 
-        if not is_int(n):
-            raise TypeError("`n` must be of type `int`.")
-
-        else:
-            n = int(n)
-
-        if not isinstance(diskonly, bool):
-            raise TypeError("`diskonly` must be of type `bool`.")
-
-        if not isinstance(recursively, bool):
-            raise TypeError("`recursively` must be of type `bool`.")
+        n = check_return_int(n, "n")
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
 
         try:
             mmap_mode = kwargs['mmap_mode']
@@ -3157,6 +3152,49 @@ class NumpyRegister(Register):
         except KeyError:
             mmap_mode = None
 
+        else:
+            del kwargs['mmap_mode']
+
+        if mmap_mode is not None and mmap_mode != "r+":
+            raise ValueError("`mmap_mode` can either be `None` or 'r+'.")
+
+        if not diskonly:
+
+            for blk in self._ram_blks:
+
+                if n in blk:
+                    blk[n] = value
+                    return
+
+        if mmap_mode is None:
+
+            super().set(apri, n, value, diskonly, recursively, **kwargs)
+            return
+
+        else:
+
+            try:
+                blk = self.blk_by_n(apri, n, diskonly, False, False, mmap_mode = "r+", **kwargs)
+
+            except DataNotFoundError:
+                pass
+
+            else:
+                blk.segment()[n, ...] = value
+
+        if recursively:
+
+            for subreg in self._iter_subregs():
+
+                with subreg._recursive_open(True) as subreg:
+
+                    try:
+                        return subreg.set(apri, n, value, diskonly, recursively, mmap_mode = mmap_mode, **kwargs)
+
+                    except DataNotFoundError:
+                        pass
+
+        raise DataNotFoundError(_blk_not_found_err_msg(diskonly, str(apri), n))
 
 
     def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
