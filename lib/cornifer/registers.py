@@ -3678,7 +3678,7 @@ class _RelationalInfoJsonDecoder(_InfoJsonDecoder):
 
 def relational_encode_info(reg, info, txn = None):
 
-    check_type(reg, "reg", "Register")
+    check_type(reg, "reg", Register)
     check_type(info, "info", _Info)
 
     if txn is not None and not is_transaction(txn):

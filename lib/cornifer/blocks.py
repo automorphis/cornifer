@@ -126,14 +126,15 @@ class Block:
 
     def __getitem__(self, item):
 
+        if isinstance(item, tuple):
+            raise IndexError("`blk[]` cannot take more than one index.")
+
         if not is_int(item) and not isinstance(item, slice):
             raise TypeError("`item` must be either of type `int` or `slice`.")
 
         elif is_int(item):
             item = int(item)
 
-        if isinstance(item, tuple):
-            raise IndexError("`blk[]` cannot take more than one index.")
 
         if isinstance(item, slice):
 
