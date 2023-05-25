@@ -186,9 +186,6 @@ def _resolve_db_or_txn(db_or_txn):
 
     if isinstance(db_or_txn, lmdb.Environment):
 
-        if lmdb_is_closed(db_or_txn):
-            raise lmdb.Error("Environment should not be closed.")
-
         txn = db_or_txn.begin()
         abort = True
 

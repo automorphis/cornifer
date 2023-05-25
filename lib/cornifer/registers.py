@@ -54,7 +54,7 @@ _CLS_KEY                   = b"cls"
 _MSG_KEY                   = b"msg"
 _SUB_KEY_PREFIX            = b"sub"
 _BLK_KEY_PREFIX            = b"blk"
-_APRI_ID_KEY_PREFIX        = b"info"
+_APRI_ID_KEY_PREFIX        = b"apri"
 _ID_APRI_KEY_PREFIX        = b"id"
 _CURR_ID_KEY               = b"curr_id"
 _APOS_KEY_PREFIX           = b"apos"
@@ -970,7 +970,7 @@ class Register(ABC):
                 self._get_id_by_apri(apri, None, False, txn, None)
 
             except DataNotFoundError:
-                pass
+                raise
 
             else:
                 return
