@@ -85,22 +85,24 @@ class ReversibleTransaction:
 
         self.txn.delete(key)
 
-def lmdb_is_closed(db):
-
-    try:
-        with db.begin() as _:
-            pass
-
-    except BaseException as e:
-
-        if isinstance(e, lmdb.Error) and "Attempt to operate on closed/deleted/dropped object." in str(e):
-            return True
-
-        else:
-            raise e
-
-    else:
-        return False
+# def lmdb_is_closed(db):
+#
+#     try:
+#         print("lmdb_is_closed before", db.info()['num_readers'])
+#         with db.begin() as _:
+#             pass
+#         print("lmdb_is_closed after", db.info()['num_readers'])
+#
+#     except BaseException as e:
+#
+#         if isinstance(e, lmdb.Error) and "Attempt to operate on closed/deleted/dropped object." in str(e):
+#             return True
+#
+#         else:
+#             raise e
+#
+#     else:
+#         return False
 
 def open_lmdb(filepath, mapSize, readonly):
 

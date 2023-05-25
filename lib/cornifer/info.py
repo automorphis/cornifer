@@ -316,6 +316,9 @@ class _Info(ABC):
 
         self._encoder = encoder
 
+    def clean_encoder(self):
+        self._encoder = None
+
     def __iter__(self):
 
         for key, val in self.__dict__.items():

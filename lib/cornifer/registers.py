@@ -34,7 +34,7 @@ from .blocks import Block, MemmapBlock, ReleaseBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, is_int, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int
-from ._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, open_lmdb, lmdb_is_closed, lmdb_count_keys, \
+from ._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, open_lmdb, lmdb_count_keys, \
     ReversibleTransaction, is_transaction, lmdb_prefix_list
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
@@ -148,7 +148,7 @@ class Register(ABC):
         )
 
         if initial_reg_size <= 0:
-            raise ValueError("`initialRegSize` must be positive.")
+            raise ValueError("`initial_reg_size` must be positive.")
 
         self.saves_dir = resolve_path(Path(saves_dir))
 
@@ -170,6 +170,7 @@ class Register(ABC):
         self._db_map_size = initial_reg_size
         self._db_map_size_filepath = None
         self._readonly = None
+        self._opened = False
 
         self._version = CURRENT_VERSION
         self._version_filepath = None
@@ -235,17 +236,17 @@ class Register(ABC):
 
             if con is None:
                 raise TypeError(
-                    f"`Register` is not aware of a subclass called `{cls_name}`. Please be sure that `{cls_name}` properly "
-                    f"subclasses `Register` and that `{cls_name}` is in the namespace by importing it."
+                    f"`Register` is not aware of a subclass called `{cls_name}`. Please be sure that `{cls_name}` "
+                    f"properly subclasses `Register` and that `{cls_name}` is in the namespace by importing it."
                 )
 
             with (local_dir / MSG_FILEPATH).open("r") as fh:
                 msg = fh.read()
 
             with (local_dir / MAP_SIZE_FILEPATH).open("r") as fh:
-                mapSize = int(fh.readline().strip())
+                map_size = int(fh.readline().strip())
 
-            reg = con(local_dir.parent, msg, mapSize)
+            reg = con(local_dir.parent, msg, map_size)
             reg._set_local_dir(local_dir)
 
             with (local_dir / VERSION_FILEPATH).open("r") as fh:
@@ -532,11 +533,13 @@ class Register(ABC):
                 "read-only mode."
             )
 
+        self._opened = True
         try:
             yield yiel
 
         finally:
             yiel._close_created()
+            self._opened = False
 
     @staticmethod
     @contextmanager
@@ -632,7 +635,7 @@ class Register(ABC):
         if not ret._created:
             raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_open_created"))
 
-        if ret._db is not None and not ret._db_is_closed():
+        if ret._db is not None and ret._opened:
             raise RegisterAlreadyOpenError()
 
         ret._readonly = readonly
@@ -679,7 +682,7 @@ class Register(ABC):
 
     def _check_open_raise(self, method_name):
 
-        if self._db is None or self._db_is_closed():
+        if not self._opened:
             raise RegisterError(
                 f"This `Register` database has not been opened. You must open this register via `with reg.open() as " +
                 f"reg:` before calling the method `{method_name}`."
@@ -745,14 +748,14 @@ class Register(ABC):
 
     def _has_compatible_version(self):
         return self._version in COMPATIBLE_VERSIONS
-
-    def _db_is_closed(self):
-
-        if not self._created:
-            raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_db_is_closed"))
-
-        else:
-            return lmdb_is_closed(self._db)
+    #
+    # def _db_is_closed(self):
+    #
+    #     if not self._created:
+    #         raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("_db_is_closed"))
+    #
+    #     else:
+    #         return lmdb_is_closed(self._db)
 
     #################################
     #      PUBLIC APRI METHODS      #
@@ -763,26 +766,7 @@ class Register(ABC):
         check_type(diskonly, "diskonly", bool)
         check_type(recursively, "recursively", bool)
 
-        ret = []
-
-        if not diskonly:
-            ret.extend(self._ram_blks.keys())
-
-        with self._db.begin() as txn:
-
-            with lmdb_prefix_iter(txn, _ID_APRI_KEY_PREFIX) as it:
-
-                for _, val in it:
-                    ret.append(relational_decode_info(self, ApriInfo, val, txn))
-
-        if recursively:
-
-            for subreg in self._iter_subregs():
-
-                with subreg._recursive_open(True) as subreg:
-                    ret.append(subreg.apris())
-
-        return sorted(list(set(ret)))
+        yield from self._apris_helper(diskonly, recursively, True)
 
     def change_apri(self, old_apri, new_apri, diskonly = False, recursively = False):
         """Replace an old `ApriInfo`, and all references to it, with a new `ApriInfo`.
@@ -944,6 +928,34 @@ class Register(ABC):
 
     #################################
     #      PROTEC APRI METHODS      #
+
+    def _apris_helper(self, diskonly, recursively, root_call):
+
+        ret = []
+
+        if not diskonly:
+            ret.extend(self._ram_blks.keys())
+
+        with self._db.begin() as txn:
+
+            with lmdb_prefix_iter(txn, _ID_APRI_KEY_PREFIX) as it:
+
+                for _, val in it:
+                    ret.append(relational_decode_info(self, ApriInfo, val, txn))
+
+        if recursively:
+
+            for subreg in self._iter_subregs():
+
+                with subreg._recursive_open(True) as subreg:
+                    ret.extend(subreg._apris_helper(diskonly, recursively, False))
+
+        if root_call:
+            yield from sorted(set(ret))
+
+        else:
+            yield from ret
+
 
     def _check_known_apri(self, apri, txn = None):
 
@@ -2850,23 +2862,26 @@ class Register(ABC):
 
         if not combine:
 
-            try:
-                self._check_known_apri(apri)
+            with self._db.begin() as txn:
 
-            except DataNotFoundError:
+                try:
+                    self._check_known_apri(apri, txn)
 
-                if not recursively:
-                    raise
+                except DataNotFoundError:
 
-            else:
+                    if not recursively:
+                        raise
 
-                if not diskonly and apri in self._ram_blks.keys():
+                else:
 
-                    for blk in self._ram_blks[apri]:
-                        yield blk.startn(), len(blk)
+                    if not diskonly and apri in self._ram_blks.keys():
 
-                for key, _ in self._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri, None):
-                    yield self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri)[1:]
+                        for blk in self._ram_blks[apri]:
+                            yield blk.startn(), len(blk)
+
+
+                    for key, _ in self._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri, None, txn):
+                        yield self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, txn)[1:]
 
             if recursively:
 
@@ -3701,6 +3716,8 @@ def relational_encode_info(reg, info, txn = None):
         return info.to_json().encode("ASCII")
 
     finally:
+
+        info.clean_encoder() # necessary so that the garbage collector cleans Transactions properly
 
         if commit:
             txn.commit()
