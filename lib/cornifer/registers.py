@@ -516,6 +516,7 @@ class Register(ABC):
 
                 Register._add_instance(local_dir, self)
                 yiel = self
+                yiel._opened = True
 
             except BaseException as e:
 
@@ -533,13 +534,11 @@ class Register(ABC):
                 "read-only mode."
             )
 
-        self._opened = True
         try:
             yield yiel
 
         finally:
             yiel._close_created()
-            self._opened = False
 
     @staticmethod
     @contextmanager
@@ -646,10 +645,12 @@ class Register(ABC):
             ret._length_length = int(txn.get(_LENGTH_LENGTH_KEY))
 
         ret._max_length = 10 ** ret._length_length - 1
-
+        ret._opened = True
         return ret
 
     def _close_created(self):
+
+        self._opened = False
         self._db.close()
 
     @contextmanager
@@ -677,8 +678,11 @@ class Register(ABC):
                 yield yiel
 
             finally:
+                
                 if need_close:
+                    
                     yiel._close_created()
+                    yiel._opened = False
 
     def _check_open_raise(self, method_name):
 
@@ -766,7 +770,7 @@ class Register(ABC):
         check_type(diskonly, "diskonly", bool)
         check_type(recursively, "recursively", bool)
 
-        yield from self._apris_helper(diskonly, recursively, True)
+        return list(self._apris_helper(diskonly, recursively, True))
 
     def change_apri(self, old_apri, new_apri, diskonly = False, recursively = False):
         """Replace an old `ApriInfo`, and all references to it, with a new `ApriInfo`.
@@ -970,7 +974,7 @@ class Register(ABC):
                 self._get_id_by_apri(apri, None, False, txn, None)
 
             except DataNotFoundError:
-                raise
+                pass
 
             else:
                 return

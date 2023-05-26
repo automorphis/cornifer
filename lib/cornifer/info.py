@@ -317,7 +317,7 @@ class _Info(ABC):
         self._encoder = encoder
 
     def clean_encoder(self):
-        self._encoder = None
+        self._encoder = type(self)._default_encoder
 
     def __iter__(self):
 

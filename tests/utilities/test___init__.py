@@ -36,7 +36,7 @@ from cornifer._utilities import intervals_overlap, random_unique_filename, check
         - edge cases: everything is an edge case lol
 """
 
-SAVES_DIR = Path(__file__).parent.resolve() / "temp"
+SAVES_DIR = random_unique_filename(Path.home())
 
 test__justify_slice_start_tests = {
             (-6, 0, 0) : 0,

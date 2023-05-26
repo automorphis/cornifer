@@ -2,10 +2,11 @@ import shutil
 from pathlib import Path
 from unittest import TestCase
 
+from cornifer._utilities import random_unique_filename
 from cornifer.regfilestructure import check_reg_structure, REG_FILENAME, VERSION_FILEPATH, \
     MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH, MAP_SIZE_FILEPATH
 
-SAVES_DIR = Path(__file__).parent.resolve() / "temp"
+SAVES_DIR = random_unique_filename(Path.home())
 
 class Test_Register_File_Structure(TestCase):
 

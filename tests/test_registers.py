@@ -431,7 +431,7 @@ class Test_Register(TestCase):
         reg = Testy_Register(SAVES_DIR, "hey")
 
         with reg.open() as reg:
-            self.assertFalse(reg._db_is_closed())
+            self.assertTrue(reg._opened)
 
         self.assertTrue(reg._created)
 
@@ -442,7 +442,7 @@ class Test_Register(TestCase):
             _CURR_ID_KEY : b"0",
         }
 
-        self.assertTrue(reg._db_is_closed())
+        self.assertFalse(reg._opened)
 
         db = None
 
@@ -950,7 +950,7 @@ class Test_Register(TestCase):
         reg = Testy_Register(SAVES_DIR, "testy")
         with reg.open() as reg: pass
         with reg.open() as reg:
-            self.assertFalse(reg._db_is_closed())
+            self.assertTrue(reg._opened)
             with self.assertRaises(RegisterAlreadyOpenError):
                 with reg.open() as reg: pass
 
@@ -1390,12 +1390,12 @@ class Test_Register(TestCase):
                 self.fail()
 
             else:
-                self.assertFalse(
-                    reg5._db_is_closed()
+                self.assertTrue(
+                    reg5._opened
                 )
 
-        self.assertTrue(
-            reg5._db_is_closed()
+        self.assertFalse(
+            reg5._opened
         )
 
         reg6 = Testy_Register(SAVES_DIR, "supp")
