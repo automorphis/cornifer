@@ -13,7 +13,7 @@
     GNU General Public License for more details.
 """
 
-CURRENT_VERSION          = "0.6.1"
-COMPATIBLE_VERSIONS      = ["0.6", "0.6.1"]
+CURRENT_VERSION          = "0.7"
+COMPATIBLE_VERSIONS      = ["0.7"]
 
 
