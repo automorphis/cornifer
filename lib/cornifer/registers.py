@@ -2339,23 +2339,15 @@ class Register(ABC):
         :param apri_json: (type `bytes`)
         :param txn: (type `lmbd.Transaction`, default `None`) The transaction to query. If `None`, then use open a new
         transaction and commit it after this method resolves.
-        :raise DataNotFoundError: If `info` is not a disk `ApriInfo`.
+        :raise DataNotFoundError: If `apri` is not a disk `ApriInfo`.
         :return: (type `bytes`) key
         :return: (type `bytes`) value
         """
 
-        try:
-            prefix += self._get_id_by_apri(apri, apri_json, False, txn, None)
+        prefix += self._get_id_by_apri(apri, apri_json, False, txn, None) + _KEY_SEP
 
-        except DataNotFoundError:
-            pass
-
-        else:
-
-            prefix += _KEY_SEP
-
-            with lmdb_prefix_iter(txn if txn is not None else self._db, prefix) as it:
-                yield from it
+        with lmdb_prefix_iter(txn if txn is not None else self._db, prefix) as it:
+            yield from it
 
     def _split_disk_block_key(self, prefix_len, key):
 
@@ -2875,50 +2867,7 @@ class Register(ABC):
         check_type(diskonly, "diskonly", bool)
         check_type(recursively, "recursively", bool)
 
-        if not combine:
-
-            with self._db.begin() as txn:
-
-                try:
-                    self._check_known_apri(apri, txn)
-
-                except DataNotFoundError:
-
-                    if not recursively:
-                        raise
-
-                else:
-
-                    if not diskonly and apri in self._ram_blks.keys():
-
-                        for blk in self._ram_blks[apri]:
-                            yield blk.startn(), len(blk)
-
-
-                    for key, _ in self._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri, None, txn):
-                        yield self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, txn)[1:]
-
-            if recursively:
-
-                for subreg in self._iter_subregs():
-
-                    with subreg._recursive_open(True) as subreg:
-                        yield from subreg.intervals(apri, combine = False, diskonly = diskonly, recursively = True)
-
-        else:
-
-            ret = []
-            intervals_sorted = self.intervals(apri, combine = False, diskonly = diskonly, recursively = recursively)
-
-            for startn, length in intervals_sorted:
-
-                if len(ret) == 0:
-                    ret.append((startn, length))
-
-                elif startn <= ret[-1][0] + ret[-1][1]:
-                    ret[-1] = (ret[-1][0], max(startn + length - ret[-1][0], ret[-1][1]))
-
-            yield from ret
+        yield from self._intervals_helper(apri, combine, diskonly, recursively, True)
 
     def total_len(self, apri, diskonly = False, recursively = False):
 
@@ -3092,6 +3041,66 @@ class Register(ABC):
 
                 else:
                     raise DataNotFoundError(_blk_not_found_err_msg(True, apri))
+
+    def _intervals_helper(self, apri, combine, diskonly, recursively, root_call):
+
+        if not combine:
+
+            with self._db.begin() as txn:
+
+                try:
+                    self._check_known_apri(apri, txn)
+
+                except DataNotFoundError:
+
+                    if not recursively:
+                        raise
+
+                else:
+
+                    if not diskonly and apri in self._ram_blks.keys():
+
+                        for blk in self._ram_blks[apri]:
+                            yield blk.startn(), len(blk)
+
+                    try:
+
+                        for key, _ in self._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri, None, txn):
+                            yield self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, txn)[1:]
+
+                    except DataNotFoundError:
+                        pass
+
+            if recursively:
+
+                for subreg in self._iter_subregs():
+
+                    with subreg._recursive_open(True) as subreg:
+                        yield from subreg._intervals_helper(apri, combine, diskonly, recursively, False)
+
+        if combine and root_call:
+
+            if (diskonly or len(self._ram_blks) == 0) and not recursively:
+                intervals_sorted = list(self._intervals_helper(apri, False, diskonly, recursively, False))
+
+            else:
+                intervals_sorted = sorted(
+                    self._intervals_helper(apri, False, diskonly, recursively, False),
+                    key = lambda t: (t[0], -t[1])
+                )
+
+            ret = []
+
+            for startn, length in intervals_sorted:
+
+                if len(ret) == 0:
+                    ret.append((startn, length))
+
+                elif startn <= ret[-1][0] + ret[-1][1]:
+                    ret[-1] = (ret[-1][0], max(startn + length - ret[-1][0], ret[-1][1]))
+
+            yield from ret
+
 
 class PickleRegister(Register):
 
