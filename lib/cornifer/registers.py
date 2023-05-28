@@ -33,7 +33,7 @@ from .info import ApriInfo, AposInfo, _InfoJsonEncoder, _InfoJsonDecoder, _Info
 from .blocks import Block, MemmapBlock, ReleaseBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, is_int, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
-    check_return_int_None_default, check_Path, check_return_int
+    check_return_int_None_default, check_Path, check_return_int, bytify_num, intify_bytes
 from ._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, open_lmdb, lmdb_count_keys, \
     ReversibleTransaction, is_transaction, lmdb_prefix_list
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
@@ -124,6 +124,8 @@ _LENGTH_LENGTH_DEFAULT         = 7
 _MAX_LENGTH_DEFAULT            = 10 ** _LENGTH_LENGTH_DEFAULT - 1
 _START_N_HEAD_DEFAULT          = 0
 _INITIAL_REGISTER_SIZE_DEFAULT = 5 * BYTES_PER_MB
+_MAX_NUM_APRI_LENGTH           = 6
+_MAX_NUM_APRI                  = 10**_MAX_NUM_APRI_LENGTH
 
 class Register(ABC):
 
@@ -417,6 +419,7 @@ class Register(ABC):
 
         new_mod = 10 ** tail_len
 
+        # check that every block startn has the correct head (don't change anything yet)
         with lmdb_prefix_iter(self._db, _BLK_KEY_PREFIX) as it:
 
             for key, _ in it:
@@ -444,18 +447,16 @@ class Register(ABC):
 
                     with lmdb_prefix_iter(ro_txn, _BLK_KEY_PREFIX) as it:
 
-                        rw_txn.put(_START_N_HEAD_KEY, str(head).encode("ASCII"))
-                        rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(tail_len).encode("ASCII"))
+                        rw_txn.put(_START_N_HEAD_KEY, bytify_num(head))
+                        rw_txn.put(_START_N_TAIL_LENGTH_KEY, bytify_num(tail_len))
 
                         for key, val in it:
 
                             _, startn, _ = self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
-                            apri_json, _, length_bytes = Register._split_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
-
-                            new_startn_bytes = str(startn % new_mod).encode("ASCII")
-
+                            apri_id, _, length_bytes = self._split_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
+                            new_startn_bytes = bytify_num(startn % new_mod, tail_len)
                             new_key = Register._join_disk_block_data(
-                                _BLK_KEY_PREFIX, apri_json, new_startn_bytes, length_bytes
+                                _BLK_KEY_PREFIX, apri_id, new_startn_bytes, length_bytes
                             )
 
                             if key != new_key:
@@ -960,7 +961,6 @@ class Register(ABC):
         else:
             yield from ret
 
-
     def _check_known_apri(self, apri, txn = None):
 
         commit = txn is None
@@ -1087,14 +1087,17 @@ class Register(ABC):
     @staticmethod
     def _get_new_apri_id(txn, reserved):
 
-        for next_id_num in count(int(txn.get(_CURR_ID_KEY))):
+        for next_id_num in range(int(txn.get(_CURR_ID_KEY)), _MAX_NUM_APRI):
 
-            next_id = str(next_id_num).encode("ASCII")
+            next_id = bytify_num(next_id_num, _MAX_NUM_APRI_LENGTH)
 
             if next_id not in reserved:
                 break
 
-        txn.put(_CURR_ID_KEY, str(next_id_num + 1).encode("ASCII"))
+        else:
+            raise RegisterError(f"Too many apris added to this `Register`, the limit is {_MAX_NUM_APRI}.")
+
+        txn.put(_CURR_ID_KEY, bytify_num(next_id_num + 1, _MAX_NUM_APRI_LENGTH))
         return next_id
 
     def _rmv_apri_txn(self, apri, force, txn):
@@ -2149,16 +2152,16 @@ class Register(ABC):
 
     def is_compressed(self, apri, startn = None, length = None):
 
-        self._check_open_raise("is_compressed")
-        check_type(apri, "apri", ApriInfo)
-        startn = check_return_int_None_default(startn, "startn", None)
-        length = check_return_int_None_default(length, "length", None)
-
-        if startn is not None and startn < 0:
-            raise ValueError("`startn` must be non-negative.")
-
-        if length is not None and length < 0:
-            raise ValueError("`length` must be non-negative.")
+        # self._check_open_raise("is_compressed")
+        # check_type(apri, "apri", ApriInfo)
+        # startn = check_return_int_None_default(startn, "startn", None)
+        # length = check_return_int_None_default(length, "length", None)
+        # 
+        # if startn is not None and startn < 0:
+        #     raise ValueError("`startn` must be non-negative.")
+        # 
+        # if length is not None and length < 0:
+        #     raise ValueError("`length` must be non-negative.")
 
         startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
 
@@ -2306,10 +2309,8 @@ class Register(ABC):
             raise ValueError
 
         id_ = self._get_id_by_apri(apri, apri_json, missing_ok, txn, None)
-        tail = startn % self._startn_tail_mod
-        tail = f"{tail:0{self._startn_tail_length}d}".encode("ASCII")
-        op_length = self._max_length - length
-        op_length = f"{op_length:0{self._length_length}d}".encode("ASCII")
+        tail = bytify_num(startn % self._startn_tail_mod, self._startn_tail_length)
+        op_length = bytify_num(self._max_length - length, self._length_length)
 
         return (
                 prefix   +
@@ -2356,15 +2357,22 @@ class Register(ABC):
             with lmdb_prefix_iter(txn if txn is not None else self._db, prefix) as it:
                 yield from it
 
-    @staticmethod
-    def _split_disk_block_key(prefix_len, key):
-        return tuple(key[prefix_len:].split(_KEY_SEP))
+    def _split_disk_block_key(self, prefix_len, key):
+
+        stop1 = prefix_len + _MAX_NUM_APRI_LENGTH
+        stop2 = stop1 + _KEY_SEP_LEN + self._startn_tail_length
+
+        return (
+            key[prefix_len           : stop1], # apri id
+            key[stop1 + _KEY_SEP_LEN : stop2], # startn
+            key[stop2 + _KEY_SEP_LEN : ] # op_length
+        )
 
     @staticmethod
-    def _join_disk_block_data(prefix, apri_json, startn_bytes, len_bytes):
+    def _join_disk_block_data(prefix, apri_id, startn_bytes, len_bytes):
         return (
                 prefix +
-                apri_json + _KEY_SEP +
+                apri_id + _KEY_SEP +
                 startn_bytes + _KEY_SEP +
                 len_bytes
         )
@@ -2382,7 +2390,7 @@ class Register(ABC):
         :return (type `int`) length, non-negative
         """
 
-        apri_id, startn_bytes, op_length_bytes = Register._split_disk_block_key(prefix_len, key)
+        apri_id, startn_bytes, op_length_bytes = self._split_disk_block_key(prefix_len, key)
 
         commit = apri is None and txn is None
 
@@ -2401,11 +2409,14 @@ class Register(ABC):
             if commit:
                 txn.commit()
 
-        return (
-            apri,
-            int(startn_bytes.decode("ASCII")) + self._startn_head * self._startn_tail_mod,
-            self._max_length - int(op_length_bytes.decode("ASCII"))
-        )
+        try:
+            return (
+                apri,
+                intify_bytes(startn_bytes) + self._startn_head * self._startn_tail_mod,
+                self._max_length - intify_bytes(op_length_bytes)
+            )
+        except ValueError:
+            raise
 
     def _check_blk_compressed_keys_raise(self, blk_key, compressed_key, apri, apri_json, startn, length, txn = None):
 

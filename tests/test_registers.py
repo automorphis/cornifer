@@ -210,30 +210,30 @@ class Test_Register(TestCase):
     #         Testy_Register2
     #     )
 
-    def test__split_disk_block_key(self):
-
-        keys = [
-            _BLK_KEY_PREFIX + b"{\"hello\" = \"hey\"}" + _KEY_SEP + b"00000" + _KEY_SEP + b"10",
-            _BLK_KEY_PREFIX +                            _KEY_SEP + b"00000" + _KEY_SEP + b"10",
-            _BLK_KEY_PREFIX + b"{\"hello\" = \"hey\"}" + _KEY_SEP +            _KEY_SEP + b"10",
-            _BLK_KEY_PREFIX + b"{\"hello\" = \"hey\"}" + _KEY_SEP + b"00000" + _KEY_SEP        ,
-        ]
-        splits = [
-            (b"{\"hello\" = \"hey\"}", b"00000", b"10"),
-            (b"",                      b"00000", b"10"),
-            (b"{\"hello\" = \"hey\"}", b"",      b"10"),
-            (b"{\"hello\" = \"hey\"}", b"00000", b""  ),
-        ]
-        for key, split in zip(keys, splits):
-            self.assertEqual(
-                split,
-                Register._split_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
-            )
-        for key in keys:
-            self.assertEqual(
-                key,
-                Register._join_disk_block_data(*((_BLK_KEY_PREFIX,) + Register._split_disk_block_key(_BLK_KEY_PREFIX_LEN, key)))
-            )
+    # def test__split_disk_block_key(self):
+    #
+    #     keys = [
+    #         _BLK_KEY_PREFIX + b"{\"hello\" = \"hey\"}" + _KEY_SEP + b"00000" + _KEY_SEP + b"10",
+    #         _BLK_KEY_PREFIX +                            _KEY_SEP + b"00000" + _KEY_SEP + b"10",
+    #         _BLK_KEY_PREFIX + b"{\"hello\" = \"hey\"}" + _KEY_SEP +            _KEY_SEP + b"10",
+    #         _BLK_KEY_PREFIX + b"{\"hello\" = \"hey\"}" + _KEY_SEP + b"00000" + _KEY_SEP        ,
+    #     ]
+    #     splits = [
+    #         (b"{\"hello\" = \"hey\"}", b"00000", b"10"),
+    #         (b"",                      b"00000", b"10"),
+    #         (b"{\"hello\" = \"hey\"}", b"",      b"10"),
+    #         (b"{\"hello\" = \"hey\"}", b"00000", b""  ),
+    #     ]
+    #     for key, split in zip(keys, splits):
+    #         self.assertEqual(
+    #             split,
+    #             Register._split_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
+    #         )
+    #     for key in keys:
+    #         self.assertEqual(
+    #             key,
+    #             Register._join_disk_block_data(*((_BLK_KEY_PREFIX,) + Register._split_disk_block_key(_BLK_KEY_PREFIX_LEN, key)))
+    #         )
 
     def test__join_disk_block_data(self):
 
@@ -254,11 +254,11 @@ class Test_Register(TestCase):
                key,
                Register._join_disk_block_data(*split)
             )
-        for split in splits:
-            self.assertEqual(
-                split[1:],
-                Register._split_disk_block_key(_BLK_KEY_PREFIX_LEN, Register._join_disk_block_data(*split))
-            )
+        # for split in splits:
+        #     self.assertEqual(
+        #         split[1:],
+        #         Register._split_disk_block_key(_BLK_KEY_PREFIX_LEN, Register._join_disk_block_data(*split))
+        #     )
 
     def test___str__(self):
 

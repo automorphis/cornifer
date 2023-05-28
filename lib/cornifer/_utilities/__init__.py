@@ -170,6 +170,17 @@ def is_signed_int(num):
 def is_int(num):
     return isinstance(num, (int, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64))
 
+def bytify_num(num, num_zeros = None):
+
+    if num_zeros is None:
+        return str(num).encode("ASCII")
+
+    else:
+        return f"{num:0{num_zeros}d}".encode("ASCII")
+
+def intify_bytes(bytes_):
+    return int(bytes_.decode("ASCII"))
+
 def check_type(obj, name, expected_type):
 
     if not isinstance(obj, expected_type):
