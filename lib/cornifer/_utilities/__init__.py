@@ -243,7 +243,7 @@ def resolve_path(path):
     """
 
     try:
-        resolved = path.resolve(True)
+        resolved = path.resolve(True) # True raises FileNotFoundError
 
     except FileNotFoundError:
         raise_error = True
@@ -253,7 +253,7 @@ def resolve_path(path):
 
     if raise_error:
 
-        resolved = path.resolve(False)
+        resolved = path.resolve(False) # False suppressed FileNotFoundError
 
         for parent in reversed(resolved.parents):
 

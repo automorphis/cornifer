@@ -152,10 +152,7 @@ class Register(ABC):
         self.saves_dir = resolve_path(Path(saves_dir))
 
         if not self.saves_dir.is_dir():
-            raise FileNotFoundError(
-                f"You must create the file `{str(self.saves_dir)}` before calling " +
-                f"`{self.__class__.__name__}(\"{str(self.saves_dir)}\", \"{msg}\")`."
-            )
+            raise NotADirectoryError(f"The path `{str(self.saves_dir)}` exists but is not a directory.")
 
         self._shorthand = shorthand
         self._shorthand_filepath = None
@@ -1604,7 +1601,7 @@ class Register(ABC):
         txn = None
         filename = None
 
-        if not dups_ok:
+        if not dups_ok and blk.apri() in self:
 
             int_ = (blk.startn(), len(blk))
 
