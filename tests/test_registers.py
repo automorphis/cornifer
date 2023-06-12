@@ -18,7 +18,8 @@ from cornifer.regfilestructure import REG_FILENAME, VERSION_FILEPATH, MSG_FILEPA
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
     _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG, \
-    _START_N_TAIL_LENGTH_DEFAULT, _LENGTH_LENGTH_KEY, _LENGTH_LENGTH_DEFAULT, _CURR_ID_KEY
+    _START_N_TAIL_LENGTH_DEFAULT, _LENGTH_LENGTH_KEY, _LENGTH_LENGTH_DEFAULT, _CURR_ID_KEY, \
+    _INITIAL_REGISTER_SIZE_DEFAULT
 from cornifer._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, lmdb_count_keys, open_lmdb
 from cornifer.version import CURRENT_VERSION
 
@@ -174,19 +175,22 @@ class Test_Register(TestCase):
         shutil.rmtree(SAVES_DIR)
 
         with self.assertRaises(FileNotFoundError):
-            Testy_Register(SAVES_DIR, "tests")
+            Testy_Register(SAVES_DIR, "sh", "tests")
 
         SAVES_DIR.mkdir()
 
         with self.assertRaises(TypeError):
-            Testy_Register(SAVES_DIR, 0)
+            Testy_Register(SAVES_DIR, "sh", 0)
 
         with self.assertRaises(TypeError):
-            Testy_Register(0, "sup")
+            Testy_Register(0, "sh", "sup")
 
-        self.assertFalse(Testy_Register(SAVES_DIR, "sup")._created)
+        with self.assertRaises(TypeError):
+            Testy_Register(SAVES_DIR, 0, "sup")
 
-        self.assertEqual(Testy_Register(SAVES_DIR, "sup")._version, CURRENT_VERSION)
+        self.assertFalse(Testy_Register(SAVES_DIR, "sh", "sup")._created)
+
+        self.assertEqual(Testy_Register(SAVES_DIR, "sh", "sup")._version, CURRENT_VERSION)
 
     # def test_add_subclass(self):
     #
@@ -262,21 +266,27 @@ class Test_Register(TestCase):
 
     def test___str__(self):
 
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         self.assertEqual(
-            str(Testy_Register(SAVES_DIR, "hello")),
-            "hello"
+            str(reg),
+            f"sh: \"hello\""
+        )
+        with reg.open() as reg:pass
+        self.assertEqual(
+            str(reg),
+            f"sh ({reg._local_dir}): \"hello\""
         )
 
     def test___repr__(self):
 
         self.assertEqual(
-            repr(Testy_Register(SAVES_DIR, "hello")),
-            f"Testy_Register(\"{str(SAVES_DIR)}\", \"hello\")"
+            repr(Testy_Register(SAVES_DIR, "sh", "hello")),
+            f"Testy_Register(\"{str(SAVES_DIR)}\", \"sh\", \"hello\", {_INITIAL_REGISTER_SIZE_DEFAULT})"
         )
 
     def test__check_open_raise_uncreated(self):
 
-        reg = Testy_Register(SAVES_DIR, "hey")
+        reg = Testy_Register(SAVES_DIR, "sh", "hey")
 
         with self.assertRaisesRegex(RegisterError, "tests"):
             reg._check_open_raise("tests")
@@ -285,20 +295,20 @@ class Test_Register(TestCase):
 
         # tests that error is raised when `local_dir` is not a sub-dir of `savesDir`
         local_dir = SAVES_DIR / "bad" / "test_local_dir"
-        reg = Testy_Register(SAVES_DIR, "sup")
+        reg = Testy_Register(SAVES_DIR, "sh", "sup")
         with self.assertRaisesRegex(ValueError, "sub-directory"):
             reg._set_local_dir(local_dir)
 
         # tests that error is raised when `Register` has not been created
         local_dir = SAVES_DIR / "test_local_dir"
-        reg = Testy_Register(SAVES_DIR, "sup")
+        reg = Testy_Register(SAVES_DIR, "sh", "sup")
         with self.assertRaisesRegex(FileNotFoundError, "database"):
             reg._set_local_dir(local_dir)
 
         # tests that newly created register has the correct filestructure and instance attributes
         # register database must be manually created for this tests case
         local_dir = SAVES_DIR / "test_local_dir"
-        reg = Testy_Register(SAVES_DIR, "sup")
+        reg = Testy_Register(SAVES_DIR, "sh", "sup")
         local_dir.mkdir()
         (local_dir / REG_FILENAME).mkdir(exist_ok = False)
         (local_dir / VERSION_FILEPATH).touch(exist_ok = False)
@@ -339,18 +349,18 @@ class Test_Register(TestCase):
 
     def test___hash___uncreated(self):
         with self.assertRaisesRegex(RegisterError, "__hash__"):
-            hash(Testy_Register(SAVES_DIR, "hey"))
+            hash(Testy_Register(SAVES_DIR, "sh", "hey"))
 
     def test___eq___uncreated(self):
         with self.assertRaises(RegisterError):
-            Testy_Register(SAVES_DIR, "hey") == Testy_Register(SAVES_DIR, "sup")
+            Testy_Register(SAVES_DIR, "sh", "hey") == Testy_Register(SAVES_DIR, "sh", "sup")
 
     def test_add_ram_block(self):
 
-        reg = Testy_Register(SAVES_DIR, "msg")
+        reg = Testy_Register(SAVES_DIR, "sh", "msg")
         blk = Block([], ApriInfo(name ="tests"))
 
-        reg = Testy_Register(SAVES_DIR, "msg")
+        reg = Testy_Register(SAVES_DIR, "sh", "msg")
         blk1 = Block([], ApriInfo(name ="tests"))
 
         with reg.open() as reg:
@@ -428,7 +438,7 @@ class Test_Register(TestCase):
 
     def test_open_uncreated(self):
 
-        reg = Testy_Register(SAVES_DIR, "hey")
+        reg = Testy_Register(SAVES_DIR, "sh", "hey")
 
         with reg.open() as reg:
             self.assertTrue(reg._opened)
@@ -468,7 +478,7 @@ class Test_Register(TestCase):
 
     def test_remove_ram_block(self):
 
-        reg = NumpyRegister(SAVES_DIR, "msg")
+        reg = NumpyRegister(SAVES_DIR, "sh", "msg")
         blk1 = Block([], ApriInfo(name ="name1"))
 
         with reg.open() as reg:
@@ -509,8 +519,8 @@ class Test_Register(TestCase):
     def test___hash___created(self):
 
         # create two `Register`s
-        reg1 = Testy_Register(SAVES_DIR, "msg")
-        reg2 = Testy_Register(SAVES_DIR, "msg")
+        reg1 = Testy_Register(SAVES_DIR, "sh", "msg")
+        reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
         with reg1.open() as reg1:pass
         with reg2.open() as reg2:pass
 
@@ -530,7 +540,7 @@ class Test_Register(TestCase):
         )
 
         # manually change the `_localDir` to force equality
-        reg2 = Testy_Register(SAVES_DIR, "msg")
+        reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
         reg2._set_local_dir(reg1._local_dir)
         self.assertEqual(
             hash(reg2),
@@ -538,7 +548,7 @@ class Test_Register(TestCase):
         )
 
         # a different `Register` derived type should change the hash value
-        reg2 = Testy_Register2(SAVES_DIR, "msg")
+        reg2 = Testy_Register2(SAVES_DIR, "sh", "msg")
         reg2._set_local_dir(reg1._local_dir)
         self.assertNotEqual(
             hash(reg2),
@@ -546,7 +556,7 @@ class Test_Register(TestCase):
         )
 
         # relative paths should work as expected
-        reg2 = Testy_Register(SAVES_DIR, "msg")
+        reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
         reg2._set_local_dir(".." / SAVES_DIR / reg1._local_dir)
         self.assertEqual(
             hash(reg2),
@@ -556,8 +566,8 @@ class Test_Register(TestCase):
     def test___eq___created(self):
 
         # open two `Register`s
-        reg1 = Testy_Register(SAVES_DIR, "msg")
-        reg2 = Testy_Register(SAVES_DIR, "msg")
+        reg1 = Testy_Register(SAVES_DIR, "sh", "msg")
+        reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
         with reg1.open() as reg1:pass
         with reg2.open() as reg2:pass
 
@@ -577,7 +587,7 @@ class Test_Register(TestCase):
         )
 
         # manually change the `_localDir` to force equality
-        reg2 = Testy_Register(SAVES_DIR, "msg")
+        reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
         reg2._set_local_dir(reg1._local_dir)
         self.assertEqual(
             reg2,
@@ -585,7 +595,7 @@ class Test_Register(TestCase):
         )
 
         # tests a different `Register` derived type
-        reg2 = Testy_Register2(SAVES_DIR, "msg")
+        reg2 = Testy_Register2(SAVES_DIR, "sh", "msg")
         reg2._set_local_dir(reg1._local_dir)
         self.assertNotEqual(
             reg2,
@@ -593,7 +603,7 @@ class Test_Register(TestCase):
         )
 
         # tests that relative paths work as expected
-        reg2 = Testy_Register(SAVES_DIR, "msg")
+        reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
         reg2._set_local_dir(".." / SAVES_DIR / reg1._local_dir)
         self.assertEqual(
             reg2,
@@ -602,25 +612,25 @@ class Test_Register(TestCase):
 
     def test__check_open_raise_created(self):
 
-        reg = Testy_Register(SAVES_DIR, "hi")
+        reg = Testy_Register(SAVES_DIR, "sh", "hi")
         with self.assertRaisesRegex(RegisterError, "xyz"):
             reg._check_open_raise("xyz")
 
-        reg = Testy_Register(SAVES_DIR, "hi")
+        reg = Testy_Register(SAVES_DIR, "sh", "hi")
         with reg.open() as reg:
             try:
                 reg._check_open_raise("xyz")
             except RegisterError:
                 self.fail("the register is open")
 
-        reg = Testy_Register(SAVES_DIR, "hi")
+        reg = Testy_Register(SAVES_DIR, "sh", "hi")
         with reg.open() as reg:pass
         with self.assertRaisesRegex(RegisterError, "xyz"):
             reg._check_open_raise("xyz")
 
     def test__get_id_by_apri_new(self):
 
-        reg = Testy_Register(SAVES_DIR, "hi")
+        reg = Testy_Register(SAVES_DIR, "sh", "hi")
 
         with self.assertRaises(ValueError):
             reg._get_id_by_apri(None, None, True)
@@ -632,7 +642,7 @@ class Test_Register(TestCase):
         apri2 = ApriInfo(name ="hello")
         apri3 = ApriInfo(name ="sup")
         apri4 = ApriInfo(name ="hey")
-        reg = Testy_Register(SAVES_DIR, "hi")
+        reg = Testy_Register(SAVES_DIR, "sh", "hi")
 
         with reg.open() as reg:
 
@@ -682,11 +692,11 @@ class Test_Register(TestCase):
 
     def test__get_instance(self):
 
-        reg1 = Testy_Register(SAVES_DIR, "msg")
+        reg1 = Testy_Register(SAVES_DIR, "sh", "msg")
 
 
         with reg1.open() as reg1: pass
-        reg2 = Testy_Register(SAVES_DIR, "msg")
+        reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
         reg2._set_local_dir(reg1._local_dir)
 
         self.assertIs(
@@ -701,7 +711,7 @@ class Test_Register(TestCase):
 
     def test_set_message(self):
 
-        reg = Testy_Register(SAVES_DIR, "testy")
+        reg = Testy_Register(SAVES_DIR, "sh", "testy")
 
         try:
             reg.set_msg("yes")
@@ -713,46 +723,38 @@ class Test_Register(TestCase):
                 raise e
 
         self.assertEqual(
-            "yes",
+            "sh: \"yes\"",
             str(reg)
         )
-
         with reg.open() as reg:pass
-
         reg.set_msg("no")
 
         self.assertEqual(
-            "no",
+            f"sh ({reg._local_dir}): \"no\"",
             str(reg)
         )
 
-        with reg._msg_filepath.open("r") as fh:
-            self.assertEqual(
-                "no",
-                fh.read()
-            )
-
     def test_add_disk_block(self):
 
-        reg = Testy_Register(SAVES_DIR, "sup")
+        reg = Testy_Register(SAVES_DIR, "sh", "sup")
         blk = Block([], ApriInfo(name ="hi"))
         with self.assertRaisesRegex(RegisterError, "open.*add_disk_blk"):
             reg.add_disk_blk(blk)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         blk = Block([], ApriInfo(name ="hi"), 10 ** 50)
         with reg.open() as reg:
             with self.assertRaisesRegex(IndexError, "correct head"):
                 reg.add_disk_blk(blk)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         too_large = reg._startn_tail_mod
         blk = Block([], ApriInfo(name ="hi"), too_large)
         with reg.open() as reg:
             with self.assertRaisesRegex(IndexError, "correct head"):
                 reg.add_disk_blk(blk)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         too_large = reg._startn_tail_mod
         blk = Block([], ApriInfo(name ="hi"), too_large - 1)
         with reg.open() as reg:
@@ -761,7 +763,7 @@ class Test_Register(TestCase):
             except IndexError:
                 self.fail("index is not too large")
 
-        reg = Testy_Register(SAVES_DIR, "hi")
+        reg = Testy_Register(SAVES_DIR, "sh", "hi")
         blk1 = Block([], ApriInfo(name ="hello"))
         blk2 = Block([1], ApriInfo(name ="hello"))
         blk3 = Block([], ApriInfo(name ="hi"))
@@ -828,7 +830,7 @@ class Test_Register(TestCase):
             with reg.open(readonly= True) as reg:
                 reg.add_disk_blk(blk)
 
-        reg = NumpyRegister(SAVES_DIR, "no")
+        reg = NumpyRegister(SAVES_DIR, "sh", "no")
 
         with reg.open() as reg:
 
@@ -887,7 +889,7 @@ class Test_Register(TestCase):
 
     def test__get_apri_json_by_id(self):
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         with reg.open() as reg:
             apri1 = ApriInfo(name ="hi")
             _id1 = reg._get_id_by_apri(apri1, None, True)
@@ -910,11 +912,11 @@ class Test_Register(TestCase):
 
     def test_apri_infos_no_recursive(self):
 
-        reg = Testy_Register(SAVES_DIR, "msg")
+        reg = Testy_Register(SAVES_DIR, "sh", "msg")
         with self.assertRaisesRegex(RegisterError, "apris"):
             reg.apris()
 
-        reg = Testy_Register(SAVES_DIR, "msg")
+        reg = Testy_Register(SAVES_DIR, "sh", "msg")
         with reg.open() as reg:
 
             apri1 = ApriInfo(name ="hello")
@@ -947,17 +949,17 @@ class Test_Register(TestCase):
 
     def test__open_created(self):
 
-        reg = Testy_Register(SAVES_DIR, "testy")
+        reg = Testy_Register(SAVES_DIR, "sh", "testy")
         with reg.open() as reg: pass
         with reg.open() as reg:
             self.assertTrue(reg._opened)
             with self.assertRaises(RegisterAlreadyOpenError):
                 with reg.open() as reg: pass
 
-        reg1 = Testy_Register(SAVES_DIR, "testy")
+        reg1 = Testy_Register(SAVES_DIR, "sh", "testy")
         with reg1.open() as reg1: pass
 
-        reg2 = Testy_Register(SAVES_DIR, "testy")
+        reg2 = Testy_Register(SAVES_DIR, "sh", "testy")
 
         reg2._set_local_dir(reg1._local_dir)
 
@@ -978,7 +980,7 @@ class Test_Register(TestCase):
 
     def test__get_id_by_apri(self):
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         apri1 = ApriInfo(name ="hello")
         with reg.open() as reg:
             _id1 = reg._get_id_by_apri(apri1, None, True)
@@ -1000,7 +1002,7 @@ class Test_Register(TestCase):
 
     def test__convert_disk_block_key_no_head(self):
 
-        reg = Testy_Register(SAVES_DIR, "sup")
+        reg = Testy_Register(SAVES_DIR, "sh", "sup")
         with reg.open() as reg:
 
             apri1 = ApriInfo(name ="hey")
@@ -1097,38 +1099,38 @@ class Test_Register(TestCase):
 
     def test_set_start_n_info(self):
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         with self.assertRaisesRegex(RegisterError, "set_startn_info"):
             reg.set_startn_info(10, 3)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         with reg.open() as reg:
             with self.assertRaisesRegex(TypeError, "int"):
                 reg.set_startn_info(10, 3.5)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         with reg.open() as reg:
             with self.assertRaisesRegex(TypeError, "int"):
                 reg.set_startn_info(10.5, 3)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         with reg.open() as reg:
             with self.assertRaisesRegex(ValueError, "non-negative"):
                 reg.set_startn_info(-1, 3)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         with reg.open() as reg:
             try:
                 reg.set_startn_info(0, 3)
             except ValueError:
                 self.fail("head can be 0")
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         with reg.open() as reg:
             with self.assertRaisesRegex(ValueError, "positive"):
                 reg.set_startn_info(0, -1)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
         with reg.open() as reg:
             with self.assertRaisesRegex(ValueError, "positive"):
                 reg.set_startn_info(0, 0)
@@ -1137,7 +1139,7 @@ class Test_Register(TestCase):
         for head, tail_length in product([0, 1, 10, 100, 1100, 450], [1,2,3,4,5]):
 
             # check set works
-            reg = Testy_Register(SAVES_DIR, "hello")
+            reg = Testy_Register(SAVES_DIR, "sh",  "hello")
             with reg.open() as reg:
 
                 try:
@@ -1166,7 +1168,7 @@ class Test_Register(TestCase):
             # 0 and head * 10 ** tail_len - 1 are the two possible extremes of the small start_n
             if head > 0:
                 for start_n in [0, head * 10 ** tail_length - 1]:
-                    reg = Testy_Register(SAVES_DIR, "hello")
+                    reg = Testy_Register(SAVES_DIR, "sh",  "hello")
                     with reg.open() as reg:
                             blk = Block([], ApriInfo(name ="hi"), start_n)
                             reg.add_disk_blk(blk)
@@ -1183,7 +1185,7 @@ class Test_Register(TestCase):
             smallest = head * 10 ** tail_length
             largest = smallest + 10 ** tail_length  - 1
             for start_n in [smallest, smallest + 1, smallest + 2, largest -2, largest -1, largest]:
-                reg = Testy_Register(SAVES_DIR, "hello")
+                reg = Testy_Register(SAVES_DIR, "sh",  "hello")
                 apri = ApriInfo(name="hi")
                 with reg.open() as reg:
                     blk = Block([], apri,start_n)
@@ -1218,7 +1220,7 @@ class Test_Register(TestCase):
 
             # tests to make sure `largest + 1` etc do not work
             for start_n in [largest + 1, largest + 10, largest + 100, largest + 1000]:
-                reg = Testy_Register(SAVES_DIR, "hello")
+                reg = Testy_Register(SAVES_DIR, "sh",  "hello")
                 apri = ApriInfo(name="hi")
                 with reg.open() as reg:
                     blk = Block([], apri, start_n)
@@ -1264,7 +1266,7 @@ class Test_Register(TestCase):
 
     def test__iter_disk_block_pairs(self):
 
-        reg = Testy_Register(SAVES_DIR, "HI")
+        reg = Testy_Register(SAVES_DIR, "sh",  "HI")
         with reg.open() as reg:
             apri1 = ApriInfo(name ="abc")
             apri2 = ApriInfo(name ="xyz")
@@ -1325,7 +1327,7 @@ class Test_Register(TestCase):
 
     def test_open(self):
 
-        reg1 = Testy_Register(SAVES_DIR, "msg")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "msg")
         with reg1.open() as reg2:pass
         self.assertIs(
             reg1,
@@ -1338,9 +1340,9 @@ class Test_Register(TestCase):
         except RegisterError:
             self.fail()
 
-        reg2 = Testy_Register(SAVES_DIR, "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
         with reg2.open() as reg2:pass
-        reg3 = Testy_Register(SAVES_DIR, "hello")
+        reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg3._set_local_dir(reg2._local_dir)
         with reg3.open() as reg4:pass
         self.assertIs(
@@ -1348,20 +1350,20 @@ class Test_Register(TestCase):
             reg2
         )
 
-        reg4 = Testy_Register(SAVES_DIR, "sup")
+        reg4 = Testy_Register(SAVES_DIR, "sh",  "sup")
         with self.assertRaisesRegex(ValueError, "read-only"):
             with reg4.open(readonly= True) as reg:pass
 
     def test__recursive_open(self):
 
         # must be created
-        reg1 = Testy_Register(SAVES_DIR, "hello")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
 
         with self.assertRaises(RegisterError):
             with reg1._recursive_open(False):pass
 
         # must be created
-        reg2 = Testy_Register(SAVES_DIR, "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
         with reg2.open() as reg2:pass
         with reg2._recursive_open(False) as reg3:pass
 
@@ -1370,7 +1372,7 @@ class Test_Register(TestCase):
             reg3
         )
 
-        reg3 = Testy_Register(SAVES_DIR, "hello")
+        reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg3._set_local_dir(reg2._local_dir)
         with reg3._recursive_open(False) as reg4:pass
 
@@ -1379,7 +1381,7 @@ class Test_Register(TestCase):
             reg4
         )
 
-        reg5 = Testy_Register(SAVES_DIR, "hi")
+        reg5 = Testy_Register(SAVES_DIR, "sh",  "hi")
 
         with reg5.open() as reg5:
 
@@ -1398,7 +1400,7 @@ class Test_Register(TestCase):
             reg5._opened
         )
 
-        reg6 = Testy_Register(SAVES_DIR, "supp")
+        reg6 = Testy_Register(SAVES_DIR, "sh",  "supp")
 
         with reg6.open() as reg6: pass
 
@@ -1439,7 +1441,7 @@ class Test_Register(TestCase):
 
     def test_remove_disk_block(self):
 
-        reg1 = Testy_Register(SAVES_DIR, "hi")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hi")
 
         with self.assertRaisesRegex(RegisterError, "open.*rmv_disk_blk"):
             reg1.rmv_disk_blk(ApriInfo(name ="fooopy doooopy"), 0, 0)
@@ -1471,8 +1473,8 @@ class Test_Register(TestCase):
                 reg1.rmv_disk_blk(apri1, 0, 0)
 
         # add the same block to two registers
-        reg1 = Testy_Register(SAVES_DIR, "hello")
-        reg2 = Testy_Register(SAVES_DIR, "sup")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "sup")
         apri = ApriInfo(name ="hi")
         blk = Block([], apri)
 
@@ -1489,7 +1491,7 @@ class Test_Register(TestCase):
         with reg2.open() as reg2:
             self._remove_disk_block_helper(reg2, [(apri, 0, 0)])
 
-        reg = NumpyRegister(SAVES_DIR, "hello")
+        reg = NumpyRegister(SAVES_DIR, "sh", "hello")
 
         with reg.open() as reg:
 
@@ -1566,7 +1568,7 @@ class Test_Register(TestCase):
 
     def test_set_apos_info(self):
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh",  "hello")
 
         with self.assertRaisesRegex(RegisterError, "open.*set_apos"):
             reg.set_apos(ApriInfo(no ="no"), AposInfo(yes ="yes"))
@@ -1628,7 +1630,7 @@ class Test_Register(TestCase):
 
     def test_apos_info(self):
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh",  "hello")
 
         with self.assertRaisesRegex(RegisterError, "open.*apos"):
             reg.apos(ApriInfo(no ="no"))
@@ -1679,7 +1681,7 @@ class Test_Register(TestCase):
 
     def test_remove_apos_info(self):
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh",  "hello")
 
         with self.assertRaisesRegex(RegisterError, "open.*rmv_apos"):
             reg.rmv_apos(ApriInfo(no ="no"))
@@ -1749,7 +1751,7 @@ class Test_Register(TestCase):
 
     def test_disk_blocks_no_recursive(self):
 
-        reg = NumpyRegister(SAVES_DIR, "HI")
+        reg = NumpyRegister(SAVES_DIR, "sh", "HI")
         with reg.open() as reg:
             apri1 = ApriInfo(name ="abc")
             apri2 = ApriInfo(name ="xyz")
@@ -1831,7 +1833,7 @@ class Test_Register(TestCase):
 
     def test__iter_subregisters(self):
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh",  "hello")
         with reg.open() as reg:
             total = 0
             for i,_ in enumerate(reg._iter_subregs()):
@@ -1842,7 +1844,7 @@ class Test_Register(TestCase):
             )
 
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh",  "hello")
 
         with reg.open() as reg:
 
@@ -1864,9 +1866,9 @@ class Test_Register(TestCase):
                 total
             )
 
-        reg1 = Testy_Register(SAVES_DIR, "hello")
-        reg2 = Testy_Register(SAVES_DIR, "hello")
-        reg3 = Testy_Register(SAVES_DIR, "hello")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
 
         with reg2.open():pass
         with reg3.open():pass
@@ -1896,9 +1898,9 @@ class Test_Register(TestCase):
                 regs[0] is regs[1]
             )
 
-        reg1 = Testy_Register(SAVES_DIR, "hello")
-        reg2 = Testy_Register(SAVES_DIR, "hello")
-        reg3 = Testy_Register(SAVES_DIR, "hello")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
         with reg3.open():pass
 
         with reg2.open():
@@ -1946,16 +1948,16 @@ class Test_Register(TestCase):
 
     def test_blkByN(self):
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh",  "hello")
         with self.assertRaisesRegex(RegisterError, "open.*blk_by_n"):
             reg.blk_by_n(ApriInfo(name ="no"), -1)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh",  "hello")
         with self.assertRaisesRegex(IndexError, "non-negative"):
             with reg.open() as reg:
                 reg.blk_by_n(ApriInfo(name ="no"), -1)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh",  "hello")
         apri = ApriInfo(name ="list")
         blk1 = Block(list(range(1000)), apri)
         with reg.open() as reg:
@@ -1977,7 +1979,7 @@ class Test_Register(TestCase):
                     reg.blk_by_n(apri, n)
                 )
 
-        reg = Testy_Register(SAVES_DIR, "whatever")
+        reg = Testy_Register(SAVES_DIR, "sh",  "whatever")
 
         apri = ApriInfo(name ="whatev")
         with reg.open() as reg: pass
@@ -1991,8 +1993,8 @@ class Test_Register(TestCase):
         blk3 = Block(list(range(14)), apri2, 50)
         blk4 = Block(list(range(100)), apri2, 120)
         blk5 = Block(list(range(120)), apri2, 1000)
-        reg1 = Testy_Register(SAVES_DIR, "helllo")
-        reg2 = Testy_Register(SAVES_DIR, "suuup")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "helllo")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "suuup")
 
         with reg1.open() as reg1:
 
@@ -2035,11 +2037,11 @@ class Test_Register(TestCase):
                 except:
                     raise
 
-        reg = NumpyRegister(SAVES_DIR, "hello")
+        reg = NumpyRegister(SAVES_DIR, "sh", "hello")
         with self.assertRaises(RegisterError):
             reg.blk_by_n(ApriInfo(name="no"), 50)
 
-        reg = NumpyRegister(SAVES_DIR, "hello")
+        reg = NumpyRegister(SAVES_DIR, "sh", "hello")
         apri1 = ApriInfo(name ="sup")
         apri2 = ApriInfo(name ="hi")
         blk1 = Block(np.arange(75), apri1)
@@ -2070,11 +2072,11 @@ class Test_Register(TestCase):
 
     def test_blk(self):
 
-        reg = NumpyRegister(SAVES_DIR, "hello")
+        reg = NumpyRegister(SAVES_DIR, "sh", "hello")
         with self.assertRaisesRegex(RegisterError, "blk"):
             reg.blk(ApriInfo(name="i am the octopus"), 0, 0)
 
-        reg = NumpyRegister(SAVES_DIR, "hello")
+        reg = NumpyRegister(SAVES_DIR, "sh", "hello")
         with reg.open() as reg:
             apri1 = ApriInfo(name ="i am the octopus")
             blk1 = Block(np.arange(100), apri1)
@@ -2137,7 +2139,7 @@ class Test_Register(TestCase):
                 reg.blk(apri3, 0, 420 - 69)
             )
 
-        reg = NumpyRegister(SAVES_DIR, "tests")
+        reg = NumpyRegister(SAVES_DIR, "sh", "tests")
 
         apri1 = ApriInfo(descr ="hey")
 
@@ -2238,11 +2240,11 @@ class Test_Register(TestCase):
 
     def test__check_no_cycles_from(self):
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh",  "hello")
         with self.assertRaises(RegisterError):
             reg._check_no_cycles_from(reg)
 
-        reg = Testy_Register(SAVES_DIR, "hello")
+        reg = Testy_Register(SAVES_DIR, "sh",  "hello")
         with reg.open() as reg:pass
 
         # loop
@@ -2250,13 +2252,13 @@ class Test_Register(TestCase):
             reg._check_no_cycles_from(reg)
         )
 
-        reg1 = Testy_Register(SAVES_DIR, "hello")
-        reg2 = Testy_Register(SAVES_DIR, "hello")
-        reg3 = Testy_Register(SAVES_DIR, "hello")
-        reg4 = Testy_Register(SAVES_DIR, "hello")
-        reg5 = Testy_Register(SAVES_DIR, "hello")
-        reg6 = Testy_Register(SAVES_DIR, "hello")
-        reg7 = Testy_Register(SAVES_DIR, "hello")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg4 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg5 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg6 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg7 = Testy_Register(SAVES_DIR, "sh",  "hello")
         with reg1.open(): pass
         with reg2.open(): pass
         with reg3.open(): pass
@@ -2554,7 +2556,7 @@ class Test_Register(TestCase):
 
         N = 10
 
-        regs = [NumpyRegister(SAVES_DIR, f"{i}") for i in range(N + 2)]
+        regs = [NumpyRegister(SAVES_DIR, "sh", f"{i}") for i in range(N + 2)]
 
         for reg in regs:
             with reg.open():pass
@@ -2598,20 +2600,20 @@ class Test_Register(TestCase):
 
     def test_add_subregister(self):
 
-        reg1 = Testy_Register(SAVES_DIR, "hello")
-        reg2 = Testy_Register(SAVES_DIR, "hello")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
         with self.assertRaisesRegex(RegisterError, "open.*add_subreg"):
             reg1.add_subreg(reg2)
 
-        reg1 = Testy_Register(SAVES_DIR, "hello")
-        reg2 = Testy_Register(SAVES_DIR, "hello")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
         with reg1.open() as reg1:
             with self.assertRaisesRegex(RegisterError, "add_subreg"):
                 reg1.add_subreg(reg2)
 
-        reg1 = Testy_Register(SAVES_DIR, "hello")
-        reg2 = Testy_Register(SAVES_DIR, "hello")
-        reg3 = Testy_Register(SAVES_DIR, "hello")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
         with reg2.open(): pass
         with reg1.open() as reg1:
             try:
@@ -2636,9 +2638,9 @@ class Test_Register(TestCase):
             except RegisterError:
                 self.fail()
 
-        reg1 = Testy_Register(SAVES_DIR, "hello")
-        reg2 = Testy_Register(SAVES_DIR, "hello")
-        reg3 = Testy_Register(SAVES_DIR, "hello")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
         with reg3.open(): pass
         with reg2.open() as reg2:
             try:
@@ -2654,8 +2656,8 @@ class Test_Register(TestCase):
             with self.assertRaises(RegisterError):
                 reg3.add_subreg(reg1)
 
-        reg1 = Testy_Register(SAVES_DIR, "hello")
-        reg2 = Testy_Register(SAVES_DIR, "hello")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
 
         with reg1.open():pass
         with reg2.open():pass
@@ -2678,9 +2680,9 @@ class Test_Register(TestCase):
 
     def test_remove_subregister(self):
 
-        reg1 = Testy_Register(SAVES_DIR, "hello")
-        reg2 = Testy_Register(SAVES_DIR, "hello")
-        reg3 = Testy_Register(SAVES_DIR, "hello")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
+        reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
 
         with reg1.open():pass
         with reg2.open():pass
@@ -2744,13 +2746,13 @@ class Test_Register(TestCase):
 
     def test_blks(self):
 
-        reg = Testy_Register(SAVES_DIR, "whatever")
+        reg = Testy_Register(SAVES_DIR, "sh",  "whatever")
         apri = ApriInfo(name ="whatev")
 
         with self.assertRaisesRegex(RegisterError, "open.*blks"):
             list(reg.blks(apri))
 
-        reg = Testy_Register(SAVES_DIR, "whatever")
+        reg = Testy_Register(SAVES_DIR, "sh",  "whatever")
         apri1 = ApriInfo(name ="foomy")
         apri2 = ApriInfo(name ="doomy")
         blk1 = Block(list(range(10)), apri1)
@@ -2758,8 +2760,8 @@ class Test_Register(TestCase):
         blk3 = Block(list(range(14)), apri2, 50)
         blk4 = Block(list(range(100)), apri2, 120)
         blk5 = Block(list(range(120)), apri2, 1000)
-        reg1 = Testy_Register(SAVES_DIR, "helllo")
-        reg2 = Testy_Register(SAVES_DIR, "suuup")
+        reg1 = Testy_Register(SAVES_DIR, "sh",  "helllo")
+        reg2 = Testy_Register(SAVES_DIR, "sh",  "suuup")
 
         with reg1.open() as reg1:
 
@@ -2843,7 +2845,7 @@ class Test_Register(TestCase):
                 total
             )
 
-        reg = Testy_Register(SAVES_DIR, "msg")
+        reg = Testy_Register(SAVES_DIR, "sh",  "msg")
         apri1 = ApriInfo(name="hey")
         blk1 = Block([], apri1)
 
@@ -2888,7 +2890,7 @@ class Test_Register(TestCase):
 
     def test_intervals(self):
 
-        reg = Testy_Register(SAVES_DIR, "sup")
+        reg = Testy_Register(SAVES_DIR, "sh",  "sup")
 
         apri1 = ApriInfo(descr ="hello")
         apri2 = ApriInfo(descr ="hey")
@@ -2948,7 +2950,7 @@ class Test_Register(TestCase):
 
     def test_apri_infos(self):
 
-        reg = Testy_Register(SAVES_DIR, "tests")
+        reg = Testy_Register(SAVES_DIR, "sh",  "tests")
 
         with self.assertRaisesRegex(RegisterError, "open.*apris"):
             reg.apris()
@@ -3030,7 +3032,7 @@ class Test_Register(TestCase):
 
     def test_compress(self):
 
-        reg2 = NumpyRegister(SAVES_DIR, "testy2")
+        reg2 = NumpyRegister(SAVES_DIR, "sh", "testy2")
 
         with self.assertRaisesRegex(RegisterError, "open.*compress"):
             reg2.compress(ApriInfo(num = 0))
@@ -3071,7 +3073,7 @@ class Test_Register(TestCase):
             with reg2.open(readonly= True) as reg2:
                 reg2.compress(ApriInfo(num = 0))
 
-        reg = NumpyRegister(SAVES_DIR, "no")
+        reg = NumpyRegister(SAVES_DIR, "sh", "no")
 
         with reg.open() as reg:
 
@@ -3092,7 +3094,7 @@ class Test_Register(TestCase):
 
     def test_decompress(self):
 
-        reg1 = NumpyRegister(SAVES_DIR, "lol")
+        reg1 = NumpyRegister(SAVES_DIR, "sh", "lol")
 
         apri1 = ApriInfo(descr ="LOL")
         apri2 = ApriInfo(decr ="HAHA")
@@ -3140,7 +3142,7 @@ class Test_Register(TestCase):
             with reg1.open(readonly= True) as reg1:
                 reg1.decompress(apri1)
 
-        reg2 = NumpyRegister(SAVES_DIR, "hi")
+        reg2 = NumpyRegister(SAVES_DIR, "sh", "hi")
 
         with reg2.open() as reg2:
 
@@ -3311,7 +3313,7 @@ class Test_Register(TestCase):
 
     def test_change_apri_info(self):
 
-        reg = Testy_Register(SAVES_DIR, "msg")
+        reg = Testy_Register(SAVES_DIR, "sh",  "msg")
 
         with self.assertRaisesRegex(RegisterError, "open.*change_apri"):
             reg.change_apri(ApriInfo(i = 0), ApriInfo(j=0))
@@ -3366,7 +3368,7 @@ class Test_Register(TestCase):
             with self.assertRaisesRegex(RegisterError, "read-write"):
                 reg.change_apri(old_apri, new_apri)
 
-        reg = NumpyRegister(SAVES_DIR, "hello")
+        reg = NumpyRegister(SAVES_DIR, "sh", "hello")
 
         with reg.open() as reg:
 
@@ -3604,7 +3606,7 @@ class Test_Register(TestCase):
             with self.assertRaisesRegex(ValueError, "[dD]uplicate"):
                 reg.change_apri(other_other_apri, other_apri)
 
-        reg = NumpyRegister(SAVES_DIR, "hello")
+        reg = NumpyRegister(SAVES_DIR, "sh", "hello")
 
         with reg.open() as reg:
 
@@ -3682,7 +3684,7 @@ class Test_Register(TestCase):
 
     def test_concatenate_disk_blocks(self):
 
-        reg = NumpyRegister(SAVES_DIR, "hello")
+        reg = NumpyRegister(SAVES_DIR, "sh", "hello")
 
         with self.assertRaisesRegex(RegisterError, "open.*concat_disk_blks"):
             reg.concat_disk_blks(ApriInfo(_ ="_"), 0, 0)
@@ -4088,7 +4090,7 @@ class Test_Register(TestCase):
         block_datas = {}
         apris = []
 
-        reg = NumpyRegister(SAVES_DIR, "hello")
+        reg = NumpyRegister(SAVES_DIR, "sh", "hello")
 
         with reg.open() as reg:
 
@@ -4110,7 +4112,7 @@ class Test_Register(TestCase):
 
             self._composite_helper(reg, block_datas, apris)
 
-            apri = ApriInfo(descr ="Apri_Info.fromJson(hi = \"lol\")", respective = inner_apri)
+            apri = ApriInfo(descr ="ApriInfo.from_json(hi = \"lol\")", respective = inner_apri)
             apris.append(apri)
             seg = np.arange(69., 420.)
             blk = Block(seg, apri, 1337)
@@ -4120,11 +4122,11 @@ class Test_Register(TestCase):
             self._composite_helper(reg, block_datas, apris)
 
             for start_n, length in reg.intervals(
-                    ApriInfo(descr="Apri_Info.fromJson(hi = \"lol\")", respective=inner_apri)):
-                reg.compress(ApriInfo(descr ="Apri_Info.fromJson(hi = \"lol\")", respective = inner_apri), start_n, length)
+                    ApriInfo(descr="ApriInfo.from_json(hi = \"lol\")", respective=inner_apri)):
+                reg.compress(ApriInfo(descr ="ApriInfo.from_json(hi = \"lol\")", respective = inner_apri), start_n, length)
 
             _set_block_datas_compressed(block_datas,
-                ApriInfo(descr ="Apri_Info.fromJson(hi = \"lol\")", respective = inner_apri)
+                ApriInfo(descr ="ApriInfo.from_json(hi = \"lol\")", respective = inner_apri)
             )
 
             self._composite_helper(reg, block_datas, apris)
@@ -4167,14 +4169,14 @@ class Test_Register(TestCase):
                 reg.rmv_apri(inner_apri)
 
             reg.decompress(
-                ApriInfo(descr ="Apri_Info.fromJson(hi = \"lol\")", respective = inner_apri),
+                ApriInfo(descr ="ApriInfo.from_json(hi = \"lol\")", respective = inner_apri),
                 1337,
                 420 - 69
             )
 
             _set_block_datas_compressed(
                 block_datas,
-                ApriInfo(descr ="Apri_Info.fromJson(hi = \"lol\")", respective = inner_apri),
+                ApriInfo(descr ="ApriInfo.from_json(hi = \"lol\")", respective = inner_apri),
                 compressed = False
             )
 
@@ -4184,13 +4186,13 @@ class Test_Register(TestCase):
             reg.set_msg(new_message)
 
             self.assertEqual(
-                new_message,
-                str(reg)
+                str(reg),
+                f'sh ({reg._local_dir}): "\\\\new msg""\\\'"'
             )
 
         self.assertEqual(
-            new_message,
-            str(reg)
+            str(reg),
+            f'sh ({reg._local_dir}): "\\\\new msg""\\\'"'
         )
 
         reg = load(reg._local_dir)
@@ -4198,7 +4200,7 @@ class Test_Register(TestCase):
         with reg.open() as reg:
 
             inner_inner_apri = ApriInfo(inner_apri = inner_apri)
-            apri = ApriInfo(inner_apri = inner_inner_apri, love ="Apos_Info(num = 6)")
+            apri = ApriInfo(inner_apri = inner_inner_apri, love ="AposInfo(num = 6)")
             apris.append(apri)
             apris.append(inner_inner_apri)
 
@@ -4273,7 +4275,7 @@ class Test_Register(TestCase):
 
     def test_remove_apri_info(self):
 
-        reg = NumpyRegister(SAVES_DIR, "sup")
+        reg = NumpyRegister(SAVES_DIR, "sh", "sup")
 
         with self.assertRaisesRegex(RegisterError, "open.*rmv_apri"):
             reg.rmv_apri(ApriInfo(no ="yes"))

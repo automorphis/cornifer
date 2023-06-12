@@ -165,7 +165,6 @@ class _Info(ABC):
     def _check_reserved_kws(cls, kwargs):
 
         if any(kw in kwargs for kw in cls._reserved_kws):
-
             raise ValueError(
                 "The following keyword-argument keys are reserved. Choose a different key.\n" +
                 f"{', '.join(cls._reserved_kws)}"

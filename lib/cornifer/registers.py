@@ -13,14 +13,12 @@
     GNU General Public License for more details.
 """
 
-import inspect
 import math
 import pickle
 import shutil
 import warnings
 import zipfile
 from contextlib import contextmanager, ExitStack
-from itertools import count
 from pathlib import Path
 from abc import ABC, abstractmethod
 
@@ -33,12 +31,13 @@ from .info import ApriInfo, AposInfo, _InfoJsonEncoder, _InfoJsonDecoder, _Info
 from .blocks import Block, MemmapBlock, ReleaseBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, is_int, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
-    check_return_int_None_default, check_Path, check_return_int, bytify_num, intify_bytes
+    check_return_int_None_default, check_Path, check_return_int, bytify_num, intify_bytes, intervals_overlap, \
+    write_txt_file, read_txt_file, intervals_subset
 from ._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, open_lmdb, lmdb_count_keys, \
     ReversibleTransaction, is_transaction, lmdb_prefix_list
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
-    REG_FILENAME, MAP_SIZE_FILEPATH
+    REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _NO_DEBUG = 0
@@ -106,15 +105,11 @@ _NOT_CREATED_ERROR_MESSAGE = (
     "The `Register` database has not been created. You must do `with reg.open() as reg:` at least once before " +
     "calling the method `{0}`."
 )
-
 _MEMORY_FULL_ERROR_MESSAGE = (
     "Exceeded max `Register` size of {0} Bytes. Please increase the max size using the method `increase_reg_size`."
 )
-
 _REG_ALREADY_ADDED_ERROR_MESSAGE = "Already added as subregister."
-
 _NO_APRI_ERROR_MESSAGE = "The following `ApriInfo` is not known to this `Register` : {0}"
-
 
 #################################
 #           CONSTANTS           #
@@ -132,10 +127,11 @@ class Register(ABC):
     #################################
     #     PUBLIC INITIALIZATION     #
 
-    def __init__(self, saves_dir, msg, initial_reg_size = None):
+    def __init__(self, saves_dir, shorthand, msg, initial_reg_size = None):
         """
-        :param saves_dir: (type `str`)
-        :param msg: (type `str`) A brief message describing this `Register`.
+        :param saves_dir: (type `str`) Directory where this `Register` is saved.
+        :param shorthand: (type `str`) A word or short phrase describing this `Register`.
+        :param msg: (type `str`) A more detailed message describing this `Register`.
         :param initial_reg_size: (type `int`, default 5) Size in bytes. You may wish to set this lower
         than 5 MB if you do not expect to add many disk `Block`s to your register and you are concerned about disk
         memory. If your `Register` exceeds `initial_register_size`, then you can adjust the database size later via the
@@ -144,6 +140,7 @@ class Register(ABC):
         """
 
         check_Path(saves_dir, "saves_dir")
+        check_type(shorthand, "shorthand", str)
         check_type(msg, "msg", str)
         initial_reg_size = check_return_int_None_default(
             initial_reg_size, "initial_reg_size", _INITIAL_REGISTER_SIZE_DEFAULT
@@ -160,6 +157,8 @@ class Register(ABC):
                 f"`{self.__class__.__name__}(\"{str(self.saves_dir)}\", \"{msg}\")`."
             )
 
+        self._shorthand = shorthand
+        self._shorthand_filepath = None
         self._msg = msg
         self._msg_filepath = None
 
@@ -191,7 +190,7 @@ class Register(ABC):
 
     def __init_subclass__(cls, **kwargs):
 
-        super().__init_subclass__()
+        super().__init_subclass__(**kwargs)
         Register._constructors[cls.__name__] = cls
 
     #################################
@@ -225,8 +224,7 @@ class Register(ABC):
 
         else:
 
-            with (local_dir / CLS_FILEPATH).open("r") as fh:
-                cls_name = fh.readline().strip()
+            cls_name = read_txt_file(local_dir / CLS_FILEPATH)
 
             if cls_name == "Register":
                 raise TypeError(
@@ -242,18 +240,12 @@ class Register(ABC):
                     f"properly subclasses `Register` and that `{cls_name}` is in the namespace by importing it."
                 )
 
-            with (local_dir / MSG_FILEPATH).open("r") as fh:
-                msg = fh.read()
-
-            with (local_dir / MAP_SIZE_FILEPATH).open("r") as fh:
-                map_size = int(fh.readline().strip())
-
-            reg = con(local_dir.parent, msg, map_size)
+            shorthand = read_txt_file(local_dir / SHORTHAND_FILEPATH)
+            msg = read_txt_file(local_dir / MSG_FILEPATH)
+            map_size = int(read_txt_file(local_dir / MAP_SIZE_FILEPATH))
+            reg = con(local_dir.parent, shorthand, msg, map_size)
             reg._set_local_dir(local_dir)
-
-            with (local_dir / VERSION_FILEPATH).open("r") as fh:
-                reg._version = fh.readline().strip()
-
+            reg._version = read_txt_file(local_dir / VERSION_FILEPATH)
             return reg
 
     @staticmethod
@@ -315,53 +307,44 @@ class Register(ABC):
             return hash(str(self._local_dir)) + hash(type(self))
 
     def __str__(self):
-        return self._msg
 
-    def __repr__(self):
-        return f"{self.__class__.__name__}(\"{str(self.saves_dir)}\", \"{self._msg}\")"
-
-    def __contains__(self, apri):
-
-        self._check_open_raise("__contains__")
-
-        if any(blk.apri() == apri for blk in self._ram_blks):
-            return True
+        if self._created:
+            return f'{self._shorthand} ({self._local_dir}): "{self._msg}"'
 
         else:
+            return f'{self._shorthand}: "{self._msg}"'
 
-            with self._db.begin() as txn:
+    def __repr__(self):
+        return f'{self.__class__.__name__}("{str(self.saves_dir)}", "{self._shorthand}", "{self._msg}", {self._db_map_size})'
 
-                try:
-                    apri_json = relational_encode_info(self, apri, txn)
+    def set_shorthand(self, shorthand):
 
-                except DataNotFoundError:
-                    return False
+        check_type(shorthand, "shorthand", str)
 
-                key = _APRI_ID_KEY_PREFIX + apri_json
-                return lmdb_has_key(txn, key)
+        if self._created:
+            write_txt_file(shorthand, self._shorthand_filepath, True)
 
-    def __iter__(self):
-        return iter(self.apris())
+        self._shorthand = shorthand
 
-    def set_msg(self, message):
-        """Give this `Register` a brief description.
-
-        WARNING: This method OVERWRITES the current msg. In order to append a new msg to the current one, do
-        something like the following:
-
-            old_message = str(reg)
-            new_message = old_message + " Hello!"
-            reg.set_msg(new_message)
+    def set_msg(self, message, append = False):
+        """Give this `Register` a detailed description.
 
         :param message: (type `str`)
+        :param append: (type `bool`, default `False`) Set to `True` to append the new message to the old one.
         """
 
         check_type(message, "message", str)
-        self._msg = message
+
+        if append:
+            new_msg = self._msg + message
+
+        else:
+            new_msg = message
 
         if self._created:
-            with self._msg_filepath.open("w") as fh:
-                fh.write(message)
+            write_txt_file(new_msg, self._msg_filepath, True)
+
+        self._msg = new_msg
 
     def set_startn_info(self, head = None, tail_len = None):
         """Set the range of the `startn` parameters of disk `Block`s belonging to this `Register`.
@@ -486,19 +469,11 @@ class Register(ABC):
 
                 local_dir.mkdir()
                 (local_dir / REG_FILENAME).mkdir()
-
-                with (local_dir / MSG_FILEPATH).open("x") as fh:
-                    fh.write(self._msg)
-
-                with (local_dir / VERSION_FILEPATH).open("x") as fh:
-                    fh.write(self._version + "\nDO NOT EDIT THIS FILE. CALL THE FUNCTION `updateRegVersion` INSTEAD.")
-
-                with (local_dir / CLS_FILEPATH).open("x") as fh:
-                    fh.write(str(type(self).__name__) + "\nDO NOT EDIT THIS FILE.")
-
-                with (local_dir / MAP_SIZE_FILEPATH).open("x") as fh:
-                    fh.write(str(self._db_map_size) + "\nDO NOT EDIT THIS FILE. CALL THE FUNCTION `increase_reg_size` INSTEAD.")
-
+                write_txt_file(self._shorthand, local_dir / SHORTHAND_FILEPATH)
+                write_txt_file(self._msg, local_dir / MSG_FILEPATH)
+                write_txt_file(self._version, local_dir / VERSION_FILEPATH)
+                write_txt_file(str(type(self).__name__), local_dir / CLS_FILEPATH)
+                write_txt_file(str(self._db_map_size), local_dir / MAP_SIZE_FILEPATH)
                 (local_dir / DATABASE_FILEPATH).mkdir()
                 self._set_local_dir(local_dir)
                 self._db = open_lmdb(self._db_filepath, self._db_map_size, False)
@@ -607,9 +582,7 @@ class Register(ABC):
 
         self._db.set_mapsize(num_bytes)
         self._db_map_size = num_bytes
-
-        with self._db_map_size_filepath.open("w") as fh:
-            fh.write(str(self._db_map_size))
+        write_txt_file(str(self._db_map_size), self._db_map_size_filepath, True)
 
     def reg_size(self):
         return self._db_map_size
@@ -620,6 +593,9 @@ class Register(ABC):
             raise RegisterError(_NOT_CREATED_ERROR_MESSAGE.format("ident"))
 
         return str(self._local_dir)
+
+    def shorthand(self):
+        return self._shorthand
 
     #################################
     #    PROTEC REGISTER METHODS    #
@@ -639,7 +615,6 @@ class Register(ABC):
             raise RegisterAlreadyOpenError()
 
         ret._readonly = readonly
-
         ret._db = open_lmdb(ret._db_filepath, ret._db_map_size, readonly)
 
         with ret._db.begin() as txn:
@@ -930,6 +905,29 @@ class Register(ABC):
 
             else:
                 raise e
+
+    def __contains__(self, apri):
+
+        self._check_open_raise("__contains__")
+
+        if any(blk.apri() == apri for blk in self._ram_blks):
+            return True
+
+        else:
+
+            with self._db.begin() as txn:
+
+                try:
+                    apri_json = relational_encode_info(self, apri, txn)
+
+                except DataNotFoundError:
+                    return False
+
+                key = _APRI_ID_KEY_PREFIX + apri_json
+                return lmdb_has_key(txn, key)
+
+    def __iter__(self):
+        return iter(self.apris())
 
     #################################
     #      PROTEC APRI METHODS      #
@@ -1567,7 +1565,7 @@ class Register(ABC):
         :return: (type `pathlib.Path`)
         """
 
-    def add_disk_blk(self, blk, exists_ok = False, ret_metadata = False, **kwargs):
+    def add_disk_blk(self, blk, exists_ok = False, dups_ok = True, ret_metadata = False, **kwargs):
         """Save a `Block` to disk and link it with this `Register`.
 
         :param blk: (type `Block`)
@@ -1582,6 +1580,7 @@ class Register(ABC):
         self._check_readwrite_raise("add_disk_blk")
         check_type(blk, "blk", Block)
         check_type(exists_ok, "exists_ok", bool)
+        check_type(dups_ok, "dups_ok", bool)
         check_type(ret_metadata, "ret_metadata", bool)
         startn_head = blk.startn() // self._startn_tail_mod
 
@@ -1589,10 +1588,10 @@ class Register(ABC):
 
             raise IndexError(
                 "The `startn_` for the passed `Block` does not have the correct head:\n"
-                f"`tail_len`       : {self._startn_tail_length}\n"
+                f"`tail_len`      : {self._startn_tail_length}\n"
                 f"expected `head` : {self._startn_head}\n"
-                f"`startn_`       : {blk.startn()}\n"
-                f"`startn_` head  : {startn_head}\n"
+                f"`startn`        : {blk.startn()}\n"
+                f"`startn` head   : {startn_head}\n"
                 "Please see the method `set_startn_info` to troubleshoot this error."
             )
 
@@ -1604,6 +1603,17 @@ class Register(ABC):
 
         txn = None
         filename = None
+
+        if not dups_ok:
+
+            int_ = (blk.startn(), len(blk))
+
+            for t in self.intervals(blk.apri(), False, True, False):
+
+                if intervals_overlap(t, int_):
+                    raise RegisterError(
+                        "Attempted to add a `Block` with duplicate indices. Set `dups_ok` to `True` to suppress."
+                    )
 
         if _debug == 2:
             raise KeyboardInterrupt
@@ -1661,12 +1671,12 @@ class Register(ABC):
         else:
             return None
 
-    def append_disk_blk(self, blk, exists_ok = False, ret_metadata = False, **kwargs):
+    def append_disk_blk(self, blk, ret_metadata = False, **kwargs):
         """Add a `Block` to disk and link it with this `Register`.
 
-        If no disk `Block`s with the same `ApriInfo` as `blk` have previously been added to disk, then `blk` will be
-        added to this `Register` via the method `add_disk_blk`. If not, then `startn_` will be set to one more than the
-        largest index among all disk `Block`s with the same `ApriInfo` as `blk`.
+        If no disk `Block`s with the same `ApriInfo` as `blk` have previously been added to disk, then `startn` is set
+        to 0.. If not, then `startn` will be set to one more than the largest index among all disk `Block`s with the
+        same `ApriInfo` as `blk`.
 
         :param blk: (type `Block`)
         :param ret_metadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
@@ -1675,25 +1685,15 @@ class Register(ABC):
         """
 
         check_type(blk, "blk", Block)
-        check_type(exists_ok, "exists_ok", bool)
         check_type(ret_metadata, "ret_metadata", bool)
 
         if self.num_blks(blk.apri(), diskonly = True) == 0:
-            return self.add_disk_blk(blk, exists_ok, ret_metadata, **kwargs)
+            return self.add_disk_blk(blk, ret_metadata, **kwargs)
 
         else:
 
-            startn = 0
-
-            for key, _ in self._iter_disk_blk_pairs(_BLK_KEY_PREFIX, blk.apri(), None):
-
-                _, _startn, _length = self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
-
-                if startn < _startn + _length:
-                    startn = _startn + _length
-
-            blk.set_startn(startn)
-            return self.add_disk_blk(blk, exists_ok, ret_metadata, **kwargs)
+            blk.set_startn(self.maxn(blk.apri()) + 1)
+            return self.add_disk_blk(blk, ret_metadata, **kwargs)
 
     def rmv_disk_blk(self, apri, startn = None, length = None, missing_ok = False, recursively = False, **kwargs):
         """Delete a disk `Block` and unlink it with this `Register`.
@@ -2245,7 +2245,7 @@ class Register(ABC):
 
             raise RegisterError(
                 f"Duplicate `Block` with the following data already exists in this `Register`: " +
-                f"{str(blk.apri())}, startn_ = {blk.startn()}, length_ = {len(blk)}."
+                f"{str(blk.apri())}, startn = {blk.startn()}, length = {len(blk)}."
             )
 
     def _rmv_disk_blk_txn(self, apri, startn, length, txn):
@@ -2955,6 +2955,42 @@ class Register(ABC):
         else:
             return ret
 
+    def contains_index(self, apri, index, diskonly = False, recursively = False):
+
+        check_type(apri, "apri", ApriInfo)
+        index = check_return_int(index, "index")
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
+
+        if index < 0:
+            raise ValueError("`index` must be non-negative.")
+
+        for startn, length in self.intervals(apri, False, diskonly, recursively):
+
+            if startn <= index < startn + length:
+                return True
+
+        else:
+            return False
+
+    def contains_interval(self, apri, startn, length, diskonly = False, recursively = False):
+
+        check_type(apri, "apri", ApriInfo)
+        startn = check_return_int(startn, "startn")
+        length = check_return_int(length, "length")
+        check_type(diskonly, "diskonly", bool)
+        check_type(recursively, "recursively", bool)
+
+        int1 = (startn, length)
+
+        for int2 in self.intervals(apri, True, diskonly, recursively):
+
+            if intervals_overlap(int1, int2):
+                return intervals_subset(int1, int2)
+
+        else:
+            return False
+
     #################################
     # PROTEC RAM & DISK BLK METHODS #
 
@@ -3234,7 +3270,6 @@ class NumpyRegister(Register):
                         pass
 
         raise DataNotFoundError(_blk_not_found_err_msg(diskonly, str(apri), n))
-
 
     def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
         """
@@ -3627,10 +3662,8 @@ class _CopyRegister(Register):
     def load_disk_data(cls, filename, **kwargs):
         raise NotImplementedError
 
-    def set_cls_name(self, clsName):
-
-        with self._cls_filepath.open() as fh:
-            fh.write(clsName)
+    def set_cls_name(self, cls_name):
+        write_txt_file(cls_name, self._cls_filepath)
 
 ###################
 # RELATIONAL INFO #

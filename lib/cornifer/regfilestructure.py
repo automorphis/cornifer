@@ -18,6 +18,7 @@ from cornifer._utilities import BASE52
 
 REG_FILENAME           = "register"
 VERSION_FILEPATH       = f"{REG_FILENAME}/version.txt"
+SHORTHAND_FILEPATH     = f"{REG_FILENAME}/shorthand.txt"
 MSG_FILEPATH           = f"{REG_FILENAME}/message.txt"
 CLS_FILEPATH           = f"{REG_FILENAME}/class.txt"
 DATABASE_FILEPATH      = f"{REG_FILENAME}/database"
