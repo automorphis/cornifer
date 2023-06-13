@@ -31,7 +31,7 @@ from .info import ApriInfo, AposInfo, _InfoJsonEncoder, _InfoJsonDecoder, _Info
 from .blocks import Block, MemmapBlock, ReleaseBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, is_int, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
-    check_return_int_None_default, check_Path, check_return_int, bytify_num, intify_bytes, intervals_overlap, \
+    check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
     write_txt_file, read_txt_file, intervals_subset
 from ._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, open_lmdb, lmdb_count_keys, \
     ReversibleTransaction, is_transaction, lmdb_prefix_list
@@ -427,14 +427,14 @@ class Register(ABC):
 
                     with lmdb_prefix_iter(ro_txn, _BLK_KEY_PREFIX) as it:
 
-                        rw_txn.put(_START_N_HEAD_KEY, bytify_num(head))
-                        rw_txn.put(_START_N_TAIL_LENGTH_KEY, bytify_num(tail_len))
+                        rw_txn.put(_START_N_HEAD_KEY, bytify_int(head))
+                        rw_txn.put(_START_N_TAIL_LENGTH_KEY, bytify_int(tail_len))
 
                         for key, val in it:
 
                             _, startn, _ = self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
                             apri_id, _, length_bytes = self._split_disk_block_key(_BLK_KEY_PREFIX_LEN, key)
-                            new_startn_bytes = bytify_num(startn % new_mod, tail_len)
+                            new_startn_bytes = bytify_int(startn % new_mod, tail_len)
                             new_key = Register._join_disk_block_data(
                                 _BLK_KEY_PREFIX, apri_id, new_startn_bytes, length_bytes
                             )
@@ -516,6 +516,25 @@ class Register(ABC):
     @staticmethod
     @contextmanager
     def opens(*regs, **kwargs):
+        """Syntactic sugar. Opens many registers at once for reading and/or writing.
+
+        The snippet:
+
+            with reg1.open(readonly = True) as reg1:
+                with reg2.open() as reg2:
+                    ...
+
+        is equivalent to
+
+            with Register.opens(reg1, reg2, readonlys = (True, False)) as (reg1, reg2):
+                ...
+
+        Note that the parentheses MUST be present after the `as`, otherwise Python will get confused.
+
+        :param regs:
+        :param kwargs:
+        :return:
+        """
 
         if (len(kwargs) == 1 and 'readonlys' not in kwargs) or len(kwargs) > 1:
             raise KeyError("`opens` only takes one keyword-argument, `readonlys`.")
@@ -1084,7 +1103,7 @@ class Register(ABC):
 
         for next_id_num in range(int(txn.get(_CURR_ID_KEY)), _MAX_NUM_APRI):
 
-            next_id = bytify_num(next_id_num, _MAX_NUM_APRI_LENGTH)
+            next_id = bytify_int(next_id_num, _MAX_NUM_APRI_LENGTH)
 
             if next_id not in reserved:
                 break
@@ -1092,7 +1111,7 @@ class Register(ABC):
         else:
             raise RegisterError(f"Too many apris added to this `Register`, the limit is {_MAX_NUM_APRI}.")
 
-        txn.put(_CURR_ID_KEY, bytify_num(next_id_num + 1, _MAX_NUM_APRI_LENGTH))
+        txn.put(_CURR_ID_KEY, bytify_int(next_id_num + 1, _MAX_NUM_APRI_LENGTH))
         return next_id
 
     def _rmv_apri_txn(self, apri, force, txn):
@@ -2306,8 +2325,8 @@ class Register(ABC):
             raise ValueError
 
         id_ = self._get_id_by_apri(apri, apri_json, missing_ok, txn, None)
-        tail = bytify_num(startn % self._startn_tail_mod, self._startn_tail_length)
-        op_length = bytify_num(self._max_length - length, self._length_length)
+        tail = bytify_int(startn % self._startn_tail_mod, self._startn_tail_length)
+        op_length = bytify_int(self._max_length - length, self._length_length)
 
         return (
                 prefix   +
@@ -2714,6 +2733,7 @@ class Register(ABC):
 
         self._check_open_raise("get")
 
+
         if not isinstance(apri, ApriInfo):
             raise TypeError("The first argument to `reg[]` must be an `ApriInfo.")
 
@@ -2776,14 +2796,7 @@ class Register(ABC):
                 return _ElementIter(self, apri, n, diskonly, recursively, kwargs)
 
             else:
-
-                blk = self.blk_by_n(apri, n, diskonly, recursively, False, **kwargs)
-                ret = blk[n]
-
-                if isinstance(blk, ReleaseBlock):
-                    blk.release()
-
-                return ret
+                return self.blk_by_n(apri, n, diskonly, recursively, False, **kwargs)[n]
 
         if recursively:
 

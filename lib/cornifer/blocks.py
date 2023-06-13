@@ -19,24 +19,18 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from .info import ApriInfo
-from ._utilities import check_has_method, justify_slice, is_int
+from ._utilities import check_has_method, justify_slice, is_int, check_type, check_return_int
 
 
 class Block:
 
     def __init__(self, segment, apri, startn = 0):
 
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`.")
-
-        if not is_int(startn):
-            raise TypeError("`startn_` must be of type `int`.")
-
-        else:
-            startn = int(startn)
+        check_type(apri, "apri", ApriInfo)
+        startn = check_return_int(startn, "startn")
 
         if startn < 0:
-            raise ValueError("`startn_` must be non-negative.")
+            raise ValueError("`startn` must be non-negative.")
 
         self._custom_dtype = False
 
@@ -98,10 +92,7 @@ class Block:
 
     def set_startn(self, startn):
 
-        if not is_int(startn):
-            raise TypeError("`startn` must be of type `int`")
-        else:
-            startn = int(startn)
+        startn = check_return_int(startn, "startn")
 
         if startn < 0:
             raise ValueError("`startn` must be positive")
@@ -110,10 +101,7 @@ class Block:
 
     def subdivide(self, subinterval_len):
 
-        if not is_int(subinterval_len):
-            raise TypeError("`subinterval_len` must be an integer")
-        else:
-            subinterval_len = int(subinterval_len)
+        subinterval_len = check_return_int(subinterval_len, "subinterval_len")
 
         if subinterval_len <= 1:
             raise ValueError("`subinterval_len` must be at least 2")
@@ -129,30 +117,24 @@ class Block:
         if isinstance(item, tuple):
             raise IndexError("`blk[]` cannot take more than one index.")
 
-        if not is_int(item) and not isinstance(item, slice):
+        is_slice = isinstance(item, slice)
+
+        if not is_slice and not is_int(item):
             raise TypeError("`item` must be either of type `int` or `slice`.")
 
-        elif is_int(item):
+        if not is_slice:
             item = int(item)
 
+        apri = self.apri()
+        startn = self.startn()
+        length = len(self)
 
-        if isinstance(item, slice):
-
-            apri = self.apri()
-            startn = self.startn()
-            length = len(self)
+        if is_slice:
             item = justify_slice(item, startn, startn + length - 1)
 
-            if not self._check_and_warn_custom_get_ndarray("__getitem__"):
-                return Block(self._seg_ndarray[item, ...], apri, startn)
-
-            elif self._dtype == "ndarray":
-                return Block(self._seg[item, ...], apri, startn)
-
-            else:
-                return Block(self._seg[item], apri, startn)
-
         else:
+
+            item = int(item)
 
             if item not in self:
                 raise IndexError(
@@ -160,24 +142,21 @@ class Block:
                     ", inclusive."
                 )
 
-            item -= self.startn()
+        if not self._check_and_warn_custom_get_ndarray("__getitem__"):
+            return Block(self._seg_ndarray[item, ...], apri, startn)
 
-            if not self._check_and_warn_custom_get_ndarray("__getitem__"):
-                return self._seg_ndarray[item]
+        elif self._dtype == "ndarray":
+            return Block(self._seg[item, ...], apri, startn)
 
-            else:
-                return self._seg[item]
+        else:
+            return Block(self._seg[item], apri, startn)
 
     def __setitem__(self, key, value):
 
         if isinstance(key, slice):
             raise NotImplementedError("Support for slices coming soon.")
 
-        if not is_int(key):
-            raise TypeError("`key` must be of type `int`.")
-
-        else:
-            key = int(key)
+        key = check_return_int(key, "key")
 
         if isinstance(key, tuple):
             raise IndexError("`blk[]` cannot take more than one index.")
@@ -205,13 +184,16 @@ class Block:
             return len(self._seg)
 
     def __contains__(self, n):
+
+        n = check_return_int(n, "n")
+
         startn = self.startn()
         return startn <= n < startn + len(self)
 
     def __hash__(self):
         raise TypeError(
             f"The type `{self.__class__.__name__}` is not hashable. Please instead hash " +
-            f"`(blk.info(), blk.startn_(), len(blk))`."
+            f"`(blk.apri(), blk.startn_(), len(blk))`."
         )
 
     def __str__(self):
@@ -249,7 +231,13 @@ class ReleaseBlock(Block, ABC):
     def release(self):
         """Release resources associated with this `Block`."""
 
-class MemmapBlock (ReleaseBlock):
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
+
+class MemmapBlock(ReleaseBlock):
 
     def __init__(self, segment, apri, startn = 0):
 
@@ -268,8 +256,13 @@ class MemmapBlock (ReleaseBlock):
 
         try:
 
-            if sys.getrefcount(self._seg) != 2:
-                raise RuntimeError("Couldn't close the `memmap` handle.")
+            refcount = sys.getrefcount(self._seg)
+
+            if refcount != 2:
+                raise RuntimeError(
+                    f"Couldn't close the `memmap` handle because {refcount - 1} total references (there can only "
+                    "be 1)."
+                )
 
             del self._seg
 
