@@ -17,6 +17,8 @@ NOT_ABSOLUTE_ERROR_MESSAGE = (
     "The path `{0}` is not absolute."
 )
 
+class BlockNotOpenError(RuntimeError):pass
+
 class RegisterError(RuntimeError):pass
 
 class RegisterRecoveryError(RegisterError):pass

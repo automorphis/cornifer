@@ -12,15 +12,16 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
-import sys
+
 import warnings
 from abc import ABC, abstractmethod
+from contextlib import contextmanager, ExitStack, AbstractContextManager
 
 import numpy as np
 
+from .errors import BlockNotOpenError
 from .info import ApriInfo
 from ._utilities import check_has_method, justify_slice, is_int, check_type, check_return_int
-
 
 class Block:
 
@@ -32,33 +33,36 @@ class Block:
         if startn < 0:
             raise ValueError("`startn` must be non-negative.")
 
-        self._custom_dtype = False
+        self.segment_type = type(segment)
+        self._custom_type = not issubclass(self.segment_type, (list, np.ndarray))
 
-        if isinstance(segment, list):
-            self._dtype = "list"
-
-        elif isinstance(segment, np.ndarray):
-            self._dtype = "ndarray"
-
-        elif not check_has_method(segment, "__len__"):
+        if not check_has_method(segment, "__len__"):
             raise ValueError(
                 f"`len(segment)` must be defined. Please define the method `__len__` for the type " +
                 f"`{segment.__class__.__name__}`."
             )
 
-        else:
-
-            self._dtype = str(type(segment))
-            self._custom_dtype = True
-
         self._startn = startn
         self._apri = apri
         self._seg = segment
         self._seg_ndarray = None
+        self._entered = False
+
+    def _check_entered_raise(self, method_name):
+
+        if not self._entered:
+            raise BlockNotOpenError(f"You must do `with blk:` before you call `blk.{method_name}()`.")
+
+    @classmethod
+    def cast(cls, obj):
+
+        check_type(obj, "obj", Block)
+
+        return cls(obj._seg, obj._apri, obj._startn)
 
     def _check_and_warn_custom_get_ndarray(self, method_name):
 
-        if self._custom_dtype and not self._seg_ndarray and not check_has_method(self._seg, method_name):
+        if self._custom_type and self._seg_ndarray is None and not check_has_method(self._seg, method_name):
 
             try:
                 self._seg_ndarray = self._seg.get_ndarray()
@@ -82,6 +86,9 @@ class Block:
             return True
 
     def segment(self):
+
+        self._check_entered_raise("segment")
+
         return self._seg
 
     def apri(self):
@@ -101,6 +108,8 @@ class Block:
 
     def subdivide(self, subinterval_len):
 
+        self._check_entered_raise("subdivide")
+
         subinterval_len = check_return_int(subinterval_len, "subinterval_len")
 
         if subinterval_len <= 1:
@@ -114,44 +123,54 @@ class Block:
 
     def __getitem__(self, item):
 
+        self._check_entered_raise("__getitem__")
+
         if isinstance(item, tuple):
             raise IndexError("`blk[]` cannot take more than one index.")
 
         is_slice = isinstance(item, slice)
 
-        if not is_slice and not is_int(item):
+        if not is_int(item) and not is_slice:
             raise TypeError("`item` must be either of type `int` or `slice`.")
 
-        if not is_slice:
+        elif not is_slice:
             item = int(item)
 
-        apri = self.apri()
-        startn = self.startn()
-        length = len(self)
+        if isinstance(item, slice):
 
-        if is_slice:
-            item = justify_slice(item, startn, startn + length - 1)
+            item = justify_slice(item, self.startn(), self.startn() + len(self) - 1)
+
+            if not self._check_and_warn_custom_get_ndarray("__getitem__"):
+                return self._seg_ndarray[item, ...]
+
+            elif issubclass(self.segment_type, np.ndarray):
+                return self._seg[item, ...]
+
+            else:
+                return self._seg[item]
 
         else:
-
-            item = int(item)
 
             if item not in self:
                 raise IndexError(
-                    f"Indices must be between {self.startn()} and {self.startn() + len(self) - 1}" +
-                    ", inclusive."
+                    f"Indices must be between {self.startn()} and {self.startn() + len(self) - 1}, "
+                    "inclusive."
                 )
 
-        if not self._check_and_warn_custom_get_ndarray("__getitem__"):
-            return Block(self._seg_ndarray[item, ...], apri, startn)
+            item -= self.startn()
 
-        elif self._dtype == "ndarray":
-            return Block(self._seg[item, ...], apri, startn)
+            if not self._check_and_warn_custom_get_ndarray("__getitem__"):
+                return self._seg_ndarray[item]
 
-        else:
-            return Block(self._seg[item], apri, startn)
+            elif issubclass(self.segment_type, np.ndarray):
+                return self._seg[item, ...]
+
+            else:
+                return self._seg[item]
 
     def __setitem__(self, key, value):
+
+        self._check_entered_raise("__setitem__")
 
         if isinstance(key, slice):
             raise NotImplementedError("Support for slices coming soon.")
@@ -177,11 +196,8 @@ class Block:
 
     def __len__(self):
 
-        if self._dtype == "ndarray":
-            return self._seg.shape[0]
-
-        else:
-            return len(self._seg)
+        self._check_entered_raise("__len__")
+        return len(self._seg)
 
     def __contains__(self, n):
 
@@ -197,8 +213,9 @@ class Block:
         )
 
     def __str__(self):
+        
         ret = self.__class__.__name__ + "("
-        ret += f"<{self._dtype}>:{len(self)}, "
+        ret += f"<{self.segment_type}>:{len(self)}, "
         ret += repr(self._apri) + ", "
         ret += str(self._startn) + ")"
         return ret
@@ -208,8 +225,10 @@ class Block:
 
     def __eq__(self, other):
 
+        self._check_entered_raise("__eq__")
+
         if (
-            type(self) != type(other) or self._dtype != other._dtype or
+            type(self) != type(other) or self.segment_type != other.segment_type or
             self.apri() != other.apri() or self.startn() != other.startn() or
             len(self) != len(other)
         ):
@@ -219,23 +238,32 @@ class Block:
             other._check_and_warn_custom_get_ndarray("__eq__")
             return np.all(self._seg_ndarray == other._seg_ndarray)
 
-        elif self._dtype == "ndarray":
+        elif issubclass(self.segment_type, np.ndarray):
             return np.all(self._seg == other._seg)
 
         else:
             return self._seg == other._seg
 
+    def __enter__(self):
+
+        self._entered = True
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        self._entered = False
+
 class ReleaseBlock(Block, ABC):
 
     @abstractmethod
-    def release(self):
+    def _release(self):
         """Release resources associated with this `Block`."""
 
-    def __enter__(self):
-        pass
-
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.release()
+
+        self._release()
+        super().__exit__(exc_type, exc_val, exc_tb)
+
 
 class MemmapBlock(ReleaseBlock):
 
@@ -244,26 +272,47 @@ class MemmapBlock(ReleaseBlock):
         if not isinstance(segment, np.memmap):
             raise TypeError("`segment` must be of type `np.memmap`.")
 
+        self._filepath = segment.filename
+        self._dtype = segment.dtype
+        self._mode = segment.mode
+        self._offset = segment.offset
+        self._shape = segment.shape
+
         super().__init__(segment, apri, startn)
 
-    def release(self):
-        """Close NumPy `memmap` handle.
+    def __enter__(self):
 
-        This method won't always work because NumPy doesn't provide an API for closing memmap handles. This works by
-        deleting the `self._seg` reference and hoping that the garbage collector will close it. This method definitely
-        will not work if there are references to `self._seg` outside of this instance.
+        if not hasattr(self, "_seg"):
+            self._seg = np.memmap(self._filepath, self._dtype, self._mode, self._offset, self._shape)
+
+        return super().__enter__()
+
+    def _release(self):
+        """Attempt to release NumPy memmap resources.
+
+        This method simply deletes the `_seg` attribute of this `Block`. If no references to the data that `seg`
+        point(ed) to remain anywhere in the runtime, then the garbage collector will free the memmap resources.
+        NumPy provides no interface for manually freeing memmap resources, so this is the best we can do.
+
+        The following possibilities are NOT mutually exclusive:
+            - The user is following correct cornifer coding practice.
+            - One or more references to the data that `_seg` point(ed) to remain after this method returns.
+
+        Consider the following snippet:
+
+            a = np.memmap(...)           # 1 reference  (a)
+            blk1 = MemmapBlock(a, apri)  # 2 referneces (a, blk1._seg)
+            with blk1:
+                with blk1[1:] as blk2:   # 3 references (a, blk1._seg, blk2._seg)
+                    ...
+                ...                      # 2 references (a, blk1._seg)
+            ...                          # 1 reference  (a)
+
+        Indeed, the reference to the `a` memmap will remain until the user manually deletes the reference via
+        `del a`.
         """
 
         try:
-
-            refcount = sys.getrefcount(self._seg)
-
-            if refcount != 2:
-                raise RuntimeError(
-                    f"Couldn't close the `memmap` handle because {refcount - 1} total references (there can only "
-                    "be 1)."
-                )
-
             del self._seg
 
         except AttributeError:
@@ -276,7 +325,7 @@ class MemmapBlock(ReleaseBlock):
 
         filename = self._seg.filename
         self._seg.flush()
-        self.release()
+        self._release()
         self._seg = np.memmap(filename, mode = mode)
 
 

@@ -8,7 +8,7 @@ from unittest import TestCase
 import cornifer
 import numpy as np
 
-from cornifer import NumpyRegister, Register, Block, load
+from cornifer import NumpyRegister, Register, Block, load, open_blks, open_regs
 from cornifer.info import ApriInfo, AposInfo
 from cornifer._utilities import random_unique_filename
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
@@ -156,7 +156,9 @@ class Testy_Register2(Register):
     def clean_disk_data(cls, filename, **kwargs):pass
 
 def data(blk):
-    return blk.apri(), blk.startn(), len(blk)
+
+    with blk:
+        return blk.apri(), blk.startn(), len(blk)
 
 class Test_Register(TestCase):
 
@@ -166,8 +168,10 @@ class Test_Register(TestCase):
         SAVES_DIR.mkdir()
 
     def tearDown(self):
+
         if SAVES_DIR.is_dir():
             shutil.rmtree(SAVES_DIR)
+
         Register._instances.clear()
 
     def test___init__(self):
@@ -362,79 +366,71 @@ class Test_Register(TestCase):
 
         reg = Testy_Register(SAVES_DIR, "sh", "msg")
         blk1 = Block([], ApriInfo(name ="tests"))
-
-        with reg.open() as reg:
-            reg.add_ram_blk(blk1)
-
-        self.assertEqual(
-            1,
-            len(reg._ram_blks)
-        )
-
-        self.assertEqual(
-            1,
-            len(reg._ram_blks[ApriInfo(name ="tests")])
-        )
-
         blk2 = Block([], ApriInfo(name = "testy"))
+        blk3 = Block([], ApriInfo(name="testy"))
+        blk4 = Block([1], ApriInfo(name="testy"))
 
         with reg.open() as reg:
-            reg.add_ram_blk(blk2)
 
-        self.assertEqual(
-            2,
-            len(reg._ram_blks)
-        )
+            with blk1:
 
-        self.assertEqual(
-            1,
-            len(reg._ram_blks[ApriInfo(name ="tests")])
-        )
+                reg.add_ram_blk(blk1)
+                self.assertEqual(
+                    1,
+                    len(reg._ram_blks)
+                )
+                self.assertEqual(
+                    1,
+                    len(reg._ram_blks[ApriInfo(name ="tests")])
+                )
 
-        self.assertEqual(
-            1,
-            len(reg._ram_blks[ApriInfo(name ="testy")])
-        )
+                with blk2:
 
-        blk3 = Block([], ApriInfo(name = "testy"))
+                    reg.add_ram_blk(blk2)
+                    self.assertEqual(
+                        2,
+                        len(reg._ram_blks)
+                    )
+                    self.assertEqual(
+                        1,
+                        len(reg._ram_blks[ApriInfo(name ="tests")])
+                    )
+                    self.assertEqual(
+                        1,
+                        len(reg._ram_blks[ApriInfo(name ="testy")])
+                    )
 
-        with reg.open() as reg:
-            reg.add_ram_blk(blk3)
+                    with blk3:
 
-        self.assertEqual(
-            2,
-            len(reg._ram_blks)
-        )
+                        reg.add_ram_blk(blk3)
+                        self.assertEqual(
+                            2,
+                            len(reg._ram_blks)
+                        )
+                        self.assertEqual(
+                            1,
+                            len(reg._ram_blks[ApriInfo(name="tests")])
+                        )
+                        self.assertEqual(
+                            2,
+                            len(reg._ram_blks[ApriInfo(name="testy")])
+                        )
 
-        self.assertEqual(
-            1,
-            len(reg._ram_blks[ApriInfo(name="tests")])
-        )
+                        with blk4:
 
-        self.assertEqual(
-            2,
-            len(reg._ram_blks[ApriInfo(name="testy")])
-        )
-
-        blk4 = Block([1], ApriInfo(name ="testy"))
-
-        with reg.open() as reg:
-            reg.add_ram_blk(blk4)
-
-        self.assertEqual(
-            2,
-            len(reg._ram_blks)
-        )
-
-        self.assertEqual(
-            1,
-            len(reg._ram_blks[ApriInfo(name="tests")])
-        )
-
-        self.assertEqual(
-            3,
-            len(reg._ram_blks[ApriInfo(name="testy")])
-        )
+                            reg.add_ram_blk(blk4)
+                            self.assertEqual(
+                                2,
+                                len(reg._ram_blks)
+                            )
+                            self.assertEqual(
+                                1,
+                                len(reg._ram_blks[ApriInfo(name="tests")])
+                            )
+                            self.assertEqual(
+                                3,
+                                len(reg._ram_blks[ApriInfo(name="testy")])
+                            )
 
     def test_open_uncreated(self):
 
@@ -483,38 +479,43 @@ class Test_Register(TestCase):
 
         with reg.open() as reg:
 
-            reg.add_ram_blk(blk1)
-            reg.rmv_ram_blk(blk1)
-            self.assertEqual(
-                0,
-                len(reg._ram_blks)
-            )
+            with blk1:
 
-            reg.add_ram_blk(blk1)
-            reg.rmv_ram_blk(blk1)
-            self.assertEqual(
-                0,
-                len(reg._ram_blks)
-            )
+                reg.add_ram_blk(blk1)
+                reg.rmv_ram_blk(blk1)
+                self.assertEqual(
+                    0,
+                    len(reg._ram_blks)
+                )
 
-            reg.add_ram_blk(blk1)
-            blk2 = Block([], ApriInfo(name ="name2"))
-            reg.add_ram_blk(blk2)
-            reg.rmv_ram_blk(blk1)
-            self.assertEqual(
-                1,
-                len(reg._ram_blks)
-            )
-            self.assertIs(
-                blk2,
-                reg._ram_blks[blk2.apri()][0]
-            )
+                reg.add_ram_blk(blk1)
+                reg.rmv_ram_blk(blk1)
+                self.assertEqual(
+                    0,
+                    len(reg._ram_blks)
+                )
 
-            reg.rmv_ram_blk(blk2)
-            self.assertEqual(
-                0,
-                len(reg._ram_blks)
-            )
+                reg.add_ram_blk(blk1)
+                blk2 = Block([], ApriInfo(name ="name2"))
+
+                with blk2:
+
+                    reg.add_ram_blk(blk2)
+                    reg.rmv_ram_blk(blk1)
+                    self.assertEqual(
+                        1,
+                        len(reg._ram_blks)
+                    )
+                    self.assertIs(
+                        blk2,
+                        reg._ram_blks[blk2.apri()][0]
+                    )
+
+                    reg.rmv_ram_blk(blk2)
+                    self.assertEqual(
+                        0,
+                        len(reg._ram_blks)
+                    )
 
     def test___hash___created(self):
 
@@ -738,28 +739,40 @@ class Test_Register(TestCase):
 
         reg = Testy_Register(SAVES_DIR, "sh", "sup")
         blk = Block([], ApriInfo(name ="hi"))
+
         with self.assertRaisesRegex(RegisterError, "open.*add_disk_blk"):
-            reg.add_disk_blk(blk)
 
-        reg = Testy_Register(SAVES_DIR, "sh", "hello")
-        blk = Block([], ApriInfo(name ="hi"), 10 ** 50)
-        with reg.open() as reg:
-            with self.assertRaisesRegex(IndexError, "correct head"):
+            with blk:
                 reg.add_disk_blk(blk)
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
-        too_large = reg._startn_tail_mod
-        blk = Block([], ApriInfo(name ="hi"), too_large)
         with reg.open() as reg:
+
             with self.assertRaisesRegex(IndexError, "correct head"):
-                reg.add_disk_blk(blk)
+
+                with Block([], ApriInfo(name ="hi"), 10 ** 50) as blk:
+                    reg.add_disk_blk(blk)
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
         too_large = reg._startn_tail_mod
-        blk = Block([], ApriInfo(name ="hi"), too_large - 1)
+
         with reg.open() as reg:
+
+            with self.assertRaisesRegex(IndexError, "correct head"):
+
+                with Block([], ApriInfo(name ="hi"), too_large) as blk:
+                    reg.add_disk_blk(blk)
+
+        reg = Testy_Register(SAVES_DIR, "sh", "hello")
+        too_large = reg._startn_tail_mod
+
+        with reg.open() as reg:
+
             try:
-                reg.add_disk_blk(blk)
+
+                with Block([], ApriInfo(name ="hi"), too_large - 1) as blk:
+                    reg.add_disk_blk(blk)
+
             except IndexError:
                 self.fail("index is not too large")
 
@@ -770,9 +783,12 @@ class Test_Register(TestCase):
         blk4 = Block([], ApriInfo(name ="hello"))
         blk5 = Block([], ApriInfo(sir ="hey", maam ="hi"))
         blk6 = Block([], ApriInfo(maam="hi", sir ="hey"))
+
         with reg.open() as reg:
 
-            reg.add_disk_blk(blk1)
+            with blk1:
+                reg.add_disk_blk(blk1)
+
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
@@ -786,7 +802,9 @@ class Test_Register(TestCase):
                 lmdb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
 
-            reg.add_disk_blk(blk2)
+            with blk2:
+                reg.add_disk_blk(blk2)
+
             self.assertEqual(
                 2,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
@@ -800,7 +818,9 @@ class Test_Register(TestCase):
                 lmdb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
 
-            reg.add_disk_blk(blk3)
+            with blk3:
+                reg.add_disk_blk(blk3)
+
             self.assertEqual(
                 3,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
@@ -816,35 +836,44 @@ class Test_Register(TestCase):
 
             try:
                 with self.assertRaisesRegex(RegisterError, "[dD]uplicate"):
-                    reg.add_disk_blk(blk4)
+
+                    with blk4:
+                        reg.add_disk_blk(blk4)
 
             except AssertionError:
                 raise
 
-            reg.add_disk_blk(blk5)
+            with blk5:
+                reg.add_disk_blk(blk5)
 
             with self.assertRaisesRegex(RegisterError, "[dD]uplicate"):
-                reg.add_disk_blk(blk6)
+
+                with blk6:
+                    reg.add_disk_blk(blk6)
 
         with self.assertRaisesRegex(RegisterError, "read-only"):
+
             with reg.open(readonly= True) as reg:
-                reg.add_disk_blk(blk)
+
+                with blk:
+                    reg.add_disk_blk(blk)
 
         reg = NumpyRegister(SAVES_DIR, "sh", "no")
 
         with reg.open() as reg:
 
-            reg.add_disk_blk(Block(np.arange(30), ApriInfo(maybe ="maybe")))
+            with Block(np.arange(30), ApriInfo(maybe ="maybe")) as blk:
+                reg.add_disk_blk(blk)
 
             for debug in [1,2,3,4,5,6,7,8,9,10]:
 
                 apri = ApriInfo(none ="all")
-                blk = Block(np.arange(14), apri, 0)
-
                 cornifer.registers._debug = debug
 
                 with self.assertRaises(KeyboardInterrupt):
-                    reg.add_disk_blk(blk)
+
+                    with Block(np.arange(14), apri, 0) as blk:
+                        reg.add_disk_blk(blk)
 
                 cornifer.registers._debug = _NO_DEBUG
 
@@ -879,13 +908,18 @@ class Test_Register(TestCase):
                 except AssertionError:
                     raise
 
-                self.assertTrue(np.all(
-                    np.arange(30) ==
-                    reg.blk(ApriInfo(maybe="maybe"), 0, 30).segment()
-                ))
+                blk = reg.blk(ApriInfo(maybe="maybe"), 0, 30)
+
+                with blk as blk:
+                    self.assertTrue(np.all(
+                        np.arange(30) ==
+                        blk.segment()
+                    ))
 
                 with self.assertRaises(DataNotFoundError):
-                    reg.blk(ApriInfo(none="all"), 0, 14)
+
+                    with reg.blk(ApriInfo(none="all"), 0, 14) as blk:
+                        pass
 
     def test__get_apri_json_by_id(self):
 
@@ -913,10 +947,12 @@ class Test_Register(TestCase):
     def test_apri_infos_no_recursive(self):
 
         reg = Testy_Register(SAVES_DIR, "sh", "msg")
+
         with self.assertRaisesRegex(RegisterError, "apris"):
             reg.apris()
 
         reg = Testy_Register(SAVES_DIR, "sh", "msg")
+
         with reg.open() as reg:
 
             apri1 = ApriInfo(name ="hello")
@@ -931,8 +967,9 @@ class Test_Register(TestCase):
             )
 
             apri2 = ApriInfo(name ="hey")
-            blk = Block([], apri2)
-            reg.add_ram_blk(blk)
+
+            with Block([], apri2) as blk:
+                reg.add_ram_blk(blk)
 
             self.assertEqual(
                 2,
@@ -1003,13 +1040,19 @@ class Test_Register(TestCase):
     def test__convert_disk_block_key_no_head(self):
 
         reg = Testy_Register(SAVES_DIR, "sh", "sup")
+
         with reg.open() as reg:
 
             apri1 = ApriInfo(name ="hey")
             blk1 = Block([], apri1)
-            reg.add_disk_blk(blk1)
+
+            with blk1:
+                reg.add_disk_blk(blk1)
+
             with lmdb_prefix_iter(reg._db, _BLK_KEY_PREFIX) as it:
+
                 for curr_key,_ in it: pass
+
             self.assertEqual(
                 (apri1, 0, 0),
                 reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, curr_key)
@@ -1021,11 +1064,17 @@ class Test_Register(TestCase):
             old_keys = {curr_key}
 
             blk2 = Block(list(range(10)), apri1)
-            reg.add_disk_blk(blk2)
+
+            with blk2:
+                reg.add_disk_blk(blk2)
+
             with lmdb_prefix_iter(reg._db, _BLK_KEY_PREFIX) as it:
+
                 for key,_val in it:
+
                     if key not in old_keys:
                         curr_key = key
+
             self.assertEqual(
                 (apri1, 0, 10),
                 reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, curr_key)
@@ -1034,23 +1083,34 @@ class Test_Register(TestCase):
 
             apri2 = ApriInfo(name ="hello")
             blk3 = Block(list(range(100)), apri2, 10)
-            reg.add_disk_blk(blk3)
+
+            with blk3:
+                reg.add_disk_blk(blk3)
+
             with lmdb_prefix_iter(reg._db, _BLK_KEY_PREFIX) as it:
+
                 for key,_val in it:
+
                     if key not in old_keys:
                         curr_key = key
+
             self.assertEqual(
                 (apri2, 10, 100),
                 reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, curr_key)
             )
             old_keys.add(curr_key)
-
             blk4 = Block(list(range(100)), apri2)
-            reg.add_disk_blk(blk4)
+
+            with blk4:
+                reg.add_disk_blk(blk4)
+
             with lmdb_prefix_iter(reg._db, _BLK_KEY_PREFIX) as it:
+
                 for key,_val in it:
+
                     if key not in old_keys:
                         curr_key = key
+
             self.assertEqual(
                 (apri2, 0, 100),
                 reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, curr_key)
@@ -1100,46 +1160,60 @@ class Test_Register(TestCase):
     def test_set_start_n_info(self):
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
+
         with self.assertRaisesRegex(RegisterError, "set_startn_info"):
             reg.set_startn_info(10, 3)
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
+
         with reg.open() as reg:
+
             with self.assertRaisesRegex(TypeError, "int"):
                 reg.set_startn_info(10, 3.5)
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
+
         with reg.open() as reg:
+
             with self.assertRaisesRegex(TypeError, "int"):
                 reg.set_startn_info(10.5, 3)
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
+
         with reg.open() as reg:
+
             with self.assertRaisesRegex(ValueError, "non-negative"):
                 reg.set_startn_info(-1, 3)
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
+
         with reg.open() as reg:
+
             try:
                 reg.set_startn_info(0, 3)
+
             except ValueError:
                 self.fail("head can be 0")
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
+
         with reg.open() as reg:
+
             with self.assertRaisesRegex(ValueError, "positive"):
                 reg.set_startn_info(0, -1)
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
+
         with reg.open() as reg:
+
             with self.assertRaisesRegex(ValueError, "positive"):
                 reg.set_startn_info(0, 0)
 
 
         for head, tail_length in product([0, 1, 10, 100, 1100, 450], [1,2,3,4,5]):
-
             # check set works
             reg = Testy_Register(SAVES_DIR, "sh",  "hello")
+
             with reg.open() as reg:
 
                 try:
@@ -1149,32 +1223,38 @@ class Test_Register(TestCase):
                     self.fail(f"head = {head}, tail_length = {tail_length} are okay")
 
                 with reg._db.begin() as txn:
+
                     self.assertEqual(
                         str(head).encode("ASCII"),
                         txn.get(_START_N_HEAD_KEY)
                     )
-
                     self.assertEqual(
                         str(tail_length).encode("ASCII"),
                         txn.get(_START_N_TAIL_LENGTH_KEY)
                     )
-
             # check read-only mode doesn't work
             with reg.open(readonly= True) as reg:
+
                 with self.assertRaisesRegex(RegisterError, "read-only"):
                     reg.set_startn_info(head, tail_length)
 
             # tests make sure ValueError is thrown for small smart_n
             # 0 and head * 10 ** tail_len - 1 are the two possible extremes of the small start_n
             if head > 0:
+
                 for start_n in [0, head * 10 ** tail_length - 1]:
+
                     reg = Testy_Register(SAVES_DIR, "sh",  "hello")
+
                     with reg.open() as reg:
+
                             blk = Block([], ApriInfo(name ="hi"), start_n)
-                            reg.add_disk_blk(blk)
+
+                            with blk:
+                                reg.add_disk_blk(blk)
+
                             with self.assertRaisesRegex(ValueError, "correct head"):
                                 reg.set_startn_info(head, tail_length)
-
                             # make sure it exits safely
                             self.check_reg_set_start_n_info(
                                 reg,
@@ -1184,12 +1264,18 @@ class Test_Register(TestCase):
             # tests to make sure a few permissible start_n work
             smallest = head * 10 ** tail_length
             largest = smallest + 10 ** tail_length  - 1
+
             for start_n in [smallest, smallest + 1, smallest + 2, largest -2, largest -1, largest]:
+
                 reg = Testy_Register(SAVES_DIR, "sh",  "hello")
                 apri = ApriInfo(name="hi")
+
                 with reg.open() as reg:
+
                     blk = Block([], apri,start_n)
-                    reg.add_disk_blk(blk)
+
+                    with blk:
+                        reg.add_disk_blk(blk)
 
                     for debug in [0, 1, 2]:
 
@@ -1217,17 +1303,21 @@ class Test_Register(TestCase):
                             reg, curr_key,
                             apri, start_n, 0
                         )
-
             # tests to make sure `largest + 1` etc do not work
             for start_n in [largest + 1, largest + 10, largest + 100, largest + 1000]:
+
                 reg = Testy_Register(SAVES_DIR, "sh",  "hello")
                 apri = ApriInfo(name="hi")
+
                 with reg.open() as reg:
+
                     blk = Block([], apri, start_n)
-                    reg.add_disk_blk(blk)
+
+                    with blk:
+                        reg.add_disk_blk(blk)
+
                     with self.assertRaisesRegex(ValueError, "correct head"):
                         reg.set_startn_info(head, tail_length)
-
                     # make sure it exits safely
                     self.check_reg_set_start_n_info(
                         reg,
@@ -1267,58 +1357,83 @@ class Test_Register(TestCase):
     def test__iter_disk_block_pairs(self):
 
         reg = Testy_Register(SAVES_DIR, "sh",  "HI")
+
         with reg.open() as reg:
-            apri1 = ApriInfo(name ="abc")
-            apri2 = ApriInfo(name ="xyz")
+
+            apri1 = ApriInfo(name = "abc")
             blk1 = Block(list(range(50)), apri1, 0)
             blk2 = Block(list(range(50)), apri1, 50)
-            blk3 = Block(list(range(500)), apri2, 1000)
 
-            reg.add_disk_blk(blk1)
+            with blk1:
+                reg.add_disk_blk(blk1)
+
             total = 0
+
             for i, t in chain(
                 enumerate(reg._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri1, None)),
                 enumerate(reg._iter_disk_blk_pairs(_BLK_KEY_PREFIX, None, apri1.to_json().encode("ASCII")))
             ):
+
                 total += 1
+
                 if i == 0:
+
                     t = reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, t[0], apri1)
                     self.check__iter_disk_block_pairs(t, apri1, 0, 50)
+
                 else:
                     self.fail()
+
             if total != 2:
                 self.fail(str(total))
 
-            reg.add_disk_blk(blk2)
+            with blk2:
+                reg.add_disk_blk(blk2)
+
             total = 0
+
             for i, t in chain(
                 enumerate(reg._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri1, None)),
                 enumerate(reg._iter_disk_blk_pairs(_BLK_KEY_PREFIX, None, apri1.to_json().encode("ASCII")))
             ):
+
                 total += 1
+
                 if i == 0:
+
                     t = reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, t[0], apri1)
                     self.check__iter_disk_block_pairs(t, apri1, 0, 50)
+
                 elif i == 1:
+
                     t = reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, t[0], apri1)
                     self.check__iter_disk_block_pairs(t, apri1, 50, 50)
+
                 else:
                     self.fail()
+
             if total != 4:
                 self.fail(str(total))
 
             total = 0
+
             for i, t in chain(
                 enumerate(reg._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri1, None)),
                 enumerate(reg._iter_disk_blk_pairs(_BLK_KEY_PREFIX, None, apri1.to_json().encode("ASCII")))
             ):
+
                 total += 1
+
                 if i == 0:
+
                     t = reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, t[0], apri1)
                     self.check__iter_disk_block_pairs(t, apri1, 0, 50)
+
                 elif i == 1:
+
                     t = reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, t[0], apri1)
                     self.check__iter_disk_block_pairs(t, apri1, 50, 50)
+
                 else:
                     self.fail()
 
@@ -1449,17 +1564,22 @@ class Test_Register(TestCase):
         with reg1.open() as reg1:
 
             apri1 = ApriInfo(name ="fooopy doooopy")
-            blk1 = Block(list(range(50)), apri1)
-            reg1.add_disk_blk(blk1)
-            self._remove_disk_block_helper(reg1, [(apri1, 0, 50)])
 
+            with Block(list(range(50)), apri1) as blk1:
+                reg1.add_disk_blk(blk1)
+
+            self._remove_disk_block_helper(reg1, [(apri1, 0, 50)])
             reg1.rmv_disk_blk(apri1, 0, 50)
             self._remove_disk_block_helper(reg1, [])
 
-            reg1.add_disk_blk(blk1)
+            with blk1:
+                reg1.add_disk_blk(blk1)
+
             apri2 = ApriInfo(name ="fooopy doooopy2")
-            blk2 = Block(list(range(100)), apri2, 1000)
-            reg1.add_disk_blk(blk2)
+
+            with Block(list(range(100)), apri2, 1000) as blk2:
+                reg1.add_disk_blk(blk2)
+
             self._remove_disk_block_helper(reg1, [(apri1, 0, 50), (apri2, 1000, 100)])
 
             reg1.rmv_disk_blk(apri2, 1000, 100)
@@ -1476,15 +1596,17 @@ class Test_Register(TestCase):
         reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg2 = Testy_Register(SAVES_DIR, "sh",  "sup")
         apri = ApriInfo(name ="hi")
-        blk = Block([], apri)
+
+        with Block([], apri) as blk:
+
+            with reg1.open() as reg1:
+                reg1.add_disk_blk(blk)
+
+            with reg2.open() as reg2:
+                reg2.add_disk_blk(blk)
 
         with reg1.open() as reg1:
-            reg1.add_disk_blk(blk)
 
-        with reg2.open() as reg2:
-            reg2.add_disk_blk(blk)
-
-        with reg1.open() as reg1:
             reg1.rmv_disk_blk(apri, 0, 0)
             self._remove_disk_block_helper(reg1, [])
 
@@ -1496,14 +1618,14 @@ class Test_Register(TestCase):
         with reg.open() as reg:
 
             apri = ApriInfo(no ="yes")
-            blk = Block(np.arange(14), apri)
 
-            reg.add_disk_blk(blk)
+            with Block(np.arange(14), apri) as blk:
+                reg.add_disk_blk(blk)
 
             apri = ApriInfo(maybe ="maybe")
-            blk = Block(np.arange(20), apri)
 
-            reg.add_disk_blk(blk)
+            with Block(np.arange(20), apri) as blk:
+                reg.add_disk_blk(blk)
 
             for compress in range(2):
 
@@ -1513,15 +1635,14 @@ class Test_Register(TestCase):
                         continue
 
                     if compress == 1:
-                        reg.compress(blk.apri(), blk.startn(), len(blk))
+
+                        with blk:
+                            reg.compress(blk.apri(), blk.startn(), len(blk))
 
                     cornifer.registers._debug = debug
 
-                    try:
-                        with self.assertRaises(KeyboardInterrupt):
-                            reg.rmv_disk_blk(ApriInfo(maybe ="maybe"), 0, 20)
-                    except (RegisterRecoveryError, AssertionError):
-                        raise
+                    with self.assertRaises(KeyboardInterrupt):
+                        reg.rmv_disk_blk(ApriInfo(maybe ="maybe"), 0, 20)
 
                     cornifer.registers._debug = _NO_DEBUG
 
@@ -1554,17 +1675,21 @@ class Test_Register(TestCase):
                         raise
 
                     if compress == 1:
-                        reg.decompress(blk.apri(), blk.startn(), len(blk))
 
-                    self.assertTrue(np.all(
-                        np.arange(14) ==
-                        reg.blk(ApriInfo(no="yes"), 0, 14).segment()
-                    ))
+                        with blk:
+                            reg.decompress(blk.apri(), blk.startn(), len(blk))
 
-                    self.assertTrue(np.all(
-                        np.arange(20) ==
-                        reg.blk(ApriInfo(maybe="maybe"), 0, 20).segment()
-                    ))
+                    with reg.blk(ApriInfo(no="yes"), 0, 14) as blk:
+                        self.assertTrue(np.all(
+                            np.arange(14) ==
+                            blk.segment()
+                        ))
+
+                    with reg.blk(ApriInfo(maybe="maybe"), 0, 20) as blk:
+                        self.assertTrue(np.all(
+                            np.arange(20) ==
+                            blk.segment()
+                        ))
 
     def test_set_apos_info(self):
 
@@ -1752,84 +1877,118 @@ class Test_Register(TestCase):
     def test_disk_blocks_no_recursive(self):
 
         reg = NumpyRegister(SAVES_DIR, "sh", "HI")
+
         with reg.open() as reg:
+
             apri1 = ApriInfo(name ="abc")
             apri2 = ApriInfo(name ="xyz")
             blk1 = Block(np.arange(50), apri1, 0)
             blk2 = Block(np.arange(50), apri1, 50)
             blk3 = Block(np.arange(500), apri2, 1000)
 
-            reg.add_disk_blk(blk1)
-            total = 0
-            for i, blk in enumerate(reg.blks(apri1)):
-                total += 1
-                if i == 0:
-                    self.assertEqual(
-                        blk1,
-                        blk
-                    )
-                else:
-                    self.fail()
+            with blk1:
+
+                reg.add_disk_blk(blk1)
+                total = 0
+
+                for i, blk in enumerate(reg.blks(apri1)):
+
+                    total += 1
+
+                    if i == 0:
+
+                        self.assertEqual(
+                            blk1,
+                            blk
+                        )
+
+                    else:
+                        self.fail()
+
             self.assertEqual(
                 1,
                 total
             )
 
-            reg.add_disk_blk(blk2)
-            total = 0
-            for i, blk in enumerate(reg.blks(apri1)):
-                total += 1
-                if i == 0:
-                    self.assertEqual(
-                        blk1,
-                        blk
-                    )
-                elif i == 1:
-                    self.assertEqual(
-                        blk2,
-                        blk
-                    )
-                else:
-                    self.fail()
+            with open_blks(blk1, blk2):
+
+                reg.add_disk_blk(blk2)
+                total = 0
+
+                for i, blk in enumerate(reg.blks(apri1)):
+
+                    total += 1
+
+                    if i == 0:
+
+                        self.assertEqual(
+                            blk1,
+                            blk
+                        )
+
+                    elif i == 1:
+                        self.assertEqual(
+                            blk2,
+                            blk
+                        )
+
+                    else:
+                        self.fail()
+
             self.assertEqual(
                 2,
                 total
             )
 
-            reg.add_disk_blk(blk3)
-            total = 0
-            for i, blk in enumerate(reg.blks(apri1)):
-                total += 1
-                if i == 0:
-                    self.assertEqual(
-                        blk1,
-                        blk
-                    )
-                elif i == 1:
-                    self.assertEqual(
-                        blk2,
-                        blk
-                    )
-                else:
-                    self.fail()
-            self.assertEqual(
-                2,
-                total
-            )
-            total = 0
-            for i,blk in enumerate(reg.blks(apri2)):
-                total += 1
-                if i == 0:
-                    self.assertEqual(
-                        blk3,
-                        blk
-                    )
-                else:
-                    self.fail()
-            self.assertEqual(
-                1,
-                total
-            )
+            with open_blks(blk1, blk2, blk3):
+
+                reg.add_disk_blk(blk3)
+                total = 0
+
+                for i, blk in enumerate(reg.blks(apri1)):
+
+                    total += 1
+
+                    if i == 0:
+                        self.assertEqual(
+                            blk1,
+                            blk
+                        )
+
+                    elif i == 1:
+                        self.assertEqual(
+                            blk2,
+                            blk
+                        )
+                    else:
+                        self.fail()
+
+                self.assertEqual(
+                    2,
+                    total
+                )
+
+            with blk3:
+
+                total = 0
+
+                for i,blk in enumerate(reg.blks(apri2)):
+
+                    total += 1
+
+                    if i == 0:
+                        self.assertEqual(
+                            blk3,
+                            blk
+                        )
+
+                    else:
+                        self.fail()
+
+                self.assertEqual(
+                    1,
+                    total
+                )
 
     def test__iter_subregisters(self):
 
@@ -1946,45 +2105,71 @@ class Test_Register(TestCase):
                 total
             )
 
-    def test_blkByN(self):
+    def test_blk_by_n(self):
 
         reg = Testy_Register(SAVES_DIR, "sh",  "hello")
+
         with self.assertRaisesRegex(RegisterError, "open.*blk_by_n"):
-            reg.blk_by_n(ApriInfo(name ="no"), -1)
+
+            with reg.blk_by_n(ApriInfo(name ="no"), -1):
+                pass
 
         reg = Testy_Register(SAVES_DIR, "sh",  "hello")
+
         with self.assertRaisesRegex(IndexError, "non-negative"):
+
             with reg.open() as reg:
-                reg.blk_by_n(ApriInfo(name ="no"), -1)
+
+                with reg.blk_by_n(ApriInfo(name ="no"), -1):
+                    pass
 
         reg = Testy_Register(SAVES_DIR, "sh",  "hello")
         apri = ApriInfo(name ="list")
         blk1 = Block(list(range(1000)), apri)
-        with reg.open() as reg:
-            reg.add_ram_blk(blk1)
-            for n in [0, 10, 500, 990, 999]:
-                self.assertIs(
-                    blk1,
-                    reg.blk_by_n(apri, n)
-                )
-            with self.assertRaises(DataNotFoundError):
-                reg.blk_by_n(apri, 1000)
 
-        blk2 = Block(list(range(1000, 2000)), apri, 1000)
         with reg.open() as reg:
-            reg.add_ram_blk(blk2)
-            for n in [1000, 1010, 1990, 1999]:
-                self.assertIs(
-                    blk2,
-                    reg.blk_by_n(apri, n)
-                )
+
+            with blk1:
+
+                reg.add_ram_blk(blk1)
+
+                for n in [0, 10, 500, 990, 999]:
+
+                    with reg.blk_by_n(apri, n) as blk:
+                        self.assertIs(
+                            blk1,
+                            blk
+                        )
+
+                with self.assertRaises(DataNotFoundError):
+
+                    with reg.blk_by_n(apri, 1000):
+                        pass
+
+                blk2 = Block(list(range(1000, 2000)), apri, 1000)
+
+                with blk2:
+
+                    reg.add_ram_blk(blk2)
+
+                    for n in [1000, 1010, 1990, 1999]:
+
+                        with reg.blk_by_n(apri, n) as blk:
+                            self.assertIs(
+                                blk2,
+                                blk
+                            )
 
         reg = Testy_Register(SAVES_DIR, "sh",  "whatever")
-
         apri = ApriInfo(name ="whatev")
-        with reg.open() as reg: pass
+
+        with reg.open() as reg:
+            pass
+
         with self.assertRaisesRegex(RegisterError, "open.*blk_by_n"):
-            for _ in reg.blk_by_n(apri, 0): pass
+
+            with reg.blk_by_n(apri, 0):
+                pass
 
         apri1 = ApriInfo(name ="foomy")
         apri2 = ApriInfo(name ="doomy")
@@ -1996,50 +2181,49 @@ class Test_Register(TestCase):
         reg1 = Testy_Register(SAVES_DIR, "sh",  "helllo")
         reg2 = Testy_Register(SAVES_DIR, "sh",  "suuup")
 
-        with reg1.open() as reg1:
+        with open_regs(reg1, reg2) as (reg1, reg2):
 
-            reg1.add_ram_blk(blk1)
-            reg1.add_ram_blk(blk2)
-            reg1.add_ram_blk(blk3)
+            with open_blks(blk1, blk2, blk3, blk4, blk5):
 
-        with reg2.open() as reg2:
+                reg1.add_ram_blk(blk1)
+                reg1.add_ram_blk(blk2)
+                reg1.add_ram_blk(blk3)
+                reg2.add_ram_blk(blk4)
+                reg2.add_ram_blk(blk5)
 
-            reg2.add_ram_blk(blk4)
-            reg2.add_ram_blk(blk5)
+                tests = [
+                    (reg1, (apri1,    0, True ), blk1),
+                    (reg1, (apri1,    0, False), blk1),
+                    (reg1, (apri1,    9, True ), blk1),
+                    (reg1, (apri1,    9, False), blk1),
+                    (reg1, (apri1,   10, True ), blk2),
+                    (reg1, (apri1,   10, False), blk2),
+                    (reg1, (apri1,   29, True ), blk2),
+                    (reg1, (apri1,   29, False), blk2),
+                    (reg1, (apri2,   50, True ), blk3),
+                    (reg1, (apri2,   50, False), blk3),
+                    (reg1, (apri2,   63, True ), blk3),
+                    (reg1, (apri2,   63, False), blk3),
+                    (reg2, (apri2,  120, True ), blk4),
+                    (reg2, (apri2,  219, True ), blk4),
+                    (reg2, (apri2, 1000, True ), blk5),
+                    (reg2, (apri2, 1119, True ), blk5)
+                ]
 
+                for reg, args, blk in tests:
 
-        tests = [
-            (reg1, (apri1,    0, True ), blk1),
-            (reg1, (apri1,    0, False), blk1),
-            (reg1, (apri1,    9, True ), blk1),
-            (reg1, (apri1,    9, False), blk1),
-            (reg1, (apri1,   10, True ), blk2),
-            (reg1, (apri1,   10, False), blk2),
-            (reg1, (apri1,   29, True ), blk2),
-            (reg1, (apri1,   29, False), blk2),
-            (reg1, (apri2,   50, True ), blk3),
-            (reg1, (apri2,   50, False), blk3),
-            (reg1, (apri2,   63, True ), blk3),
-            (reg1, (apri2,   63, False), blk3),
-            (reg2, (apri2,  120, True ), blk4),
-            (reg2, (apri2,  219, True ), blk4),
-            (reg2, (apri2, 1000, True ), blk5),
-            (reg2, (apri2, 1119, True ), blk5)
-        ]
-
-        for reg, args, blk in tests:
-            with reg.open() as reg:
-                try:
-                    self.assertIs(
-                        blk,
-                        reg.blk_by_n(*args[:2])
-                    )
-                except:
-                    raise
+                    with reg.blk_by_n(*args[:2]) as blk_:
+                        self.assertIs(
+                            blk,
+                            blk_
+                        )
 
         reg = NumpyRegister(SAVES_DIR, "sh", "hello")
+
         with self.assertRaises(RegisterError):
-            reg.blk_by_n(ApriInfo(name="no"), 50)
+
+            with reg.blk_by_n(ApriInfo(name="no"), 50):
+                pass
 
         reg = NumpyRegister(SAVES_DIR, "sh", "hello")
         apri1 = ApriInfo(name ="sup")
@@ -2048,76 +2232,112 @@ class Test_Register(TestCase):
         blk2 = Block(np.arange(125), apri1, 75)
         blk3 = Block(np.arange(1000), apri2, 100)
         blk4 = Block(np.arange(100), apri2, 2000)
+
         with reg.open() as reg:
-            reg.add_disk_blk(blk1)
-            reg.add_disk_blk(blk2)
-            reg.add_disk_blk(blk3)
-            reg.add_disk_blk(blk4)
-            for n in [0, 1, 2, 72, 73, 74]:
-                self.assertEqual(
-                    blk1,
-                    reg.blk_by_n(apri1, n)
-                )
-            for n in [75, 76, 77, 197, 198, 199]:
-                self.assertEqual(
-                    blk2,
-                    reg.blk_by_n(apri1, n)
-                )
-            for n in [-2, -1]:
-                with self.assertRaisesRegex(IndexError, "non-negative"):
-                    reg.blk_by_n(apri1, n)
-            for n in [200, 201, 1000]:
-                with self.assertRaises(DataNotFoundError):
-                    reg.blk_by_n(apri1, n)
+
+            with open_blks(blk1, blk2, blk3, blk4):
+
+                reg.add_disk_blk(blk1)
+                reg.add_disk_blk(blk2)
+                reg.add_disk_blk(blk3)
+                reg.add_disk_blk(blk4)
+
+                for n in [0, 1, 2, 72, 73, 74]:
+
+                    with reg.blk_by_n(apri1, n) as blk:
+                        self.assertEqual(
+                            blk1,
+                            blk
+                        )
+
+                for n in [75, 76, 77, 197, 198, 199]:
+
+                    with reg.blk_by_n(apri1, n) as blk:
+                        self.assertEqual(
+                            blk2,
+                            blk
+                        )
+
+                for n in [-2, -1]:
+
+                    with self.assertRaisesRegex(IndexError, "non-negative"):
+
+                        with reg.blk_by_n(apri1, n):
+                            pass
+
+                for n in [200, 201, 1000]:
+
+                    with self.assertRaises(DataNotFoundError):
+
+                        with reg.blk_by_n(apri1, n):
+                            pass
 
     def test_blk(self):
 
         reg = NumpyRegister(SAVES_DIR, "sh", "hello")
+
         with self.assertRaisesRegex(RegisterError, "blk"):
-            reg.blk(ApriInfo(name="i am the octopus"), 0, 0)
+
+            with reg.blk(ApriInfo(name="i am the octopus"), 0, 0):
+                pass
 
         reg = NumpyRegister(SAVES_DIR, "sh", "hello")
+
         with reg.open() as reg:
+
             apri1 = ApriInfo(name ="i am the octopus")
-            blk1 = Block(np.arange(100), apri1)
-            reg.add_disk_blk(blk1)
 
-            self.assertEqual(
-                blk1,
-                reg.blk(apri1, 0, 100)
-            )
+            with Block(np.arange(100), apri1) as blk1:
 
-            blk2 = Block(np.arange(100,200), apri1, 100)
-            reg.add_disk_blk(blk2)
+                reg.add_disk_blk(blk1)
 
-            self.assertEqual(
-                blk2,
-                reg.blk(apri1, 100, 100)
-            )
+                with reg.blk(apri1, 0, 100) as blk:
+                    self.assertEqual(
+                        blk1,
+                        blk
+                    )
 
-            self.assertEqual(
-                blk1,
-                reg.blk(apri1, 0, 100)
-            )
+            with Block(np.arange(100,200), apri1, 100) as blk2:
+
+                reg.add_disk_blk(blk2)
+
+                with reg.blk(apri1, 100, 100) as blk:
+                    self.assertEqual(
+                        blk2,
+                        blk
+                    )
+
+            with blk1:
+
+                with reg.blk(apri1, 0, 100) as blk:
+                    self.assertEqual(
+                        blk1,
+                        blk
+                    )
 
             apri2 = ApriInfo(name ="hello")
-            blk3 = Block(np.arange(3000,4000), apri2, 2000)
-            reg.add_disk_blk(blk3)
 
-            self.assertEqual(
-                blk3,
-                reg.blk(apri2, 2000, 1000)
-            )
+            with Block(np.arange(3000,4000), apri2, 2000) as blk3:
 
-            self.assertEqual(
-                blk2,
-                reg.blk(apri1, 100, 100)
-            )
+                reg.add_disk_blk(blk3)
 
-            self.assertEqual(
-                blk1,
-                reg.blk(apri1, 0, 100)
-            )
+                with reg.blk(apri2, 2000, 1000) as blk:
+                    self.assertEqual(
+                        blk3,
+                        blk
+                    )
+
+            with open_blks(blk1, blk2, reg.blk(apri1, 100, 100), reg.blk(apri1, 0, 100)) as (blk1, blk2, blk3, blk4):
+
+                self.assertEqual(
+                    blk2,
+                    blk3
+                )
+
+                self.assertEqual(
+                    blk1,
+                    blk4
+                )
 
             for metadata in [
                 (apri1, 0, 200), (apri1, 1, 99), (apri1, 5, 100), (apri1, 1, 100),
@@ -2125,118 +2345,156 @@ class Test_Register(TestCase):
                 (ApriInfo(name ="noooo"), 0, 100)
             ]:
                 with self.assertRaises(DataNotFoundError):
-                    reg.blk(*metadata)
+
+                    with reg.blk(*metadata):
+                        pass
 
             apri3 = ApriInfo(
                 name = "'''i love quotes'''and'' backslashes\\\\",
                 num = '\\\"double\\quotes\' are cool too"'
             )
             blk = Block(np.arange(69, 420), apri3)
-            reg.add_disk_blk(blk)
 
-            self.assertEqual(
-                blk,
-                reg.blk(apri3, 0, 420 - 69)
-            )
+            with blk:
+
+                reg.add_disk_blk(blk)
+
+                with reg.blk(apri3, 0, 420 - 69) as blk2:
+                    self.assertEqual(
+                        blk,
+                        blk2
+                    )
 
         reg = NumpyRegister(SAVES_DIR, "sh", "tests")
-
         apri1 = ApriInfo(descr ="hey")
 
         with self.assertRaisesRegex(RegisterError, "open.*blk"):
-            reg.blk(apri1)
+
+            with reg.blk(apri1):
+                pass
 
         with reg.open() as reg:
 
             with self.assertRaisesRegex(TypeError, "ApriInfo"):
-                reg.blk("kitty kat")
+
+                with reg.blk("kitty kat"):
+                    pass
 
             with self.assertRaisesRegex(TypeError, "int"):
-                reg.blk(apri1, "puppy dawg")
+
+                with reg.blk(apri1, "puppy dawg"):
+                    pass
 
             with self.assertRaisesRegex(TypeError, "int"):
-                reg.blk(apri1, 0, "bunny wunny")
+
+                with reg.blk(apri1, 0, "bunny wunny"):
+                    pass
 
             with self.assertRaisesRegex(ValueError, "non-negative"):
-                reg.blk(apri1, -1)
+
+                with reg.blk(apri1, -1):
+                    pass
 
             with self.assertRaisesRegex(ValueError, "non-negative"):
-                reg.blk(apri1, 0, -1)
+
+                with reg.blk(apri1, 0, -1):
+                    pass
 
             with self.assertRaises(ValueError):
-                reg.blk(apri1, length=-1)
 
-            reg.add_disk_blk(Block(list(range(50)), apri1))
+                with reg.blk(apri1, length=-1):
+                    pass
 
-            self.assertTrue(np.all(
-                reg.blk(apri1).segment() == np.arange(50)
-            ))
+            with Block(list(range(50)), apri1) as blk:
+                reg.add_disk_blk(blk)
 
-            self.assertTrue(np.all(
-                reg.blk(apri1, 0).segment() == np.arange(50)
-            ))
+            with reg.blk(apri1) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(50)
+                ))
 
-            self.assertTrue(np.all(
-                reg.blk(apri1, 0, 50).segment() == np.arange(50)
-            ))
+            with reg.blk(apri1) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(50)
+                ))
 
-            reg.add_disk_blk(Block(list(range(51)), apri1))
+            with reg.blk(apri1, 0, 50) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(50)
+                ))
 
-            self.assertTrue(np.all(
-                reg.blk(apri1).segment() == np.arange(51)
-            ))
+            with Block(list(range(51)), apri1) as blk:
+                reg.add_disk_blk(blk)
 
-            self.assertTrue(np.all(
-                reg.blk(apri1, 0).segment() == np.arange(51)
-            ))
+            with reg.blk(apri1) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(51)
+                ))
 
-            self.assertTrue(np.all(
-                reg.blk(apri1, 0, 51).segment() == np.arange(51)
-            ))
+            with reg.blk(apri1, 0) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(51)
+                ))
 
-            self.assertTrue(np.all(
-                reg.blk(apri1, 0, 50).segment() == np.arange(50)
-            ))
+            with reg.blk(apri1, 0, 51) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(51)
+                ))
 
-            reg.add_disk_blk(Block(list(range(100)), apri1, 1))
+            with reg.blk(apri1, 0, 50) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(50)
+                ))
 
-            self.assertTrue(np.all(
-                reg.blk(apri1).segment() == np.arange(51)
-            ))
+            with Block(list(range(100)), apri1, 1) as blk:
+                reg.add_disk_blk(blk)
 
-            self.assertTrue(np.all(
-                reg.blk(apri1, 0).segment() == np.arange(51)
-            ))
+            with reg.blk(apri1) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(51)
+                ))
 
-            self.assertTrue(np.all(
-                reg.blk(apri1, 0, 51).segment() == np.arange(51)
-            ))
+            with reg.blk(apri1, 0) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(51)
+                ))
 
-            self.assertTrue(np.all(
-                reg.blk(apri1, 0, 50).segment() == np.arange(50)
-            ))
+            with reg.blk(apri1, 0, 51) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(51)
+                ))
 
-            self.assertTrue(np.all(
-                reg.blk(apri1, 1, 100).segment() == np.arange(100)
-            ))
+            with reg.blk(apri1, 0, 50) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(50)
+                ))
 
-            blk1 = Block(list(range(5)), apri1)
-            reg.add_ram_blk(blk1)
+            with reg.blk(apri1, 1, 100) as blk:
+                self.assertTrue(np.all(
+                    blk.segment() == np.arange(100)
+                ))
 
-            self.assertIs(
-                blk1,
-                reg.blk(apri1)
-            )
+            with Block(list(range(5)), apri1) as blk1:
 
-            self.assertIs(
-                blk1,
-                reg.blk(apri1, 0)
-            )
+                reg.add_ram_blk(blk1)
 
-            self.assertIs(
-                blk1,
-                reg.blk(apri1, 0, 5)
-            )
+                with reg.blk(apri1) as blk:
+                    self.assertIs(
+                        blk1,
+                        blk
+                    )
+
+                with reg.blk(apri1, 0) as blk:
+                    self.assertIs(
+                        blk1,
+                        blk
+                    )
+
+                with reg.blk(apri1, 0, 5) as blk:
+                    self.assertIs(
+                        blk1,
+                        blk
+                    )
 
     def test__check_no_cycles_from(self):
 
@@ -2763,130 +3021,154 @@ class Test_Register(TestCase):
         reg1 = Testy_Register(SAVES_DIR, "sh",  "helllo")
         reg2 = Testy_Register(SAVES_DIR, "sh",  "suuup")
 
-        with reg1.open() as reg1:
+        with open_blks(blk1, blk2, blk3, blk4, blk5):
 
-            reg1.add_ram_blk(blk1)
-            reg1.add_ram_blk(blk2)
-            reg1.add_ram_blk(blk3)
+            with open_regs(reg1, reg2) as (reg1, reg2):
 
-        with reg2.open() as reg2:
+                reg1.add_ram_blk(blk1)
+                reg1.add_ram_blk(blk2)
+                reg1.add_ram_blk(blk3)
+                reg2.add_ram_blk(blk4)
+                reg2.add_ram_blk(blk5)
+                total = 0
 
-            reg2.add_ram_blk(blk4)
-            reg2.add_ram_blk(blk5)
+                for i, blk in enumerate(reg1.blks(apri1)):
 
-        with reg1.open() as reg1:
+                    total += 1
 
-            total = 0
-            for i, blk in enumerate(reg1.blks(apri1)):
-                total += 1
-                if i == 0:
-                    self.assertIs(
-                        blk1,
-                        blk
-                    )
-                elif i == 1:
-                    self.assertIs(
-                        blk2,
-                        blk
-                    )
-                else:
-                    self.fail()
+                    if i == 0:
+                        self.assertIs(
+                            blk1,
+                            blk
+                        )
 
-            self.assertEqual(
-                2,
-                total
-            )
+                    elif i == 1:
+                        self.assertIs(
+                            blk2,
+                            blk
+                        )
 
-        with reg2.open(): pass
-        with reg1.open() as reg1:
-            reg1.add_subreg(reg2)
-            total = 0
-            for i, blk in enumerate(reg1.blks(apri1, recursively = True)):
-                total += 1
-                if i == 0:
-                    self.assertIs(
-                        blk1,
-                        blk
-                    )
-                elif i == 1:
-                    self.assertIs(
-                        blk2,
-                        blk
-                    )
-                else:
-                    self.fail()
-            self.assertEqual(
-                2,
-                total
-            )
+                    else:
+                        self.fail()
 
-            total = 0
-            for i, blk in enumerate(reg1.blks(apri2, recursively = True)):
-                total += 1
-                if i == 0:
-                    self.assertIs(
-                        blk3,
-                        blk
-                    )
-                elif i == 1:
-                    self.assertIs(
-                        blk4,
-                        blk
-                    )
-                elif i == 2:
-                    self.assertIs(
-                        blk5,
-                        blk
-                    )
-                else:
-                    self.fail()
-            self.assertEqual(
-                3,
-                total
-            )
+                self.assertEqual(
+                    2,
+                    total
+                )
+
+            with reg2.open():
+                pass
+
+            with reg1.open() as reg1:
+
+                reg1.add_subreg(reg2)
+                total = 0
+
+                for i, blk in enumerate(reg1.blks(apri1, recursively = True)):
+
+                    total += 1
+
+                    if i == 0:
+                        self.assertIs(
+                            blk1,
+                            blk
+                        )
+
+                    elif i == 1:
+                        self.assertIs(
+                            blk2,
+                            blk
+                        )
+
+                    else:
+                        self.fail()
+
+                self.assertEqual(
+                    2,
+                    total
+                )
+                total = 0
+
+                for i, blk in enumerate(reg1.blks(apri2, recursively = True)):
+
+                    total += 1
+
+                    if i == 0:
+                        self.assertIs(
+                            blk3,
+                            blk
+                        )
+
+                    elif i == 1:
+                        self.assertIs(
+                            blk4,
+                            blk
+                        )
+
+                    elif i == 2:
+                        self.assertIs(
+                            blk5,
+                            blk
+                        )
+
+                    else:
+                        self.fail()
+
+                self.assertEqual(
+                    3,
+                    total
+                )
 
         reg = Testy_Register(SAVES_DIR, "sh",  "msg")
         apri1 = ApriInfo(name="hey")
         blk1 = Block([], apri1)
 
-        with reg.open() as reg:
+        with blk1:
 
-            reg.add_ram_blk(blk1)
-            self.assertEqual(
-                1,
-                len(list(reg.blks(apri1)))
-            )
-            self.assertEqual(
-                blk1,
-                list(reg.blks(apri1))[0]
-            )
+            with reg.open() as reg:
 
-            apri2 = ApriInfo(name ="hello")
-            blk2 = Block(list(range(10)), apri2)
-            reg.add_ram_blk(blk2)
-            self.assertEqual(
-                1,
-                len(list(reg.blks(apri2)))
-            )
-            self.assertEqual(
-                blk2,
-                list(reg.blks(apri2))[0]
-            )
+                reg.add_ram_blk(blk1)
+                self.assertEqual(
+                    1,
+                    len(list(reg.blks(apri1)))
+                )
+                self.assertEqual(
+                    blk1,
+                    list(reg.blks(apri1))[0]
+                )
 
-            blk3 = Block(list(range(10)), apri2, 1)
-            reg.add_ram_blk(blk3)
-            self.assertEqual(
-                2,
-                len(list(reg.blks(apri2)))
-            )
-            self.assertIn(
-                blk2,
-                reg.blks(apri2)
-            )
-            self.assertIn(
-                blk3,
-                reg.blks(apri2)
-            )
+                apri2 = ApriInfo(name ="hello")
+                blk2 = Block(list(range(10)), apri2)
+
+                with blk2:
+
+                    reg.add_ram_blk(blk2)
+                    self.assertEqual(
+                        1,
+                        len(list(reg.blks(apri2)))
+                    )
+                    self.assertEqual(
+                        blk2,
+                        list(reg.blks(apri2))[0]
+                    )
+
+                    blk3 = Block(list(range(10)), apri2, 1)
+
+                    with blk3:
+
+                        reg.add_ram_blk(blk3)
+                        self.assertEqual(
+                            2,
+                            len(list(reg.blks(apri2)))
+                        )
+                        self.assertIn(
+                            blk2,
+                            reg.blks(apri2)
+                        )
+                        self.assertIn(
+                            blk3,
+                            reg.blks(apri2)
+                        )
 
     def test_intervals(self):
 
@@ -2908,7 +3190,8 @@ class Test_Register(TestCase):
 
         with reg.open() as reg:
 
-            reg.add_disk_blk(Block(list(range(50)), apri1))
+            with Block(list(range(50)), apri1) as blk:
+                reg.add_disk_blk(blk)
 
             self.assertEqual(
                 [(0, 50)],
@@ -2918,21 +3201,24 @@ class Test_Register(TestCase):
             with self.assertRaisesRegex(DataNotFoundError, "ApriInfo"):
                 list(reg.intervals(apri2, combine=False, diskonly=True))
 
-            reg.add_disk_blk(Block(list(range(100)), apri1))
+            with Block(list(range(100)), apri1) as blk:
+                reg.add_disk_blk(blk)
 
             self.assertEqual(
                 [(0, 100), (0, 50)],
                 list(reg.intervals(apri1, combine=False, diskonly=True))
             )
 
-            reg.add_disk_blk(Block(list(range(1000)), apri1, 1))
+            with Block(list(range(1000)), apri1, 1) as blk:
+                reg.add_disk_blk(blk)
 
             self.assertEqual(
                 [(0, 100), (0, 50), (1, 1000)],
                 list(reg.intervals(apri1, combine=False, diskonly=True))
             )
 
-            reg.add_disk_blk(Block(list(range(420)), apri2, 69))
+            with Block(list(range(420)), apri2, 69) as blk:
+                reg.add_disk_blk(blk)
 
             self.assertEqual(
                 [(0, 100), (0, 50), (1, 1000)],
@@ -2955,15 +3241,17 @@ class Test_Register(TestCase):
         with self.assertRaisesRegex(RegisterError, "open.*apris"):
             reg.apris()
 
-        for i in range(200):
+        for i in range(10):
 
             apri1 = ApriInfo(name = i)
             apri2 = ApriInfo(name =f"{i}")
 
             with reg.open() as reg:
 
-                reg.add_disk_blk(Block([1], apri1))
-                reg.add_ram_blk(Block([1], apri2))
+                with open_blks(Block([1], apri1), Block([1], apri2)) as (blk1, blk2):
+
+                    reg.add_disk_blk(blk1)
+                    reg.add_ram_blk(blk2)
 
                 get = reg.apris()
 
@@ -3050,9 +3338,12 @@ class Test_Register(TestCase):
         lengths = [length1, length2, length3]
 
         with reg2.open() as reg2:
-            reg2.add_disk_blk(blk1)
-            reg2.add_disk_blk(blk2)
-            reg2.add_disk_blk(blk3)
+
+            with open_blks(blk1, blk2, blk3):
+
+                reg2.add_disk_blk(blk1)
+                reg2.add_disk_blk(blk2)
+                reg2.add_disk_blk(blk3)
 
             for i, (apri, length) in enumerate(zip(apris, lengths)):
 
@@ -3079,7 +3370,9 @@ class Test_Register(TestCase):
 
             apri = ApriInfo(num = 7)
             blk = Block(np.arange(40), apri)
-            reg.add_disk_blk(blk)
+
+            with blk:
+                reg.add_disk_blk(blk)
 
             for debug in [1,2,3,4]:
 
@@ -3095,7 +3388,6 @@ class Test_Register(TestCase):
     def test_decompress(self):
 
         reg1 = NumpyRegister(SAVES_DIR, "sh", "lol")
-
         apri1 = ApriInfo(descr ="LOL")
         apri2 = ApriInfo(decr ="HAHA")
         apris = [apri1, apri1, apri2]
@@ -3105,20 +3397,20 @@ class Test_Register(TestCase):
 
         lengths = [50, 500, 5000]
         start_ns = [0, 0, 1000]
-
         data = [np.arange(length) for length in lengths]
-
         blks = [Block(*t) for t in zip(data, apris, start_ns)]
-
         data_files_bytes = []
 
         with reg1.open() as reg1:
 
             for blk in blks:
-                reg1.add_disk_blk(blk)
-                data_files_bytes.append(
-                    self._is_not_compressed_helper(reg1, blk.apri(), blk.startn(), len(blk))
-                )
+
+                with blk:
+
+                    reg1.add_disk_blk(blk)
+                    data_files_bytes.append(
+                        self._is_not_compressed_helper(reg1, blk.apri(), blk.startn(), len(blk))
+                    )
 
             for t in zip(apris, start_ns, lengths):
                 reg1.compress(*t)
@@ -3134,6 +3426,7 @@ class Test_Register(TestCase):
                     self._is_compressed_helper(reg1, *_t)
 
                 expected = str(t[0]).replace("(", "\\(").replace(")", "\\)") + f".*startn.*0.*length.*{t[2]}"
+
                 with self.assertRaisesRegex(DecompressionError, expected):
                     reg1.decompress(*t)
 
@@ -3150,8 +3443,10 @@ class Test_Register(TestCase):
             blk1 = Block(np.arange(15), apri)
             blk2 = Block(np.arange(15, 30), apri, 15)
 
-            reg2.add_disk_blk(blk1)
-            reg2.add_disk_blk(blk2)
+            with open_blks(blk1, blk2):
+
+                reg2.add_disk_blk(blk1)
+                reg2.add_disk_blk(blk2)
 
             reg2.compress(apri, 0, 15)
             reg2.compress(apri, 15, 15)
@@ -3519,7 +3814,9 @@ class Test_Register(TestCase):
             # change to an info that already exists in the register
 
             blk = Block(np.arange(100), other_apri)
-            reg.add_disk_blk(blk)
+
+            with blk:
+                reg.add_disk_blk(blk)
 
             reg.change_apri(old_apri, other_apri)
 
@@ -3544,10 +3841,13 @@ class Test_Register(TestCase):
                 reg.apos(other_other_apri)
             )
 
-            self.assertEqual(
-                Block(np.arange(100), other_other_apri),
-                reg.blk(other_other_apri)
-            )
+            with reg.blk(other_other_apri) as blk:
+
+                with Block(np.arange(100), other_other_apri) as blk_:
+                    self.assertEqual(
+                        blk_,
+                        blk
+                    )
 
             self.assertIn(
                 other_apri,
@@ -3614,7 +3914,9 @@ class Test_Register(TestCase):
             apri2 = ApriInfo(num = 7, respective = apri1)
 
             reg.set_apos(apri1, AposInfo(no ="yes"))
-            reg.add_disk_blk(Block(np.arange(10), apri2))
+
+            with Block(np.arange(10), apri2) as blk:
+                reg.add_disk_blk(blk)
 
             for debug in [1,2,3]:
 
@@ -3630,10 +3932,11 @@ class Test_Register(TestCase):
                     reg.apos(ApriInfo(hi ="hello"))
                 )
 
-                self.assertTrue(np.all(
-                    np.arange(10) ==
-                    reg.blk(ApriInfo(num=7, respective=ApriInfo(hi="hello")), 0, 10).segment()
-                ))
+                with reg.blk(ApriInfo(num=7, respective=ApriInfo(hi="hello")), 0, 10) as blk:
+                    self.assertTrue(np.all(
+                        np.arange(10) ==
+                        blk.segment()
+                    ))
 
                 self.assertIn(
                     ApriInfo(hi ="hello"),
@@ -3692,12 +3995,13 @@ class Test_Register(TestCase):
         with reg.open() as reg:
 
             apri = ApriInfo(hi ="hello")
-
             blk1 = Block(np.arange(100), apri)
             blk2 = Block(np.arange(100, 200), apri, 100)
 
-            reg.add_disk_blk(blk1)
-            reg.add_disk_blk(blk2)
+            with open_blks(blk1, blk2):
+
+                reg.add_disk_blk(blk1)
+                reg.add_disk_blk(blk2)
 
             with self.assertRaisesRegex(ValueError, "right size"):
                 reg.concat_disk_blks(apri, 0, 150, True)
@@ -3706,7 +4010,6 @@ class Test_Register(TestCase):
                 2,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
-
             self.assertEqual(
                 2,
                 lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
@@ -3722,7 +4025,6 @@ class Test_Register(TestCase):
                 2,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
-
             self.assertEqual(
                 2,
                 lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
@@ -3738,21 +4040,32 @@ class Test_Register(TestCase):
                 1,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
-
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
             )
 
-            self.assertEqual(
-                Block(np.arange(200), apri),
-                reg.blk(apri, 0, 200)
-            )
+            with reg.blk(apri, 0, 200) as blk:
 
-            self.assertEqual(
-                Block(np.arange(200), apri),
-                reg.blk(apri)
-            )
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(200)
+                ))
+
+            with reg.blk(apri) as blk:
+
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(200)
+                ))
 
             try:
                 # this shouldn't do anything
@@ -3765,74 +4078,102 @@ class Test_Register(TestCase):
                 1,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
-
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
             )
 
-            self.assertEqual(
-                Block(np.arange(200), apri),
-                reg.blk(apri, 0, 200)
-            )
+            with reg.blk(apri, 0, 200) as blk:
 
-            self.assertEqual(
-                Block(np.arange(200), apri),
-                reg.blk(apri)
-            )
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(200)
+                ))
 
-            blk3 = Block(np.arange(200, 4000), apri, 200)
+            with reg.blk(apri) as blk:
 
-            reg.add_disk_blk(blk3)
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(200)
+                ))
+
+            with Block(np.arange(200, 4000), apri, 200) as blk3:
+                reg.add_disk_blk(blk3)
 
             reg.concat_disk_blks(apri, delete = True)
-
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
-
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
             )
 
-            self.assertEqual(
-                Block(np.arange(4000), apri),
-                reg.blk(apri, 0, 4000)
-            )
+            with reg.blk(apri, 0, 4000) as blk:
 
-            self.assertEqual(
-                Block(np.arange(4000), apri),
-                reg.blk(apri)
-            )
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4000)
+                ))
 
-            blk4 = Block(np.arange(4001, 4005), apri, 4001)
+            with reg.blk(apri) as blk:
 
-            reg.add_disk_blk(blk4)
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4000)
+                ))
 
+            with Block(np.arange(4001, 4005), apri, 4001) as blk4:
+                reg.add_disk_blk(blk4)
             # this shouldn't do anything
             reg.concat_disk_blks(apri)
-
             self.assertEqual(
                 2,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
-
             self.assertEqual(
                 2,
                 lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
             )
 
-            self.assertEqual(
-                Block(np.arange(4000), apri),
-                reg.blk(apri, 0, 4000)
-            )
+            with reg.blk(apri, 0, 4000) as blk:
 
-            self.assertEqual(
-                Block(np.arange(4000), apri),
-                reg.blk(apri)
-            )
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4000)
+                ))
+
+            with reg.blk(apri) as blk:
+
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4000)
+                ))
 
             with self.assertRaisesRegex(DataNotFoundError, "4000"):
                 reg.concat_disk_blks(apri, 0, 4001)
@@ -3840,9 +4181,8 @@ class Test_Register(TestCase):
             with self.assertRaisesRegex(DataNotFoundError, "4000.*4000"):
                 reg.concat_disk_blks(apri, 0, 4005)
 
-            blk5 = Block(np.arange(3999, 4001), apri, 3999)
-
-            reg.add_disk_blk(blk5)
+            with Block(np.arange(3999, 4001), apri, 3999) as blk5:
+                reg.add_disk_blk(blk5)
 
             with self.assertRaisesRegex(ValueError, "[oO]verlap"):
                 reg.concat_disk_blks(apri, 0, 4001)
@@ -3851,9 +4191,11 @@ class Test_Register(TestCase):
             blk7 = Block(np.arange(4100, 4200), apri, 4100)
             blk8 = Block(np.arange(4200, 4201), apri, 4200)
 
-            reg.add_disk_blk(blk6)
-            reg.add_disk_blk(blk7)
-            reg.add_disk_blk(blk8)
+            with open_blks(blk6, blk7, blk8):
+
+                reg.add_disk_blk(blk6)
+                reg.add_disk_blk(blk7)
+                reg.add_disk_blk(blk8)
 
             reg.concat_disk_blks(apri, 4005, delete = True)
 
@@ -3867,98 +4209,164 @@ class Test_Register(TestCase):
                 lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
             )
 
-            self.assertEqual(
-                Block(np.arange(4005, 4201), apri, 4005),
-                reg.blk(apri, 4005, 4201 - 4005)
-            )
+            with reg.blk(apri, 4005, 4201 - 4005) as blk:
 
-            self.assertEqual(
-                Block(np.arange(4005, 4201), apri, 4005),
-                reg.blk(apri, 4005)
-            )
+                self.assertEqual(
+                    4005,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4005, 4201)
+                ))
 
-            self.assertEqual(
-                Block(np.arange(4000), apri),
-                reg.blk(apri)
-            )
+            with reg.blk(apri, 4005) as blk:
 
-            blk9 = Block(np.arange(4201, 4201), apri, 4201)
-            reg.add_disk_blk(blk9)
+                self.assertEqual(
+                    4005,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4005, 4201)
+                ))
+
+            with reg.blk(apri) as blk:
+
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4000)
+                ))
+
+            with Block(np.arange(4201, 4201), apri, 4201) as blk9:
+                reg.add_disk_blk(blk9)
 
             reg.concat_disk_blks(apri, 4005, delete = True)
-
             self.assertEqual(
                 5,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
-
             self.assertEqual(
                 5,
                 lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
             )
 
-            self.assertEqual(
-                Block(np.arange(4005, 4201), apri, 4005),
-                reg.blk(apri, 4005, 4201 - 4005)
-            )
+            with reg.blk(apri, 4005, 4201 - 4005) as blk:
 
-            self.assertEqual(
-                Block(np.arange(4005, 4201), apri, 4005),
-                reg.blk(apri, 4005)
-            )
+                self.assertEqual(
+                    4005,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4005, 4201)
+                ))
 
-            self.assertEqual(
-                Block(np.arange(4000), apri),
-                reg.blk(apri)
-            )
+            with reg.blk(apri, 4005) as blk:
 
-            self.assertEqual(
-                Block(np.arange(4201, 4201), apri, 4201),
-                reg.blk(apri, 4201, 0)
-            )
+                self.assertEqual(
+                    4005,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4005, 4201)
+                ))
 
-            blk10 = Block(np.arange(0, 0), apri, 0)
-            reg.add_disk_blk(blk10)
+            with reg.blk(apri) as blk:
+
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4000)
+                ))
+
+            with reg.blk(apri, 4201, 0) as blk:
+
+                self.assertEqual(
+                    4201,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4201, 4201)
+                ))
+
+            with Block(np.arange(0, 0), apri, 0) as blk10:
+                reg.add_disk_blk(blk10)
 
             reg.rmv_disk_blk(apri, 3999, 2)
-
             reg.concat_disk_blks(apri, delete = True)
-
             self.assertEqual(
                 5,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
-
             self.assertEqual(
                 5,
                 lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
             )
 
-            self.assertEqual(
-                Block(np.arange(4005, 4201), apri, 4005),
-                reg.blk(apri, 4005, 4201 - 4005)
-            )
+            with reg.blk(apri, 4005, 4201 - 4005) as blk:
 
-            self.assertEqual(
-                Block(np.arange(4005, 4201), apri, 4005),
-                reg.blk(apri, 4005)
-            )
+                self.assertEqual(
+                    4005,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4005, 4201)
+                ))
 
-            self.assertEqual(
-                Block(np.arange(4000), apri),
-                reg.blk(apri)
-            )
+            with reg.blk(apri, 4005) as blk:
 
-            self.assertEqual(
-                Block(np.arange(4201, 4201), apri, 4201),
-                reg.blk(apri, 4201, 0)
-            )
+                self.assertEqual(
+                    4005,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4005, 4201)
+                ))
 
-            self.assertEqual(
-                Block(np.arange(0, 0), apri, 0),
-                reg.blk(apri, 0, 0)
-            )
+            with reg.blk(apri) as blk:
 
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4000)
+                ))
+
+            with reg.blk(apri, 4201, 0) as blk:
+
+                self.assertEqual(
+                    4201,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(4201, 4201)
+                ))
+
+            with reg.blk(apri, 0, 0) as blk:
+
+                self.assertEqual(
+                    0,
+                    blk.startn()
+                )
+                self.assertTrue(np.all(
+                    blk.segment() ==
+                    np.arange(0, 0)
+                ))
 
         with reg.open(readonly= True) as reg:
             with self.assertRaisesRegex(RegisterError, "[rR]ead-write"):
@@ -3971,20 +4379,13 @@ class Test_Register(TestCase):
             # check blocks
             for data, (seg, compressed) in block_datas.items():
 
-                try:
-                    filename = (txn
-                                .get(reg._get_disk_blk_key(_BLK_KEY_PREFIX, data[0], None, data[1], data[2], False))
-                                .decode("ASCII")
-                    )
-                except:
-                    raise
-
+                filename = (txn
+                            .get(reg._get_disk_blk_key(_BLK_KEY_PREFIX, data[0], None, data[1], data[2], False))
+                            .decode("ASCII")
+                )
                 filename = reg._local_dir / filename
-
                 self.assertTrue(filename.is_file())
-
                 val = txn.get(reg._get_disk_blk_key(_COMPRESSED_KEY_PREFIX, data[0], None, data[1], data[2], False))
-
                 self.assertEqual(
                     compressed,
                     val != _IS_NOT_COMPRESSED_VAL
@@ -3992,18 +4393,29 @@ class Test_Register(TestCase):
 
                 if val == _IS_NOT_COMPRESSED_VAL:
 
-                    self.assertEqual(
-                        Block(seg, *data[:2]),
-                        reg.blk(*data)
-                    )
+                    with reg.blk(*data) as blk:
+
+                        self.assertEqual(
+                            blk.apri(),
+                            data[0]
+                        )
+                        self.assertEqual(
+                            blk.startn(),
+                            data[1]
+                        )
+                        self.assertTrue(np.all(
+                            blk.segment() ==
+                            seg
+                        ))
 
                 else:
 
                     with self.assertRaises(CompressionError):
-                        reg.blk(*data)
+
+                        with reg.blk(*data) as blk:
+                            pass
 
                     filename = reg._local_dir / val.decode("ASCII")
-
                     self.assertTrue(filename.is_file())
 
             self.assertEqual(
@@ -4022,7 +4434,6 @@ class Test_Register(TestCase):
                 sum(_apri == apri for _apri,_,_ in block_datas),
                 reg.num_blks(apri)
             )
-
 
         # check info
         all_apri = reg.apris()
@@ -4100,25 +4511,31 @@ class Test_Register(TestCase):
             apris.append(apri)
             seg = np.arange(69, 420)
             blk = Block(seg, apri, 1337)
-            reg.add_disk_blk(blk)
+
+            with blk:
+                reg.add_disk_blk(blk)
+
             block_datas[data(blk)] = [seg, False]
 
             self._composite_helper(reg, block_datas, apris)
 
             seg = np.arange(69, 69)
             blk = Block(seg, apri, 1337)
-            reg.add_disk_blk(blk)
+
+            with blk:
+                reg.add_disk_blk(blk)
+
             block_datas[data(blk)] = [seg, False]
-
             self._composite_helper(reg, block_datas, apris)
-
             apri = ApriInfo(descr ="ApriInfo.from_json(hi = \"lol\")", respective = inner_apri)
             apris.append(apri)
             seg = np.arange(69., 420.)
             blk = Block(seg, apri, 1337)
-            reg.add_disk_blk(blk)
-            block_datas[data(blk)] = [seg, False]
 
+            with blk:
+                reg.add_disk_blk(blk)
+
+            block_datas[data(blk)] = [seg, False]
             self._composite_helper(reg, block_datas, apris)
 
             for start_n, length in reg.intervals(
@@ -4210,7 +4627,10 @@ class Test_Register(TestCase):
 
                 seg = np.arange(length, 2 * length)
                 blk = Block(seg, apri, start_n)
-                reg.add_disk_blk(blk)
+
+                with blk:
+                    reg.add_disk_blk(blk)
+
                 block_datas[data(blk)] = [seg, False]
 
                 self._composite_helper(reg, block_datas, apris)
@@ -4258,16 +4678,19 @@ class Test_Register(TestCase):
 
                 apri = ApriInfo(longg ="boi")
                 blk = Block(np.arange(start_n + i*1000, start_n + (i+1)*1000, dtype = np.int64), apri, start_n + i*1000)
-                reg.add_disk_blk(blk)
+
+                with blk:
+                    reg.add_disk_blk(blk)
 
             with self.assertRaisesRegex(IndexError, "head"):
-                reg.add_disk_blk(Block([], apri))
+
+                with Block([], apri) as blk:
+                    reg.add_disk_blk(blk)
 
             for start_n, length in reg.intervals(apri):
                 reg.rmv_disk_blk(apri, start_n, length)
 
             reg.set_startn_info()
-
             reg.increase_reg_size(reg.reg_size() + 1)
 
             with self.assertRaises(ValueError):
@@ -4286,9 +4709,13 @@ class Test_Register(TestCase):
             apri2 = ApriInfo(sup ="hey")
             apri3 = ApriInfo(respective = apri1)
 
-            reg.add_disk_blk(Block(np.arange(15), apri1))
+            with Block(np.arange(15), apri1) as blk:
+                reg.add_disk_blk(blk)
+
             reg.set_apos(apri2, AposInfo(num = 7))
-            reg.add_disk_blk(Block(np.arange(15, 30), apri3, 15))
+
+            with Block(np.arange(15, 30), apri3, 15) as blk:
+                reg.add_disk_blk(blk)
 
             for i in [1,2,3]:
 
@@ -4328,10 +4755,7 @@ class Test_Register(TestCase):
                         get
                     )
 
-            try:
-                reg.rmv_disk_blk(apri1, 0, 15)
-            except DataNotFoundError:
-                raise
+            reg.rmv_disk_blk(apri1, 0, 15)
 
             for i in [1,2,3]:
 

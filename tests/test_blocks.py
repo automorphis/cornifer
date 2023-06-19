@@ -4,7 +4,7 @@ from unittest import TestCase
 
 import numpy as np
 
-from cornifer import Block
+from cornifer import Block, open_blks
 from cornifer.info import ApriInfo
 
 
@@ -69,302 +69,238 @@ class Test_Block(TestCase):
         )
 
     def test_subdivide(self):
-        descr = ApriInfo(name ="primes")
+
+        apri = ApriInfo(name ="primes")
 
         with self.assertRaises(TypeError):
-            Block([], descr).subdivide(3.5)
+
+            with Block([], apri) as blk:
+                blk.subdivide(3.5)
 
         with self.assertRaises(ValueError):
-            Block([], descr).subdivide(1)
+
+            with Block([], apri) as blk:
+                blk.subdivide(1)
 
         for length in [2, 3, 4, 5, 6, 7, 8, 9, 10, 27]:
 
-            seqs = Block(np.arange(50), descr).subdivide(length)
+            with Block(np.arange(50), apri) as blk:
+                segs = blk.subdivide(length)
+
             self.assertEqual(
-                len(seqs),
+                len(segs),
                 math.ceil(50 / length)
             )
-            self.assertTrue(
-                all(len(seq) == length for seq in seqs[:-1])
-            )
+
+            for seg in segs[:-1]:
+                self.assertTrue(len(seg) == length)
+
             self.assertEqual(
-                len(seqs[-1]),
+                len(segs[-1]),
                 50 % length if 50 % length != 0 else length
             )
 
-            seqs = Block(np.arange(50), descr, 1).subdivide(length)
+            with Block(np.arange(50), apri, 1) as blk:
+                segs = blk.subdivide(length)
+
             self.assertEqual(
-                len(seqs),
+                len(segs),
                 math.ceil(50 / length)
             )
-            self.assertTrue(
-                all(len(seq) == length for seq in seqs[:-1])
-            )
+
+            for seg in segs[:-1]:
+                self.assertTrue(len(seg) == length)
+
             self.assertEqual(
-                len(seqs[-1]),
+                len(segs[-1]),
                 50 % length if 50 % length != 0 else length
             )
 
     def test___getitem__(self):
-        descr = ApriInfo(name="primes")
+
+        apri = ApriInfo(name="primes")
 
         with self.assertRaises(IndexError):
-            Block(np.empty((50, 50)), descr)[25, 25]
+
+            with Block(np.empty((50, 50)), apri) as blk:
+                blk[25, 25]
 
         with self.assertRaises(IndexError):
-            Block(np.empty(50), descr)[60]
+
+            with Block(np.empty(50), apri) as blk:
+                blk[60]
 
         with self.assertRaises(IndexError):
-            Block([0] * 50, descr)[60]
 
-        self.assertEqual(
-            Block(np.arange(50), descr)[:],
-            Block(np.arange(50), descr)
-        )
+            with Block([0] * 50, apri) as blk:
+                blk[60]
 
-        self.assertEqual(
-            Block(list(range(50)), descr)[:],
-            Block(list(range(50)), descr)
-        )
+        with Block(np.arange(50), apri) as blk:
+            self.assertTrue(np.all(blk[:] == np.arange(50)))
 
-        self.assertNotEqual(
-            Block(np.arange(50), descr)[:],
-            Block(list(range(50)), descr)
-        )
+        with Block(list(range(50)), apri) as blk:
+            self.assertEqual(blk[:], list(range(50)))
 
-        self.assertNotEqual(
-            Block(np.arange(50), descr),
-            Block(list(range(50)), descr)[:]
-        )
+        with Block(np.arange(50), apri) as blk:
+            self.assertTrue(np.all(blk[0:] == np.arange(50)))
 
-        self.assertEqual(
-            Block(np.arange(50), descr)[0:],
-            Block(np.arange(50), descr)
-        )
+        with Block(list(range(50)), apri) as blk:
+            self.assertEqual(blk[0:], list(range(50)))
 
-        self.assertEqual(
-            Block(list(range(50)), descr)[0:],
-            Block(list(range(50)), descr)
-        )
+        with Block(np.arange(50), apri) as blk:
+            self.assertTrue(np.all(blk[:50] == np.arange(50)))
 
-        self.assertNotEqual(
-            Block(np.arange(50), descr)[0:],
-            Block(list(range(50)), descr)
-        )
+        with Block(list(range(50)), apri) as blk:
+            self.assertEqual(blk[:50], list(range(50)))
 
-        self.assertNotEqual(
-            Block(np.arange(50), descr),
-            Block(list(range(50)), descr)[0:]
-        )
+        with Block(np.arange(50), apri) as blk:
+            self.assertTrue(np.all(blk[0:50] == np.arange(50)))
 
-        self.assertEqual(
-            Block(np.arange(50), descr)[:50],
-            Block(np.arange(50), descr)
-        )
+        with Block(list(range(50)), apri) as blk:
+            self.assertEqual(blk[0:50], list(range(50)))
 
-        self.assertEqual(
-            Block(list(range(50)), descr)[:50],
-            Block(list(range(50)), descr)
-        )
+        with Block(np.arange(50), apri) as blk:
+            self.assertTrue(np.all(blk[:49] == np.arange(49)))
 
-        self.assertNotEqual(
-            Block(np.arange(50), descr)[:50],
-            Block(list(range(50)), descr)
-        )
+        with Block(np.arange(50), apri) as blk:
+            self.assertTrue(np.all(blk[:-1] == np.arange(49)))
 
-        self.assertNotEqual(
-            Block(np.arange(50), descr),
-            Block(list(range(50)), descr)[:50]
-        )
+        with Block(list(range(50)), apri) as blk:
+            self.assertEqual(blk[:49], list(range(49)))
 
-        self.assertEqual(
-            Block(np.arange(50), descr)[0:50],
-            Block(np.arange(50), descr)
-        )
+        with Block(list(range(50)), apri) as blk:
+            self.assertEqual(blk[:-1], list(range(49)))
 
-        self.assertEqual(
-            Block(list(range(50)), descr)[0:50],
-            Block(list(range(50)), descr)
-        )
+        with Block(np.arange(50), apri) as blk:
+            self.assertTrue(np.all(blk[1:] == np.arange(1, 50)))
 
-        self.assertNotEqual(
-            Block(np.arange(50), descr)[0:50],
-            Block(list(range(50)), descr)
-        )
+        with Block(np.arange(50), apri, 1) as blk:
+            self.assertTrue(np.all(blk[:] == np.arange(50)))
 
-        self.assertNotEqual(
-            Block(np.arange(50), descr),
-            Block(list(range(50)), descr)[0:50]
-        )
+        with Block(np.arange(50), apri, 1) as blk:
+            self.assertTrue(np.all(blk[1:] == np.arange(50)))
 
-        self.assertEqual(
-            Block(np.arange(50), descr)[:49],
-            Block(np.arange(49), descr)
-        )
+        with Block(np.arange(50), apri, 1) as blk:
+            self.assertTrue(np.all(blk[2:] == np.arange(1, 50)))
 
-        self.assertEqual(
-            Block(np.arange(50), descr)[:-1],
-            Block(np.arange(49), descr)
-        )
+        with Block(np.arange(50), apri, 1) as blk:
+            self.assertTrue(np.all(blk[:51] == np.arange(50)))
 
-        self.assertEqual(
-            Block(list(range(50)), descr)[:49],
-            Block(list(range(49)), descr)
-        )
+        with Block(np.arange(50), apri, 1) as blk:
+            self.assertTrue(np.all(blk[:-1] == np.arange(49)))
 
-        self.assertEqual(
-            Block(list(range(50)), descr)[:-1],
-            Block(list(range(49)), descr)
-        )
+        with Block(np.arange(50), apri) as blk:
+            self.assertTrue(np.all(blk[::3] == np.arange(0, 50, 3)))
 
-        self.assertEqual(
-            Block(np.arange(50), descr)[1:],
-            Block(np.arange(1, 50), descr)
-        )
+        with Block(np.arange(50), apri, 1) as blk:
+            self.assertTrue(np.all(blk[::3] == np.arange(0, 50, 3)))
 
-        self.assertEqual(
-            Block(np.arange(50), descr, 1)[:],
-            Block(np.arange(50), descr, 1)
-        )
+        with Block(np.arange(50), apri, 1) as blk:
+            self.assertTrue(np.all(blk[1::3] == np.arange(0, 50, 3)))
 
-        self.assertEqual(
-            Block(np.arange(50), descr, 1)[1:],
-            Block(np.arange(50), descr, 1)
-        )
+        with Block(np.arange(50), apri, 1) as blk:
+            self.assertTrue(np.all(blk[1::-3] == np.arange(0, 50, -3)))
 
-        self.assertEqual(
-            Block(np.arange(50), descr, 1)[2:],
-            Block(np.arange(1, 50), descr, 1)
-        )
-
-        self.assertEqual(
-            Block(np.arange(50), descr, 1)[:51],
-            Block(np.arange(50), descr, 1)
-        )
-
-        self.assertEqual(
-            Block(np.arange(50), descr, 1)[:-1],
-            Block(np.arange(49), descr, 1)
-        )
-
-        self.assertEqual(
-            Block(np.arange(0, 50), descr)[::3],
-            Block(np.arange(0, 50, 3), descr)
-        )
-
-        self.assertEqual(
-            Block(np.arange(0, 50), descr, 1)[::3],
-            Block(np.arange(0, 50, 3), descr, 1)
-        )
-
-        self.assertEqual(
-            Block(np.arange(0, 50), descr, 1)[1::3],
-            Block(np.arange(0, 50, 3), descr, 1)
-        )
-
-        self.assertEqual(
-            Block(np.arange(0, 50), descr, 1)[1::-3],
-            Block(np.arange(0, 50, -3), descr, 1)
-        )
-
-        self.assertEqual(
-            Block(np.arange(50), descr)[:1],
-            Block(np.arange(1), descr)
-        )
+        with Block(np.arange(50), apri) as blk:
+            self.assertTrue(np.all(blk[:1] == np.arange(1)))
 
     def test___len__(self):
-        descr = ApriInfo(name ="primes")
 
-        lst = []
-        seq = Block(lst, descr)
-        self.assertEqual(
-            len(seq),
-            0
-        )
+        apri = ApriInfo(name ="primes")
+        seg = []
+        blk = Block(seg, apri)
 
-        lst.append("lol")
-        self.assertEqual(
-            len(seq),
-            1
-        )
+        with blk:
+            self.assertEqual(
+                len(blk),
+                0
+            )
 
-        lst.extend(list(range(10)))
-        self.assertEqual(
-            len(seq),
-            11
-        )
+        seg.append("lol")
+
+        with blk:
+            self.assertEqual(
+                len(blk),
+                1
+            )
+
+        seg.extend(list(range(10)))
+
+        with blk:
+            self.assertEqual(
+                len(blk),
+                11
+            )
 
         array = np.empty(10)
-        seq = Block(array, descr)
-        self.assertEqual(
-            len(seq),
-            10
-        )
+        blk = Block(array, apri)
+
+        with blk:
+            self.assertEqual(
+                len(blk),
+                10
+            )
 
         array = np.empty(0)
-        seq = Block(array, descr)
-        self.assertEqual(
-            len(seq),
-            0
-        )
+        blk = Block(array, apri)
+
+        with blk:
+            self.assertEqual(
+                len(blk),
+                0
+            )
 
         class A:
             def __len__(self): return 694201337
 
-        seq = Block(A(), descr)
-        self.assertEqual(
-            len(seq),
-            694201337
-        )
+        blk = Block(A(), apri)
+
+        with blk:
+            self.assertEqual(
+                len(blk),
+                694201337
+            )
 
     def test___contains__(self):
+
         descr = ApriInfo(name ="primes")
+
         for n, start_n in product(range(50), repeat = 2):
-            self.assertIn(
-                n + start_n,
-                Block(np.arange(50), descr, start_n)
-            )
+
+            with Block(np.arange(50), descr, start_n) as blk:
+
+                self.assertIn(
+                    n + start_n,
+                    blk
+                )
 
     def test___eq__(self):
 
         descr1 = ApriInfo(name ="primes")
         descr2 = ApriInfo(name ="primes", mod4 = 1)
 
-        self.assertEqual(
-            Block(np.arange(50), descr1),
-            Block(np.arange(50), descr1)
-        )
+        with open_blks(Block(np.arange(50), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
+            self.assertEqual(blk1, blk2)
 
-        self.assertEqual(
-            Block(list(range(50)), descr1),
-            Block(list(range(50)), descr1)
-        )
+        with open_blks(Block(list(range(50)), descr1), Block(list(range(50)), descr1)) as (blk1, blk2):
+            self.assertEqual(blk1, blk2)
 
-        self.assertNotEqual(
-            Block(np.arange(50), descr2),
-            Block(np.arange(50), descr1)
-        )
+        with open_blks(Block(np.arange(50), descr2), Block(np.arange(50), descr1)) as (blk1, blk2):
+            self.assertNotEqual(blk1, blk2)
 
-        self.assertNotEqual(
-            Block(np.arange(60), descr1),
-            Block(np.arange(50), descr1)
-        )
+        with open_blks(Block(np.arange(60), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
+            self.assertNotEqual(blk1, blk2)
 
         class Block2(Block):pass
-        self.assertNotEqual(
-            Block(np.arange(50), descr1),
-            Block2(np.arange(50), descr1)
-        )
 
-        self.assertNotEqual(
-            Block(np.arange(50), descr1, 0),
-            Block(np.arange(50), descr1, 1)
-        )
+        with open_blks(Block(np.arange(50), descr1), Block2(np.arange(50), descr1)) as (blk1, blk2):
+            self.assertNotEqual(blk1, blk2)
 
-        self.assertNotEqual(
-            Block(list(range(50)), descr1),
-            Block(np.arange(50), descr1)
-        )
+        with open_blks(Block(np.arange(50), descr1, 0), Block(np.arange(50), descr1, 1)) as (blk1, blk2):
+            self.assertNotEqual(blk1, blk2)
+
+        with open_blks(Block(list(range(50)), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
+            self.assertNotEqual(blk1, blk2)
 
     def test___hash__(self):
 

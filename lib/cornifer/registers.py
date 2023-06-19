@@ -13,7 +13,6 @@
     GNU General Public License for more details.
 """
 
-import math
 import pickle
 import shutil
 import warnings
@@ -26,15 +25,15 @@ import lmdb
 import numpy as np
 
 from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, CompressionError, \
-    DecompressionError, NOT_ABSOLUTE_ERROR_MESSAGE, RegisterRecoveryError
+    DecompressionError, NOT_ABSOLUTE_ERROR_MESSAGE, RegisterRecoveryError, BlockNotOpenError
 from .info import ApriInfo, AposInfo, _InfoJsonEncoder, _InfoJsonDecoder, _Info
-from .blocks import Block, MemmapBlock, ReleaseBlock
+from .blocks import Block, MemmapBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, is_int, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
     write_txt_file, read_txt_file, intervals_subset
 from ._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, open_lmdb, lmdb_count_keys, \
-    ReversibleTransaction, is_transaction, lmdb_prefix_list
+    ReversibleTransaction, is_transaction
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
     REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH
@@ -110,6 +109,10 @@ _MEMORY_FULL_ERROR_MESSAGE = (
 )
 _REG_ALREADY_ADDED_ERROR_MESSAGE = "Already added as subregister."
 _NO_APRI_ERROR_MESSAGE = "The following `ApriInfo` is not known to this `Register` : {0}"
+_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE = (
+    "Closed RAM `Block` with the following data (it is good practice to always keep all RAM `Block`s open) : {0}, "
+    "startn = {1}."
+)
 
 #################################
 #           CONSTANTS           #
@@ -319,6 +322,8 @@ class Register(ABC):
         check_type(shorthand, "shorthand", str)
 
         if self._created:
+
+            self._check_readwrite_raise("set_shorthand")
             write_txt_file(shorthand, self._shorthand_filepath, True)
 
         self._shorthand = shorthand
@@ -339,6 +344,8 @@ class Register(ABC):
             new_msg = message
 
         if self._created:
+
+            self._check_readwrite_raise("set_msg")
             write_txt_file(new_msg, self._msg_filepath, True)
 
         self._msg = new_msg
@@ -367,7 +374,6 @@ class Register(ABC):
         # DEBUG : 1, 2
 
         self._check_open_raise("set_startn_info")
-
         self._check_readwrite_raise("set_startn_info")
 
         if head is not None and not is_int(head):
@@ -490,6 +496,7 @@ class Register(ABC):
                 Register._add_instance(local_dir, self)
                 yiel = self
                 yiel._opened = True
+                yiel._readonly = readonly
 
             except BaseException as e:
 
@@ -513,69 +520,6 @@ class Register(ABC):
         finally:
             yiel._close_created()
 
-    @staticmethod
-    @contextmanager
-    def opens(*regs, **kwargs):
-        """Syntactic sugar. Opens many registers at once for reading and/or writing.
-
-        The snippet:
-
-            with reg1.open(readonly = True) as reg1:
-                with reg2.open() as reg2:
-                    ...
-
-        is equivalent to
-
-            with Register.opens(reg1, reg2, readonlys = (True, False)) as (reg1, reg2):
-                ...
-
-        Note that the parentheses MUST be present after the `as`, otherwise Python will get confused.
-
-        :param regs:
-        :param kwargs:
-        :return:
-        """
-
-        if (len(kwargs) == 1 and 'readonlys' not in kwargs) or len(kwargs) > 1:
-            raise KeyError("`opens` only takes one keyword-argument, `readonlys`.")
-
-        if len(kwargs) == 1:
-            readonlys = kwargs['readonlys']
-
-        else:
-            readonlys = None
-
-        if readonlys is not None and not isinstance(readonlys, (list, tuple)):
-            raise TypeError("`readonlys` must be of type `list` or `tuple`.")
-
-        for reg in regs:
-
-            if not isinstance(reg, Register):
-                raise TypeError("Each element of `regs` must be of type `Register`.")
-
-        if readonlys is not None:
-
-            for readonly in readonlys:
-
-                if not isinstance(readonly, bool):
-                    raise TypeError("Each element of `readonlys` must be of type `bool`.")
-
-        if readonlys is not None and len(regs) != len(readonlys):
-            raise ValueError("`regs` and `readonlys` must have the same length.")
-
-        if readonlys is None:
-            readonlys = (False,) * len(regs)
-
-        stack = ExitStack()
-        yld = []
-
-        with stack:
-
-            for reg, readonly in zip(regs, readonlys):
-                yld.append(stack.enter_context(reg.open(readonly = readonly)))
-
-            yield tuple(yld)
-
     def increase_reg_size(self, num_bytes):
         """WARNING: DO NOT CALL THIS METHOD FROM MORE THAN ONE PYTHON PROCESS AT A TIME. You are safe if you call it
         from only one Python process. You are safe if you have multiple Python processes running and call it from only
@@ -586,6 +530,7 @@ class Register(ABC):
         """
 
         self._check_open_raise("increase_reg_size")
+        self._check_readwrite_raise("increase_reg_size")
 
         if not is_int(num_bytes):
             raise TypeError("`num_bytes` must be of type `int`.")
@@ -725,21 +670,15 @@ class Register(ABC):
             )
 
         check_reg_structure(local_dir)
-
         self._created = True
-
         self._local_dir = local_dir
         self._local_dir_bytes = str(self._local_dir).encode("ASCII")
-
         self._db_filepath = self._local_dir / DATABASE_FILEPATH
-
-        self._subreg_bytes = (
-            _SUB_KEY_PREFIX + self._local_dir_bytes
-        )
-
+        self._subreg_bytes = _SUB_KEY_PREFIX + self._local_dir_bytes
         self._version_filepath = local_dir / VERSION_FILEPATH
         self._msg_filepath = local_dir / MSG_FILEPATH
         self._cls_filepath = local_dir / CLS_FILEPATH
+        self._shorthand_filepath = local_dir / SHORTHAND_FILEPATH
         self._db_map_size_filepath = local_dir / MAP_SIZE_FILEPATH
 
     def _has_compatible_version(self):
@@ -1570,7 +1509,11 @@ class Register(ABC):
         if not filename.is_absolute():
             raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(filename))
 
-        filename.unlink()
+        try:
+            filename.unlink()
+
+        except FileNotFoundError as e:
+            raise DataNotFoundError from e
 
     @classmethod
     @abstractmethod
@@ -1594,6 +1537,7 @@ class Register(ABC):
 
         self._check_open_raise("add_disk_blk")
         self._check_readwrite_raise("add_disk_blk")
+        Register._check_blk_open_raise(blk, "add_disk_blk")
         check_type(blk, "blk", Block)
         check_type(exists_ok, "exists_ok", bool)
         check_type(dups_ok, "dups_ok", bool)
@@ -1700,6 +1644,9 @@ class Register(ABC):
         :raises RegisterError: If a duplicate `Block` already exists in this `Register`.
         """
 
+        self._check_open_raise("append_disk_blk")
+        self._check_readwrite_raise("append_disk_blk")
+        Register._check_blk_open_raise(blk, "append_disk_blk")
         check_type(blk, "blk", Block)
         check_type(ret_metadata, "ret_metadata", bool)
 
@@ -1748,8 +1695,8 @@ class Register(ABC):
                 raise KeyboardInterrupt
 
             txn = None
-            blkFilename = None
-            comprFilename = None
+            blk_filename = None
+            compr_filename = None
 
             if _debug == 2:
                 raise KeyboardInterrupt
@@ -1764,7 +1711,7 @@ class Register(ABC):
                     if _debug == 4:
                         raise KeyboardInterrupt
 
-                    blkFilename, comprFilename = self._rmv_disk_blk_txn(apri, startn_, length_, txn)
+                    blk_filename, compr_filename = self._rmv_disk_blk_txn(apri, startn_, length_, txn)
 
                     if _debug == 5:
                         raise KeyboardInterrupt
@@ -1772,29 +1719,29 @@ class Register(ABC):
                 if _debug == 6:
                     raise KeyboardInterrupt
 
-                if not is_deletable(blkFilename):
-                    raise OSError(f"Cannot delete `Block` file `{str(blkFilename)}`.")
+                if not is_deletable(blk_filename):
+                    raise OSError(f"Cannot delete `Block` file `{str(blk_filename)}`.")
 
                 if _debug == 7:
                     raise KeyboardInterrupt
 
-                if comprFilename is not None and not is_deletable(comprFilename):
-                    raise OSError(f"Cannot delete compressed `Block` file `{str(comprFilename)}`.")
+                if compr_filename is not None and not is_deletable(compr_filename):
+                    raise OSError(f"Cannot delete compressed `Block` file `{str(compr_filename)}`.")
 
                 if _debug == 8:
                     raise KeyboardInterrupt
 
-                if comprFilename is not None:
+                if compr_filename is not None:
 
-                    blkFilename.unlink()
+                    blk_filename.unlink()
 
                     if _debug == 9:
                         raise KeyboardInterrupt
 
-                    comprFilename.unlink()
+                    compr_filename.unlink()
 
                 else:
-                    type(self).clean_disk_data(blkFilename, **kwargs)
+                    type(self).clean_disk_data(blk_filename, **kwargs)
 
                 return
 
@@ -1804,12 +1751,12 @@ class Register(ABC):
 
                 try:
 
-                    if comprFilename is not None:
+                    if compr_filename is not None:
 
-                        if blkFilename is not None and comprFilename.exists():
+                        if blk_filename is not None and compr_filename.exists():
 
                             try:
-                                blkFilename.touch()
+                                blk_filename.touch()
 
                             except FileExistsError:
                                 pass
@@ -1817,7 +1764,7 @@ class Register(ABC):
                         else:
                             raise RegisterRecoveryError(FAIL_NO_RECOVER_ERROR_MESSAGE) from e
 
-                    elif blkFilename is not None and not blkFilename.exists():
+                    elif blk_filename is not None and not blk_filename.exists():
                         raise RegisterRecoveryError(FAIL_NO_RECOVER_ERROR_MESSAGE) from e
 
                     if txn is not None:
@@ -2203,6 +2150,12 @@ class Register(ABC):
     #################################
     #    PROTEC DISK BLK METHODS    #
 
+    @staticmethod
+    def _check_blk_open_raise(blk, method_name):
+
+        if not blk._entered:
+            raise BlockNotOpenError(f"You must do `with blk:` before you call `reg.{method_name}()`.")
+
     def _add_disk_blk_txn(self, blk, txn):
 
         # DEBUG : 6,7,8,9, 10
@@ -2268,13 +2221,11 @@ class Register(ABC):
 
         if _debug == 12:
             raise KeyboardInterrupt
-
         # raises DataNotFoundError
         self._get_id_by_apri(apri, None, False, txn, None)
 
         if _debug == 13:
             raise KeyboardInterrupt
-
         # raises RegisterError and DataNotFoundError
         blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, startn, length, txn)
 
@@ -2511,6 +2462,8 @@ class Register(ABC):
     def add_ram_blk(self, blk):
 
         self._check_open_raise("add_ram_blk")
+        self._check_readwrite_raise("add_ram_blk")
+        Register._check_blk_open_raise(blk, "add_ram_blk")
         check_type(blk, "blk", Block)
 
         if blk.apri() not in self._ram_blks.keys():
@@ -2523,10 +2476,18 @@ class Register(ABC):
 
             for i, blk_ in enumerate(self._ram_blks[blk.apri()]):
 
+                try:
+                    blk_len = len(blk_)
+
+                except BlockNotOpenError as e:
+                    raise BlockNotOpenError(
+                        _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(blk_.apri(), blk_.startn())
+                    ) from e
+
                 if blk_ is blk:
                     break
 
-                elif blk.startn() < blk_.startn() or (blk.startn() == blk_.startn() and len(blk) > len(blk_)):
+                elif blk.startn() < blk_.startn() or (blk.startn() == blk_.startn() and len(blk) > blk_len):
 
                     self._ram_blks[blk.apri()].insert(i, blk)
                     break
@@ -2567,6 +2528,7 @@ class Register(ABC):
     #################################
     # PUBLIC RAM & DISK BLK METHODS #
 
+    @contextmanager
     def blk_by_n(self, apri, n, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
 
         self._check_open_raise("blk_by_n")
@@ -2592,7 +2554,11 @@ class Register(ABC):
             for startn, length in self.intervals(apri, combine = False, diskonly = diskonly, recursively = False):
 
                 if startn <= n < startn + length:
-                    return self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs)
+
+                    with self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs) as blk:
+
+                        yield blk
+                        return
 
         if recursively:
 
@@ -2601,17 +2567,21 @@ class Register(ABC):
                 with subreg._recursive_open(True) as subreg:
 
                     try:
-                        return subreg.blk_by_n(apri, n, diskonly, True, ret_metadata, **kwargs)
+
+                        with subreg.blk_by_n(apri, n, diskonly, True, ret_metadata, **kwargs) as blk:
+
+                            yield blk
+                            return
 
                     except DataNotFoundError:
                         pass
 
         raise DataNotFoundError(_blk_not_found_err_msg(diskonly, apri, n))
 
+    @contextmanager
     def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
 
         self._check_open_raise("blk")
-
         check_type(apri, "apri", ApriInfo)
         startn = check_return_int_None_default(startn, "startn", None)
         length = check_return_int_None_default(length, "length", None)
@@ -2641,13 +2611,23 @@ class Register(ABC):
 
                 for blk in self._ram_blks[apri]:
 
-                    if blk.startn() == startn_ and len(blk) == length_:
+                    try:
+                        blk_len = len(blk)
+
+                    except BlockNotOpenError as e:
+                        raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())) from e
+
+                    if blk.startn() == startn_ and blk_len == length_:
 
                         if ret_metadata:
-                            return blk, None
+
+                            yield blk, None
+                            return
 
                         else:
-                            return blk
+
+                            yield blk
+                            return
 
             try:
                 blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, startn_, length_)
@@ -2671,11 +2651,15 @@ class Register(ABC):
                 data = type(self).load_disk_data(blk_filename, **kwargs)
                 blk = Block(data, apri, startn_)
 
-                if ret_metadata:
-                    return blk, FileMetadata.from_path(blk_filename)
+                with blk:
 
-                else:
-                    return blk
+                    if ret_metadata:
+                        yield blk, FileMetadata.from_path(blk_filename)
+
+                    else:
+                        yield blk
+
+                return
 
         if recursively:
 
@@ -2684,7 +2668,11 @@ class Register(ABC):
                 with subreg._recursive_open(True) as subreg:
 
                     try:
-                        return subreg.blk(apri, startn, length, ret_metadata, ret_metadata=True)
+
+                        with subreg.blk(apri, startn, length, ret_metadata, ret_metadata=True) as blk:
+                            yield blk
+
+                        return
 
                     except DataNotFoundError:
                         pass
@@ -2694,6 +2682,24 @@ class Register(ABC):
         )
 
     def blks(self, apri, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
+        """Iterate over all `Block`s with `apri`.
+
+        This is a convenience method that should be used only for simple data manipulation. This method opens
+        only one `Block` at a time; each is closed automatically before the next `Block` is yielded (hence it is
+        not necessary to use a `with` clause).
+
+        The following idiom is equivalent to `for blk in reg.blks(apri):`
+
+            for startn, length in self.intervals(apri):
+                with reg.blk(startn, length) as blk:
+                    ...
+
+        :param apri: (type `ApriInfo`)
+        :param diskonly: (type `bool`, default `False`)
+        :param recursively: (type `bool`, default `False`)
+        :param ret_metadata: (type `bool`, default `False`)
+        :return:
+        """
 
         self._check_open_raise("blks")
         check_type(apri, "apri", ApriInfo)
@@ -2714,7 +2720,9 @@ class Register(ABC):
             for startn, length in self.intervals(apri, combine = False, diskonly = diskonly, recursively = recursively):
 
                 try:
-                    yield self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs)
+
+                    with self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs) as blk:
+                        yield blk
 
                 except DataNotFoundError:
                     pass
@@ -2726,21 +2734,26 @@ class Register(ABC):
                 with subreg._recursive_open(True) as subreg:
                     yield from subreg.blks(apri, diskonly, True, ret_metadata, **kwargs)
 
+    @contextmanager
     def __getitem__(self, apri_n_diskonly_recursively):
-        return self.get(*Register._resolve_apri_n_diskonly_recursively(apri_n_diskonly_recursively))
 
+        with self.get(*Register._resolve_apri_n_diskonly_recursively(apri_n_diskonly_recursively)) as yield_:
+            yield yield_
+
+    @contextmanager
     def get(self, apri, n, diskonly = False, recursively = False, **kwargs):
 
         self._check_open_raise("get")
 
+        n_slice = isinstance(n, slice)
 
         if not isinstance(apri, ApriInfo):
             raise TypeError("The first argument to `reg[]` must be an `ApriInfo.")
 
-        if not is_int(n) and not isinstance(n, slice):
+        if not is_int(n) and n_slice:
             raise TypeError("The second argument to `reg[]` must be an `int` or a `slice`.")
 
-        elif is_int(n):
+        elif not n_slice:
             n = int(n)
 
         else:
@@ -2773,7 +2786,7 @@ class Register(ABC):
         if not isinstance(recursively, bool):
             raise TypeError("The third argument of `reg[]` must be of type `bool`.")
 
-        if isinstance(n, slice):
+        if n_slice:
 
             if n.start is not None and n.start < 0:
                 raise ValueError("Start index cannot be negative.")
@@ -2791,12 +2804,15 @@ class Register(ABC):
 
         else:
 
-            if isinstance(n, slice):
-                # return iterator if given slice
-                return _ElementIter(self, apri, n, diskonly, recursively, kwargs)
+            if n_slice:
+
+                yield _element_iter(self, apri, n, diskonly, recursively, kwargs)
+                return
 
             else:
-                return self.blk_by_n(apri, n, diskonly, recursively, False, **kwargs)[n]
+
+                with self.blk_by_n(apri, n, diskonly, recursively, False, **kwargs) as blk:
+                    yield blk.segment()
 
         if recursively:
 
@@ -3047,17 +3063,34 @@ class Register(ABC):
         elif startn is not None and length is not None:
             return startn, length
 
-        if not diskonly and apri in self._ram_blks.keys():
+        if not diskonly and apri in self._ram_blks.keys() and len(self._ram_blks[apri]) > 0:
 
             if startn is not None and length is None:
 
                 for blk in self._ram_blks[apri]:
 
+                    try:
+                        blk_len = len(blk)
+
+                    except BlockNotOpenError as e:
+                        raise BlockNotOpenError(
+                            _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(blk.apri(), blk.startn())
+                        ) from e
+
                     if blk.startn() == startn:
-                        return startn, len(blk)
+                        return startn, blk_len
 
             else:
-                return self._ram_blks[apri][0].startn(), len(self._ram_blks[apri][0])
+
+                blk = self._ram_blks[apri][0]
+
+                try:
+                    blk_len = len(blk)
+
+                except BlockNotOpenError as e:
+                    raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(blk.apri(), blk.starn())) from e
+
+                return blk.startn(), blk_len
 
         if startn is not None and length is None:
 
@@ -3107,7 +3140,16 @@ class Register(ABC):
                     if not diskonly and apri in self._ram_blks.keys():
 
                         for blk in self._ram_blks[apri]:
-                            yield blk.startn(), len(blk)
+
+                            try:
+                                blk_len = len(blk)
+
+                            except BlockNotOpenError as e:
+                                raise BlockNotOpenError(
+                                    _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())
+                                ) from e
+
+                            yield blk.startn(), blk_len
 
                     try:
 
@@ -3281,6 +3323,7 @@ class NumpyRegister(Register):
 
         raise DataNotFoundError(_blk_not_found_err_msg(diskonly, str(apri), n))
 
+    @contextmanager
     def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
         """
         :param apri: (type `ApriInfo`)
@@ -3294,22 +3337,31 @@ class NumpyRegister(Register):
         :return: (type `File_Metadata`) If `ret_metadata is True`.
         """
 
-        ret = super().blk(apri, startn, length, diskonly, recursively, ret_metadata, **kwargs)
+        with super().blk(apri, startn, length, diskonly, recursively, ret_metadata, **kwargs) as ret:
 
-        if ret_metadata:
-            blk = ret[0]
+            if ret_metadata:
+                blk = ret[0]
 
-        else:
-            blk = ret
+            else:
+                blk = ret
 
-        if isinstance(blk.segment(), np.memmap):
-            blk = MemmapBlock(blk.segment(), blk.apri(), blk.startn())
+            if issubclass(blk.segment_type, np.memmap):
 
-        if ret_metadata:
-            return blk, ret[1]
+                with MemmapBlock.cast(blk) as blk:
 
-        else:
-            return blk
+                    if ret_metadata:
+                        yield blk, ret[1]
+
+                    else:
+                        yield blk
+
+            else:
+
+                if ret_metadata:
+                    yield blk, ret[1]
+
+                else:
+                    yield blk
 
     def concat_disk_blks(self, apri, startn = None, length = None, delete = False, ret_metadata = False):
         """Concatenate several `Block`s into a single `Block` along axis 0 and save the new one to the disk.
@@ -3318,7 +3370,7 @@ class NumpyRegister(Register):
 
         The interval `range(startn, startn + length)` must be the disjoint union of intervals of the form
         `range(blk.startn(), blk.startn() + len(blk))`, where `blk` is a disk `Block` with `ApriInfo`
-        given by `info`.
+        given by `apri`.
 
         Length-0 `Block`s are ignored.
 
@@ -3502,50 +3554,54 @@ class NumpyRegister(Register):
                 return None
 
         blks = []
+        metadata = []
         fixed_shape = None
-        ref_blk = None
+        ref_blk_startn = None
+        ref_blk_len = None
         failure_reinsert_indices = []
         combined_blk = None
 
         try:
+            # All blocks will be opened and will remain open until they are concatenated
+            stack = ExitStack()
 
-            for startn_, length_ in intervals_to_get:
-                # check that blocks have the correct shape
+            with stack:
 
-                blk = self.blk(apri, startn_, length_, True, False, False, mmap_mode="r")
-                blks.append(blk)
+                for startn_, length_ in intervals_to_get:
 
-                if fixed_shape is None:
+                    blk = stack.enter_context(self.blk(apri, startn_, length_, True, False, False, mmap_mode="r"))
+                    blks.append(blk)
+                    metadata.append((startn_, length_))
+                    # check that all shapes are correct
+                    if fixed_shape is None:
+                        # initialize correct shape
+                        fixed_shape = blk.segment().shape[1:]
+                        ref_blk_startn = blk.startn()
+                        ref_blk_len = len(blk)
 
-                    fixed_shape = blk.segment().shape[1:]
-                    ref_blk = blk
+                    elif fixed_shape != blk.segment().shape[1:]:
+                        raise ValueError(
+                            "Cannot combine the following two `Block`s because all axes other than axis 0 must have the"
+                            " same shape:\n"
+                            f"{str(apri)}, startn = {ref_blk_startn}, length = {ref_blk_len}\n, shape = "
+                            f"{str(fixed_shape)}\n"
+                            f"{str(apri)}, startn = {startn_}, length = {length_}\n, shape = "
+                            f"{str(blk.segment().shape)}"
+                        )
 
-                elif fixed_shape != blk.segment().shape[1:]:
+                combined_blk = np.concatenate([blk.segment() for blk in blks], axis=0)
+                combined_blk = Block(combined_blk, apri, startn)
 
-                    raise ValueError(
-                        "Cannot combine the following two `Block`s because all axes other than axis 0 must have the same " +
-                        "shape:\n" +
-                        f"{str(apri)}, startn = {ref_blk.startn()}, length = {len(ref_blk)}\n, shape = " +
-                        f"{str(fixed_shape)}\n" +
-                        f"{str(apri)}, startn = {startn_}, length = {length_}\n, shape = " +
-                        f"{str(blk.segment().shape)}\n"
+                with combined_blk:
+                    ret = self.add_disk_blk(combined_blk, ret_metadata)
 
-                    )
-
-            combined_blk = np.concatenate([blk.segment() for blk in blks], axis=0)
-            combined_blk = Block(combined_blk, apri, startn)
-            ret = self.add_disk_blk(combined_blk, ret_metadata)
-
-            if _debug == 1:
-                raise KeyboardInterrupt
+                if _debug == 1:
+                    raise KeyboardInterrupt
 
             if delete:
 
-                for blk in blks:
+                for startn_, length_ in metadata:
 
-                    startn_ = blk.startn()
-                    length_ = len(blk)
-                    blk.release()
                     self.rmv_disk_blk(apri, startn_, length_, False)
                     failure_reinsert_indices.append((startn_, length_))
 
@@ -3558,97 +3614,46 @@ class NumpyRegister(Register):
 
                 if combined_blk is not None and isinstance(combined_blk, Block) and delete:
 
-                    for startn_, length_ in failure_reinsert_indices:
-                        self.add_disk_blk(combined_blk[startn_: startn_ + length_])
+                    with combined_blk:
 
-            except BaseException:
-                raise RegisterRecoveryError(_FAIL_NO_RECOVER_ERROR_MESSAGE)
+                        for startn_, length_ in failure_reinsert_indices:
+
+                            reinsert_blk = Block(combined_blk[startn_: startn_ + length_], apri, startn_)
+
+                            with reinsert_blk:
+                                self.add_disk_blk(combined_blk[startn_: startn_ + length_])
+
+            except BaseException as ee:
+                raise RegisterRecoveryError(_FAIL_NO_RECOVER_ERROR_MESSAGE) from ee
 
             else:
                 raise e
 
-        finally:
-
-            for blk in blks:
-                blk.release()
-
         return ret
 
-class _ElementIter:
+def _element_iter(reg, apri, slice_, diskonly, recursively, kwargs):
 
-    def __init__(self, reg, apri, slc, diskonly, recursively, kwargs):
+    n = slice_.start if slice_.start is not None else 0
+    stop = slice_.stop
+    step = slice_.step if slice_.step is not None else 1
 
-        self.reg = reg
-        self.apri = apri
-        self.step = slc.step if slc.step else 1
-        self.stop = slc.stop
-        self.diskonly = diskonly
-        self.recursively = recursively
-        self.kwargs = kwargs
-        self.curr_blk = None
-        self.intervals = None
-        self.curr_n = slc.start if slc.start else 0
+    while True:
 
-    def update_intervals_calculated(self):
+        try:
+            blk_contextmanager = reg.blk_by_n(apri, n, diskonly, recursively, False, **kwargs)
 
-        self.intervals = list(
-            self.reg.intervals(self.apri, combine = False, diskonly = self.diskonly, recursively = self.recursively)
-        )
+        except DataNotFoundError:
+            return
 
-    def get_next_blk(self):
+        with blk_contextmanager as blk:
 
-        if self.curr_blk is not None and isinstance(self.curr_blk, ReleaseBlock):
-            self.curr_blk.release()
+            while n < stop and n in blk:
 
-        return self.reg.blk_by_n(self.apri, self.curr_n, self.diskonly, self.recursively, False, **self.kwargs)
+                yield blk[n]
+                n += step
 
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-
-        if self.stop is not None and self.curr_n >= self.stop:
-            raise StopIteration
-
-        elif self.curr_blk is None:
-
-            self.update_intervals_calculated()
-
-            if len(self.intervals) == 0:
-                raise StopIteration
-
-            self.curr_n = max(self.intervals[0][0], self.curr_n)
-
-            try:
-                self.curr_blk = self.get_next_blk()
-
-            except DataNotFoundError:
-                raise StopIteration
-
-        elif self.curr_n not in self.curr_blk:
-
-            try:
-                self.curr_blk = self.get_next_blk()
-
-            except DataNotFoundError:
-
-                self.update_intervals_calculated()
-
-                for startn, length in self.intervals:
-
-                    if startn > self.curr_n:
-
-                        self.curr_n += math.ceil( (startn - self.curr_n) / self.step ) * self.step
-                        break
-
-                else:
-                    raise StopIteration
-
-                self.curr_blk = self.get_next_blk()
-
-        ret = self.curr_blk[self.curr_n]
-        self.curr_n += self.step
-        return ret
+            if n >= stop:
+                return
 
 class _CopyRegister(Register):
 
