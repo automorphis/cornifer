@@ -112,11 +112,7 @@ class _InfoJsonDecoder(JSONDecoderWithRoot):
 
     def decode_root(self, obj):
 
-        try:
-            decoded_json = self.decode(obj)
-
-        except:
-            raise
+        decoded_json = self.decode(obj)
 
         if not isinstance(decoded_json, dict):
             raise ValueError(
@@ -445,12 +441,12 @@ class ApriInfo(_Info, reserved_kws = ["_hash"]):
             try:
                 hash_ += hash(val)
 
-            except (TypeError, AttributeError):
+            except (TypeError, AttributeError) as e:
 
                 raise ValueError(
                     f"All keyword arguments must be hashable types. The keyword argument given by \"{key}\" "+
                     f"not a hashable type. The type of that argument is `{val.__class__.__name__}`."
-                )
+                ) from e
 
             if self._memoize_json and isinstance(val, _Info):
                 self._memoize_json = False

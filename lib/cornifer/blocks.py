@@ -303,9 +303,7 @@ class MemmapBlock(ReleaseBlock):
             a = np.memmap(...)           # 1 reference  (a)
             blk1 = MemmapBlock(a, apri)  # 2 referneces (a, blk1._seg)
             with blk1:
-                with blk1[1:] as blk2:   # 3 references (a, blk1._seg, blk2._seg)
-                    ...
-                ...                      # 2 references (a, blk1._seg)
+                ...
             ...                          # 1 reference  (a)
 
         Indeed, the reference to the `a` memmap will remain until the user manually deletes the reference via

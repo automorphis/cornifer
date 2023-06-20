@@ -52,6 +52,6 @@ def check_reg_structure(local_dir):
 
     if len(problems) > 0:
         raise FileNotFoundError(
-            "Could not find the following files or directories: " +
+            "Could not find the following files or directories: "
             ", ".join(problems)
         )
