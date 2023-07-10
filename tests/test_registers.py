@@ -273,12 +273,12 @@ class Test_Register(TestCase):
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
         self.assertEqual(
             str(reg),
-            f"sh: \"hello\""
+            f"sh: hello"
         )
         with reg.open() as reg:pass
         self.assertEqual(
             str(reg),
-            f"sh ({reg._local_dir}): \"hello\""
+            f"sh ({reg._local_dir}): hello"
         )
 
     def test___repr__(self):
@@ -724,14 +724,14 @@ class Test_Register(TestCase):
                 raise e
 
         self.assertEqual(
-            "sh: \"yes\"",
+            "sh: yes",
             str(reg)
         )
         with reg.open() as reg:pass
         reg.set_msg("no")
 
         self.assertEqual(
-            f"sh ({reg._local_dir}): \"no\"",
+            f"sh ({reg._local_dir}): no",
             str(reg)
         )
 
@@ -4604,12 +4604,12 @@ class Test_Register(TestCase):
 
             self.assertEqual(
                 str(reg),
-                f'sh ({reg._local_dir}): "\\\\new msg""\\\'"'
+                f'sh ({reg._local_dir}): \\\\new msg""\\\''
             )
 
         self.assertEqual(
             str(reg),
-            f'sh ({reg._local_dir}): "\\\\new msg""\\\'"'
+            f'sh ({reg._local_dir}): \\\\new msg""\\\''
         )
 
         reg = load(reg._local_dir)

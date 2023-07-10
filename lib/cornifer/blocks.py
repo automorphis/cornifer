@@ -15,7 +15,6 @@
 
 import warnings
 from abc import ABC, abstractmethod
-from contextlib import contextmanager, ExitStack, AbstractContextManager
 
 import numpy as np
 
@@ -180,15 +179,15 @@ class Block:
         if isinstance(key, tuple):
             raise IndexError("`blk[]` cannot take more than one index.")
 
-        key -= self.startn()
-
         if key not in self:
             raise IndexError(
                 f"Indices must be between {self.startn()} and {self.startn() + len(self) - 1}" +
                 ", inclusive."
             )
 
-        if not check_has_method(self._seg, "__setitem__"):
+        key -= self.startn()
+
+        if check_has_method(self._seg, "__setitem__"):
             self._seg[key, ...] = value
 
         else:
