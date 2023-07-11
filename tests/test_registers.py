@@ -8,7 +8,7 @@ from unittest import TestCase
 import cornifer
 import numpy as np
 
-from cornifer import NumpyRegister, Register, Block, load, open_blks, open_regs
+from cornifer import NumpyRegister, Register, Block, load, openblks, openregs
 from cornifer.info import ApriInfo, AposInfo
 from cornifer._utilities import random_unique_filename
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
@@ -1910,7 +1910,7 @@ class Test_Register(TestCase):
                 total
             )
 
-            with open_blks(blk1, blk2):
+            with openblks(blk1, blk2):
 
                 reg.add_disk_blk(blk2)
                 total = 0
@@ -1940,7 +1940,7 @@ class Test_Register(TestCase):
                 total
             )
 
-            with open_blks(blk1, blk2, blk3):
+            with openblks(blk1, blk2, blk3):
 
                 reg.add_disk_blk(blk3)
                 total = 0
@@ -2181,9 +2181,9 @@ class Test_Register(TestCase):
         reg1 = Testy_Register(SAVES_DIR, "sh",  "helllo")
         reg2 = Testy_Register(SAVES_DIR, "sh",  "suuup")
 
-        with open_regs(reg1, reg2) as (reg1, reg2):
+        with openregs(reg1, reg2) as (reg1, reg2):
 
-            with open_blks(blk1, blk2, blk3, blk4, blk5):
+            with openblks(blk1, blk2, blk3, blk4, blk5):
 
                 reg1.add_ram_blk(blk1)
                 reg1.add_ram_blk(blk2)
@@ -2235,7 +2235,7 @@ class Test_Register(TestCase):
 
         with reg.open() as reg:
 
-            with open_blks(blk1, blk2, blk3, blk4):
+            with openblks(blk1, blk2, blk3, blk4):
 
                 reg.add_disk_blk(blk1)
                 reg.add_disk_blk(blk2)
@@ -2327,7 +2327,7 @@ class Test_Register(TestCase):
                         blk
                     )
 
-            with open_blks(blk1, blk2, reg.blk(apri1, 100, 100), reg.blk(apri1, 0, 100)) as (blk1, blk2, blk3, blk4):
+            with openblks(blk1, blk2, reg.blk(apri1, 100, 100), reg.blk(apri1, 0, 100)) as (blk1, blk2, blk3, blk4):
 
                 self.assertEqual(
                     blk2,
@@ -3021,9 +3021,9 @@ class Test_Register(TestCase):
         reg1 = Testy_Register(SAVES_DIR, "sh",  "helllo")
         reg2 = Testy_Register(SAVES_DIR, "sh",  "suuup")
 
-        with open_blks(blk1, blk2, blk3, blk4, blk5):
+        with openblks(blk1, blk2, blk3, blk4, blk5):
 
-            with open_regs(reg1, reg2) as (reg1, reg2):
+            with openregs(reg1, reg2) as (reg1, reg2):
 
                 reg1.add_ram_blk(blk1)
                 reg1.add_ram_blk(blk2)
@@ -3248,7 +3248,7 @@ class Test_Register(TestCase):
 
             with reg.open() as reg:
 
-                with open_blks(Block([1], apri1), Block([1], apri2)) as (blk1, blk2):
+                with openblks(Block([1], apri1), Block([1], apri2)) as (blk1, blk2):
 
                     reg.add_disk_blk(blk1)
                     reg.add_ram_blk(blk2)
@@ -3339,7 +3339,7 @@ class Test_Register(TestCase):
 
         with reg2.open() as reg2:
 
-            with open_blks(blk1, blk2, blk3):
+            with openblks(blk1, blk2, blk3):
 
                 reg2.add_disk_blk(blk1)
                 reg2.add_disk_blk(blk2)
@@ -3443,7 +3443,7 @@ class Test_Register(TestCase):
             blk1 = Block(np.arange(15), apri)
             blk2 = Block(np.arange(15, 30), apri, 15)
 
-            with open_blks(blk1, blk2):
+            with openblks(blk1, blk2):
 
                 reg2.add_disk_blk(blk1)
                 reg2.add_disk_blk(blk2)
@@ -3998,7 +3998,7 @@ class Test_Register(TestCase):
             blk1 = Block(np.arange(100), apri)
             blk2 = Block(np.arange(100, 200), apri, 100)
 
-            with open_blks(blk1, blk2):
+            with openblks(blk1, blk2):
 
                 reg.add_disk_blk(blk1)
                 reg.add_disk_blk(blk2)
@@ -4191,7 +4191,7 @@ class Test_Register(TestCase):
             blk7 = Block(np.arange(4100, 4200), apri, 4100)
             blk8 = Block(np.arange(4200, 4201), apri, 4200)
 
-            with open_blks(blk6, blk7, blk8):
+            with openblks(blk6, blk7, blk8):
 
                 reg.add_disk_blk(blk6)
                 reg.add_disk_blk(blk7)

@@ -18,12 +18,28 @@ from .info import ApriInfo, AposInfo
 from .blocks import Block
 from .registers import Register, PickleRegister, NumpyRegister
 from .regloader import search, load
-from .errors import DataNotFoundError, CompressionError, DecompressionError
+from .errors import DataNotFoundError, CompressionError, DecompressionError, RegisterError
 
+__all__ = [
+    "ApriInfo",
+    "AposInfo",
+    "Block",
+    "Register",
+    "PickleRegister",
+    "NumpyRegister",
+    "search",
+    "load",
+    "DataNotFoundError",
+    "CompressionError",
+    "DecompressionError",
+    "RegisterError",
+    "openregs",
+    "openblks"
+]
 
 @contextmanager
-def open_regs(*regs, **kwargs):
-    """Syntactic sugar. Opens many `Register`s at once for reading and/or writing. Similar to `open_blks`.
+def openregs(*regs, **kwargs):
+    """Syntactic sugar. Opens many `Register`s at once for reading and/or writing. Similar to `openblks`.
 
     The snippet:
 
@@ -84,7 +100,7 @@ def open_regs(*regs, **kwargs):
         yield tuple(yld)
 
 @contextmanager
-def open_blks(*blks):
+def openblks(*blks):
     """Open several `Block`s at once. Similar to `Register.opens`.
 
     The snippet
@@ -99,7 +115,7 @@ def open_blks(*blks):
 
         reg = NumpyRegister(...)
         blk1 = Block(...)
-        with open_blks(blk1, reg.blk(...)) as (blk1, blk2):
+        with openblks(blk1, reg.blk(...)) as (blk1, blk2):
             ...
 
     Note that the parentheses MUST be present after the `as`, otherwise Python will get confused.

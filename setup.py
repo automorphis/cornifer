@@ -41,7 +41,7 @@ setup(
     ],
 
     install_requires = [
-        'oldest-supported-numpy',
+        'numpy>=1.20.0',
         'lmdb>=1.2.1'
     ],
 

@@ -4,7 +4,7 @@ from unittest import TestCase
 
 import numpy as np
 
-from cornifer import Block, open_blks
+from cornifer import Block, openblks
 from cornifer.info import ApriInfo
 
 
@@ -279,27 +279,27 @@ class Test_Block(TestCase):
         descr1 = ApriInfo(name ="primes")
         descr2 = ApriInfo(name ="primes", mod4 = 1)
 
-        with open_blks(Block(np.arange(50), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
+        with openblks(Block(np.arange(50), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
             self.assertEqual(blk1, blk2)
 
-        with open_blks(Block(list(range(50)), descr1), Block(list(range(50)), descr1)) as (blk1, blk2):
+        with openblks(Block(list(range(50)), descr1), Block(list(range(50)), descr1)) as (blk1, blk2):
             self.assertEqual(blk1, blk2)
 
-        with open_blks(Block(np.arange(50), descr2), Block(np.arange(50), descr1)) as (blk1, blk2):
+        with openblks(Block(np.arange(50), descr2), Block(np.arange(50), descr1)) as (blk1, blk2):
             self.assertNotEqual(blk1, blk2)
 
-        with open_blks(Block(np.arange(60), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
+        with openblks(Block(np.arange(60), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
             self.assertNotEqual(blk1, blk2)
 
         class Block2(Block):pass
 
-        with open_blks(Block(np.arange(50), descr1), Block2(np.arange(50), descr1)) as (blk1, blk2):
+        with openblks(Block(np.arange(50), descr1), Block2(np.arange(50), descr1)) as (blk1, blk2):
             self.assertNotEqual(blk1, blk2)
 
-        with open_blks(Block(np.arange(50), descr1, 0), Block(np.arange(50), descr1, 1)) as (blk1, blk2):
+        with openblks(Block(np.arange(50), descr1, 0), Block(np.arange(50), descr1, 1)) as (blk1, blk2):
             self.assertNotEqual(blk1, blk2)
 
-        with open_blks(Block(list(range(50)), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
+        with openblks(Block(list(range(50)), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
             self.assertNotEqual(blk1, blk2)
 
     def test___hash__(self):
