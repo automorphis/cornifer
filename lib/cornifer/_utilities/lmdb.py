@@ -18,7 +18,8 @@ from pathlib import Path
 
 import lmdb
 
-from .._utilities import is_int
+from .._utilities import check_type, check_return_int
+
 
 class ReversibleTransaction:
 
@@ -104,28 +105,21 @@ class ReversibleTransaction:
 #     else:
 #         return False
 
-def open_lmdb(filepath, mapSize, readonly):
+def open_lmdb(filepath, mapsize, readonly):
 
-    if not isinstance(filepath, Path):
-        raise TypeError("`filepath` must be of type `pathlib.Path`.")
-
-    if not is_int(mapSize):
-        raise TypeError("`map_size` must be of type `int`.")
-    else:
-        mapSize = int(mapSize)
-
-    if not isinstance(readonly, bool):
-        raise TypeError("`readonly` must be of type `bool`.")
+    check_type(filepath, "filepath", Path)
+    mapsize = check_return_int(mapsize, "mapsize")
+    check_type(readonly, "readonly", bool)
 
     if not filepath.is_absolute():
         raise ValueError("`filepath` must be absolute.")
 
-    if mapSize <= 0:
-        raise ValueError("`map_size` must be positive.")
+    if mapsize <= 0:
+        raise ValueError("`mapsize` must be positive.")
 
     return lmdb.open(
         str(filepath),
-        map_size = mapSize,
+        map_size = mapsize,
         subdir = True,
         readonly = readonly,
         create = False
