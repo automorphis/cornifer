@@ -690,7 +690,14 @@ class Register(ABC):
         commit = txn is None
 
         if commit:
-            yield_ = self._db.begin(**kwargs)
+
+            try:
+                yield_ = self._db.begin(**kwargs)
+
+            except lmdb.ReadersFullError:
+
+                print(self._db.readers())
+                raise
 
         else:
             yield_ = txn
