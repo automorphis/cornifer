@@ -178,6 +178,16 @@ def lmdb_count_keys(db_or_txn, prefix):
 
     return count
 
+def num_open_readers_accurate(db):
+
+    str_ = db.readers()
+
+    if str_ == "(no active readers)\n":
+        return 0
+
+    else:
+        return str_.count("\n") - 1 - str_.count("-")
+
 def is_transaction(txn):
     return isinstance(txn, (lmdb.Transaction, ReversibleTransaction))
 
@@ -187,12 +197,12 @@ def _resolve_db_or_txn(db_or_txn):
     if isinstance(db_or_txn, lmdb.Environment):
 
         txn = db_or_txn.begin()
-        abort = True
+        commit = True
 
     elif is_transaction(db_or_txn):
 
         txn = db_or_txn
-        abort = False
+        commit = False
 
     else:
         raise TypeError
@@ -201,8 +211,9 @@ def _resolve_db_or_txn(db_or_txn):
         yield txn
 
     finally:
-        if abort:
-            txn.abort()
+
+        if commit:
+            txn.commit()
 
 class _LmdbPrefixIter:
 

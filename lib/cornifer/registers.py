@@ -32,7 +32,7 @@ from .blocks import Block, MemmapBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, is_int, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
-    write_txt_file, read_txt_file, intervals_subset
+    write_txt_file, read_txt_file, intervals_subset, FinalYield
 from ._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, open_lmdb, lmdb_count_keys, \
     ReversibleTransaction, is_transaction
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
@@ -473,9 +473,9 @@ class Register(ABC):
                     raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
                 Register._add_instance(local_dir, self)
-                yiel = self
-                yiel._opened = True
-                yiel._readonly = readonly
+                yield_ = self
+                yield_._opened = True
+                yield_._readonly = readonly
 
             except BaseException as e:
 
@@ -485,7 +485,7 @@ class Register(ABC):
                 raise e
 
         elif self._created:
-            yiel = self._open_created(readonly)
+            yield_ = self._open_created(readonly)
 
         else:
             raise ValueError(
@@ -494,10 +494,10 @@ class Register(ABC):
             )
 
         try:
-            yield yiel
+            yield yield_
 
         finally:
-            yiel._close_created()
+            yield_._close_created()
 
     def increase_reg_size(self, num_bytes):
         """WARNING: DO NOT CALL THIS METHOD FROM MORE THAN ONE PYTHON PROCESS AT A TIME. You are safe if you call it
@@ -587,27 +587,27 @@ class Register(ABC):
         else:
 
             try:
-                yiel = self._open_created(readonly)
+                yield_ = self._open_created(readonly)
                 need_close = True
 
             except RegisterAlreadyOpenError:
-                yiel = self
+                yield_ = self
                 need_close = False
 
-            if not readonly and yiel._readonly:
+            if not readonly and yield_._readonly:
                 raise ValueError(
                     "Attempted to open a `Register` in read-write mode that is already open in read-only mode."
                 )
 
             try:
-                yield yiel
+                yield yield_
 
             finally:
                 
                 if need_close:
                     
-                    yiel._close_created()
-                    yiel._opened = False
+                    yield_._close_created()
+                    yield_._opened = False
 
     def _check_open_raise(self, method_name):
 
@@ -672,10 +672,51 @@ class Register(ABC):
     def _has_compatible_version(self):
         return self._version in COMPATIBLE_VERSIONS
 
-    def _timed_final_yield(self, yield_, elapsed_name, elapsed, start_time):
+    @contextmanager
+    def _time(self, elapsed_name):
 
-        self.__dict__[elapsed_name] = elapsed + time() - start_time
-        return yield_
+        start_time = time()
+
+        try:
+            yield
+
+        finally:
+            self.__dict__[elapsed_name] += time() - start_time
+
+    @contextmanager
+    def _conditional_db_begin(self, txn, **kwargs):
+
+        errored_out = False
+        commit = txn is None
+
+        if commit:
+            yield_ = self._db.begin(**kwargs)
+
+        else:
+            yield_ = txn
+
+        try:
+            yield yield_
+
+        except lmdb.MapFullError as e:
+
+            errored_out = True
+            raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
+
+        except:
+
+            errored_out = True
+            raise
+
+        finally:
+
+            if commit:
+
+                if errored_out:
+                    yield_.abort()
+
+                else:
+                    yield_.commit()
     #
     # def _db_is_closed(self):
     #
@@ -730,9 +771,7 @@ class Register(ABC):
         # DEBUG : 1, 2, 3
 
         self._check_open_raise("change_apri")
-
         self._check_readwrite_raise("change_apri")
-
         self._check_known_apri(old_apri)
 
         if old_apri == new_apri:
@@ -833,9 +872,9 @@ class Register(ABC):
                 ram_blk_del_success = True
 
             with ReversibleTransaction(self._db).begin(write = True) as txn:
-                blkDatas = self._rmv_apri_txn(apri, force, txn)
+                blk_datas = self._rmv_apri_txn(apri, force, txn)
 
-            for apri_, startn, length in blkDatas:
+            for apri_, startn, length in blk_datas:
                 self.rmv_disk_blk(apri_, startn, length, False, False)
 
         except BaseException as e:
@@ -909,12 +948,10 @@ class Register(ABC):
 
     def _check_known_apri(self, apri, txn = None):
 
-        commit = txn is None
+        if apri in self._ram_blks.keys():
+            return
 
-        if commit:
-            txn = self._db.begin()
-
-        try:
+        with self._conditional_db_begin(txn) as txn:
 
             try:
                 self._get_id_by_apri(apri, None, False, txn, None)
@@ -925,13 +962,7 @@ class Register(ABC):
             else:
                 return
 
-        finally:
-
-            if commit:
-                txn.commit()
-
-        if apri not in self._ram_blks.keys():
-            raise DataNotFoundError(_NO_APRI_ERROR_MESSAGE.format(self.shorthand(), str(apri)))
+        raise DataNotFoundError(_NO_APRI_ERROR_MESSAGE.format(self.shorthand(), str(apri)))
 
     def _get_apri_json_by_id(self, id_, txn = None):
         """Get JSON bytestring representing an `ApriInfo` instance.
@@ -942,18 +973,9 @@ class Register(ABC):
         :return: (type `bytes`)
         """
 
-        commit = txn is None
-
-        if commit:
-            txn = self._db.begin()
-
-        try:
+        with self._conditional_db_begin(txn) as txn:
             return txn.get(_ID_APRI_KEY_PREFIX + id_)
 
-        finally:
-
-            if commit:
-                txn.commit()
 
     def _get_id_by_apri(self, apri, apri_json, missing_ok, txn = None, reserved = None):
         """Get an `ApriInfo` ID for this database. If `missing_ok is True`, then create an ID if the passed `apri` or
@@ -980,16 +1002,9 @@ class Register(ABC):
         elif apri_json is None:
             raise ValueError
 
-        commit = txn is None
         key = _APRI_ID_KEY_PREFIX + apri_json
 
-        if commit and missing_ok:
-            txn = self._db.begin(write = True)
-
-        elif commit:
-            txn = self._db.begin()
-
-        try:
+        with self._conditional_db_begin(txn, write = missing_ok) as txn:
 
             id_ = txn.get(key, default = None)
 
@@ -1008,16 +1023,6 @@ class Register(ABC):
                     apri = relational_decode_info(self, ApriInfo, apri_json, txn)
 
                 raise DataNotFoundError(_NO_APRI_ERROR_MESSAGE.format(self.shorthand(), str(apri)))
-
-        finally:
-
-            if commit:
-
-                try:
-                    txn.commit()
-
-                except lmdb.MapFullError as e:
-                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
 
     @staticmethod
     def _add_apri(txn, id_, apri, apri_json):
@@ -1525,15 +1530,13 @@ class Register(ABC):
         :param blk: (type `Block`)
         :param ret_metadata: (type `bool`, default `False`) Whether to return a `File_Metadata` object, which
         contains file creation date/time and size of dumped data to the disk.
-        :raises RegisterError: If a duplicate `Block` already exists in this `Register`.
+        :raises RegisterError: If a duplicate `Block` ablready exists in this `Register`.
         """
 
         #DEBUG : 1, 2, 3, 4, 5
 
-        start_time = time()
+        with self._time("add_elapsed"):
 
-        try:
-            # try clause followed by finally clause that increments `self.add_elapsed`
             self._check_open_raise("add_disk_blk")
             self._check_readwrite_raise("add_disk_blk")
             Register._check_blk_open_raise(blk, "add_disk_blk")
@@ -1595,7 +1598,7 @@ class Register(ABC):
                     raise KeyboardInterrupt
 
             except BaseException as e:
-
+                # ignore exception if `exists_ok` and duplicate `Block` found
                 if not isinstance(e, RegisterError) or not exists_ok or not "exist" in str(e):
 
                     try:
@@ -1614,7 +1617,9 @@ class Register(ABC):
                                 txn.reverse(txn_)
 
                     except:
-                        raise RegisterRecoveryError("Could not successfully recover from a failed disk `Block` add!") from e
+                        raise RegisterRecoveryError(
+                            "Could not successfully recover from a failed disk `Block` add!"
+                        ) from e
 
                     else:
 
@@ -1630,9 +1635,6 @@ class Register(ABC):
             else:
                 return None
 
-        finally:
-            self.add_elapsed += time() - start_time
-
     def append_disk_blk(self, blk, ret_metadata = False, **kwargs):
         """Add a `Block` to disk and link it with this `Register`.
 
@@ -1646,30 +1648,23 @@ class Register(ABC):
         :raises RegisterError: If a duplicate `Block` already exists in this `Register`.
         """
 
-        add_elapsed = self.add_elapsed
-        start_time = time()
+        self._check_open_raise("append_disk_blk")
+        self._check_readwrite_raise("append_disk_blk")
+        Register._check_blk_open_raise(blk, "append_disk_blk")
+        check_type(blk, "blk", Block)
+        check_type(ret_metadata, "ret_metadata", bool)
 
         try:
-            # try clause followed by finally clause that increments `self.add_elapsed`
-            self._check_open_raise("append_disk_blk")
-            self._check_readwrite_raise("append_disk_blk")
-            Register._check_blk_open_raise(blk, "append_disk_blk")
-            check_type(blk, "blk", Block)
-            check_type(ret_metadata, "ret_metadata", bool)
+            maxn = self.maxn(blk.apri(), True, False)
 
-            try:
-                maxn = self.maxn(blk.apri(), True, False)
+        except DataNotFoundError:
+            return self.add_disk_blk(blk, ret_metadata, **kwargs)
 
-            except DataNotFoundError:
-                return self.add_disk_blk(blk, ret_metadata, **kwargs)
+        else:
 
-            else:
+            blk.set_startn(maxn + 1)
+            return self.add_disk_blk(blk, ret_metadata, **kwargs)
 
-                blk.set_startn(maxn + 1)
-                return self.add_disk_blk(blk, ret_metadata, **kwargs)
-
-        finally:
-            self.add_elapsed = add_elapsed + time() - start_time
 
     def rmv_disk_blk(self, apri, startn = None, length = None, missing_ok = False, recursively = False, **kwargs):
         """Delete a disk `Block` and unlink it with this `Register`.
@@ -1829,32 +1824,39 @@ class Register(ABC):
         if length is not None and length < 0:
             raise ValueError("`length` must be non-negative.")
 
-        try:
-            startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
-
-        except DataNotFoundError:
-            pass
-
-        else:
+        with self._db.begin() as txn:
 
             try:
-                blk_key, compressed_key = self._check_blk_compressed_keys_raise(
-                    None, None, apri, None, startn_, length_
-                )
+                startn_, length_ = self._resolve_startn_length(apri, startn, length, True, txn)
 
             except DataNotFoundError:
-                pass
+
+                if not recursively:
+                    raise
 
             else:
-                blk_filename, compressed_filename = self._check_blk_compressed_files_raise(
-                    blk_key, compressed_key, apri, startn_, length_
-                )
 
-                if compressed_filename is not None:
-                    return FileMetadata.from_path(compressed_filename)
+                try:
+                    blk_key, compressed_key = self._check_blk_compressed_keys_raise(
+                        None, None, apri, None, startn_, length_, txn
+                    )
+
+                except DataNotFoundError:
+
+                    if not recursively:
+                        raise
 
                 else:
-                    return FileMetadata.from_path(blk_filename)
+
+                    blk_filename, compressed_filename = self._check_blk_compressed_files_raise(
+                        blk_key, compressed_key, txn
+                    )
+
+                    if compressed_filename is not None:
+                        return FileMetadata.from_path(compressed_filename)
+
+                    else:
+                        return FileMetadata.from_path(blk_filename)
 
         if recursively:
 
@@ -1888,10 +1890,9 @@ class Register(ABC):
         """
 
         # DEBUG : 1, 2, 3, 4
-        start_time = time()
 
-        try:
-            # try clause followed by finally clause that increments `self.compress_elapsed`
+        with self._time("compress_elapsed"):
+
             _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not recover successfully from a failed disk `Block` compress!"
             self._check_open_raise("compress")
             self._check_readwrite_raise("compress")
@@ -1910,42 +1911,38 @@ class Register(ABC):
             if not (0 <= compression_level <= 9):
                 raise ValueError("`compression_level` must be between 0 and 9, inclusive.")
 
-            startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
+            with self._db.begin() as ro_txn:
 
-            compressed_key = self._get_disk_blk_key(
-                _COMPRESSED_KEY_PREFIX, apri, None, startn_, length_, False
-            )
-
-            blk_key, compressed_key = self._check_blk_compressed_keys_raise(
-                None, compressed_key, apri, None, startn_, length_
-            )
-
-            with self._db.begin() as txn:
-                compressed_val = txn.get(compressed_key)
-
-            if compressed_val != _IS_NOT_COMPRESSED_VAL:
-
-                raise CompressionError(
-                    "The disk `Block` with the following data has already been compressed: " +
-                    f"{str(apri)}, startn = {startn_}, length = {length_}"
+                startn_, length_ = self._resolve_startn_length(apri, startn, length, True, ro_txn)
+                compressed_key = self._get_disk_blk_key(
+                    _COMPRESSED_KEY_PREFIX, apri, None, startn_, length_, False, ro_txn
                 )
+                blk_key, compressed_key = self._check_blk_compressed_keys_raise(
+                    None, compressed_key, apri, None, startn_, length_, ro_txn
+                )
+                compressed_val = ro_txn.get(compressed_key)
 
-            with self._db.begin() as txn:
-                blk_filename = self._local_dir / txn.get(blk_key).decode("ASCII")
+                if compressed_val != _IS_NOT_COMPRESSED_VAL:
 
-            compressed_filename = random_unique_filename(self._local_dir, COMPRESSED_FILE_SUFFIX)
-            compressed_val = compressed_filename.name.encode("ASCII")
+                    raise CompressionError(
+                        "The disk `Block` with the following data has already been compressed: " +
+                        f"{str(apri)}, startn = {startn_}, length = {length_}"
+                    )
 
-            cleaned = False
+                blk_filename = self._local_dir / ro_txn.get(blk_key).decode("ASCII")
+                compressed_filename = random_unique_filename(self._local_dir, COMPRESSED_FILE_SUFFIX)
+                compressed_val = compressed_filename.name.encode("ASCII")
 
-            if _debug == 1:
-                raise KeyboardInterrupt
+                cleaned = False
+
+                if _debug == 1:
+                    raise KeyboardInterrupt
 
             try:
 
-                with self._db.begin(write = True) as txn:
+                with self._db.begin(write = True) as rw_txn:
 
-                    txn.put(compressed_key, compressed_val)
+                    rw_txn.put(compressed_key, compressed_val)
 
                     if _debug == 2:
                         raise KeyboardInterrupt
@@ -1976,19 +1973,17 @@ class Register(ABC):
 
                 try:
 
-                    with self._db.begin(write = True) as txn:
-                        txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
-
                     if cleaned or not blk_filename.exists():
                         raise RegisterRecoveryError(_FAIL_NO_RECOVER_ERROR_MESSAGE)
 
-                    else:
+                    with self._db.begin(write = True) as rw_txn:
+                        rw_txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
 
-                        try:
-                            compressed_filename.unlink()
+                    try:
+                        compressed_filename.unlink()
 
-                        except FileNotFoundError:
-                            pass
+                    except FileNotFoundError:
+                        pass
 
                 except RegisterRecoveryError as ee:
                     raise ee
@@ -2010,8 +2005,6 @@ class Register(ABC):
             else:
                 return None
 
-        finally:
-            self.compress_elapsed += time() - start_time
 
     def decompress(self, apri, startn = None, length = None, ret_metadata = False):
         """Decompress a `Block`.
@@ -2027,10 +2020,8 @@ class Register(ABC):
 
         # DEBUG : 1, 2, 3, 4
 
-        start_time = time()
+        with self._time("decompress_elapsed"):
 
-        try:
-            # try clause followed by finally clause that increments `self.decompress_elapsed`
             _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not recover successfully from a failed disk `Block` decompress!"
             self._check_open_raise("decompress")
             self._check_readwrite_raise("decompress")
@@ -2045,38 +2036,38 @@ class Register(ABC):
             if length is not None and length < 0:
                 raise ValueError("`length` must be non-negative.")
 
-            startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
-            blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, startn_, length_)
+            with self._db.begin() as ro_txn:
 
-            with self._db.begin() as txn:
-                compressed_val = txn.get(compressed_key)
-
-            if compressed_val == _IS_NOT_COMPRESSED_VAL:
-
-                raise DecompressionError(
-                    "The disk `Block` with the following data is not compressed: " +
-                    f"{str(apri)}, startn = {startn_}, length = {length_}"
+                startn_, length_ = self._resolve_startn_length(apri, startn, length, True, ro_txn)
+                blk_key, compressed_key = self._check_blk_compressed_keys_raise(
+                    None, None, apri, None, startn_, length_, ro_txn
                 )
+                compressed_val = ro_txn.get(compressed_key)
 
-            with self._db.begin() as txn:
-                blk_filename = txn.get(blk_key).decode("ASCII")
+                if compressed_val == _IS_NOT_COMPRESSED_VAL:
 
-            blk_filename = self._local_dir / blk_filename
-            compressed_filename = self._local_dir / compressed_val.decode("ASCII")
-            deleted = False
+                    raise DecompressionError(
+                        "The disk `Block` with the following data is not compressed: " +
+                        f"{str(apri)}, startn = {startn_}, length = {length_}"
+                    )
 
-            if not is_deletable(blk_filename):
-                raise OSError(f"Cannot delete ghost file `{str(blk_filename)}`.")
+                blk_filename = ro_txn.get(blk_key).decode("ASCII")
+                blk_filename = self._local_dir / blk_filename
+                compressed_filename = self._local_dir / compressed_val.decode("ASCII")
+                deleted = False
 
-            if not is_deletable(compressed_filename):
-                raise OSError(f"Cannot delete compressed file `{str(compressed_filename)}`.")
+                if not is_deletable(blk_filename):
+                    raise OSError(f"Cannot delete ghost file `{str(blk_filename)}`.")
 
-            if _debug == 1:
-                raise KeyboardInterrupt
+                if not is_deletable(compressed_filename):
+                    raise OSError(f"Cannot delete compressed file `{str(compressed_filename)}`.")
+
+                if _debug == 1:
+                    raise KeyboardInterrupt
 
             try:
 
-                with self._db.begin(write = True) as txn:
+                with self._db.begin(write = True) as rw_txn:
 
                     # delete ghost file
                     blk_filename.unlink()
@@ -2092,7 +2083,7 @@ class Register(ABC):
                         if _debug == 3:
                             raise KeyboardInterrupt
 
-                    txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
+                    rw_txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
 
                     if _debug == 4:
                         raise KeyboardInterrupt
@@ -2136,9 +2127,6 @@ class Register(ABC):
             else:
                 return None
 
-        finally:
-            self.decompress_elapsed += time() - start_time
-
     def is_compressed(self, apri, startn = None, length = None):
 
         # self._check_open_raise("is_compressed")
@@ -2152,9 +2140,10 @@ class Register(ABC):
         # if length is not None and length < 0:
         #     raise ValueError("`length` must be non-negative.")
 
-        startn_, length_ = self._resolve_startn_length(apri, startn, length, True)
 
         with self._db.begin() as txn:
+
+            startn_, length_ = self._resolve_startn_length(apri, startn, length, True, txn)
             return txn.get(
                 self._get_disk_blk_key(_COMPRESSED_KEY_PREFIX, apri, None, startn_, length_, False, txn)
             ) != _IS_NOT_COMPRESSED_VAL
@@ -2258,9 +2247,7 @@ class Register(ABC):
         if _debug == 14:
             raise KeyboardInterrupt
 
-        blk_filename, compr_filename = self._check_blk_compressed_files_raise(
-            blk_key, compressed_key, apri, startn, length, txn
-        )
+        blk_filename, compr_filename = self._check_blk_compressed_files_raise(blk_key, compressed_key, txn)
 
         if _debug == 15:
             raise KeyboardInterrupt
@@ -2337,10 +2324,12 @@ class Register(ABC):
         :return: (type `bytes`) value
         """
 
-        prefix += self._get_id_by_apri(apri, apri_json, False, txn, None) + _KEY_SEP
+        with self._conditional_db_begin(txn) as txn:
 
-        with lmdb_prefix_iter(txn if txn is not None else self._db, prefix) as it:
-            yield from it
+            prefix += self._get_id_by_apri(apri, apri_json, False, txn, None) + _KEY_SEP
+
+            with lmdb_prefix_iter(txn, prefix) as it:
+                yield from it
 
     def _split_disk_block_key(self, prefix_len, key):
 
@@ -2377,49 +2366,33 @@ class Register(ABC):
 
         apri_id, startn_bytes, op_length_bytes = self._split_disk_block_key(prefix_len, key)
 
-        commit = apri is None and txn is None
+        if apri is None:
 
-        if commit:
-            txn = self._db.begin()
-
-        try:
-
-            if apri is None:
+            with self._conditional_db_begin(txn) as txn:
 
                 apri_json = self._get_apri_json_by_id(apri_id, txn)
                 apri = relational_decode_info(self, ApriInfo, apri_json, txn)
 
-        finally:
-
-            if commit:
-                txn.commit()
-
-        try:
-            return (
-                apri,
-                intify_bytes(startn_bytes) + self._startn_head * self._startn_tail_mod,
-                self._max_length - intify_bytes(op_length_bytes)
-            )
-        except ValueError:
-            raise
+        return (
+            apri,
+            intify_bytes(startn_bytes) + self._startn_head * self._startn_tail_mod,
+            self._max_length - intify_bytes(op_length_bytes)
+        )
 
     def _check_blk_compressed_keys_raise(self, blk_key, compressed_key, apri, apri_json, startn, length, txn = None):
 
-        if compressed_key is None and blk_key is None:
-            compressed_key = self._get_disk_blk_key(_COMPRESSED_KEY_PREFIX, apri, apri_json, startn, length, False, txn)
+        with self._conditional_db_begin(txn) as txn:
 
-        if blk_key is not None and compressed_key is None:
-            compressed_key = _COMPRESSED_KEY_PREFIX + blk_key[_BLK_KEY_PREFIX_LEN:]
+            if compressed_key is None and blk_key is None:
+                compressed_key = self._get_disk_blk_key(
+                    _COMPRESSED_KEY_PREFIX, apri, apri_json, startn, length, False, txn
+                )
 
-        elif compressed_key is not None and blk_key is None:
-            blk_key = _BLK_KEY_PREFIX + compressed_key[_COMPRESSED_KEY_PREFIX_LEN:]
+            if blk_key is not None and compressed_key is None:
+                compressed_key = _COMPRESSED_KEY_PREFIX + blk_key[_BLK_KEY_PREFIX_LEN:]
 
-        commit = txn is None
-
-        if commit:
-            txn = self._db.begin()
-
-        try:
+            elif compressed_key is not None and blk_key is None:
+                blk_key = _BLK_KEY_PREFIX + compressed_key[_COMPRESSED_KEY_PREFIX_LEN:]
 
             if apri is None:
                 apri = relational_decode_info(self, ApriInfo, apri_json, txn)
@@ -2427,10 +2400,6 @@ class Register(ABC):
             has_blk_key = lmdb_has_key(txn, blk_key)
             has_compr_key = lmdb_has_key(txn, compressed_key)
 
-        finally:
-
-            if commit:
-                txn.commit()
 
         if (not has_blk_key and has_compr_key) or (has_blk_key and not has_compr_key):
             raise RegisterError("Uncompressed/compressed `Block` key mismatch.")
@@ -2442,14 +2411,9 @@ class Register(ABC):
 
         return blk_key, compressed_key
 
-    def _check_blk_compressed_files_raise(self, blk_key, compressed_key, apri, startn, length, txn = None):
+    def _check_blk_compressed_files_raise(self, blk_key, compressed_key, txn = None):
 
-        commit = txn is None
-
-        if commit:
-            txn = self._db.begin()
-
-        try:
+        with self._conditional_db_begin(txn) as txn:
 
             blk_val = txn.get(blk_key)
             compressed_val = txn.get(compressed_key)
@@ -2460,27 +2424,16 @@ class Register(ABC):
                 compressed_filename = self._local_dir / compressed_val.decode("ASCII")
 
                 if not compressed_filename.exists() or not blk_filename.exists():
-
-                    raise RegisterError(
-                        "Compressed `Block` file or ghost file seems to be missing!"
-                    )
+                    raise RegisterError("Compressed `Block` file or ghost file seems to be missing!")
 
                 return blk_filename, compressed_filename
 
             else:
 
                 if not blk_filename.exists():
-
-                    raise RegisterError(
-                        "`Block` file seems to be missing!"
-                    )
+                    raise RegisterError("`Block` file seems to be missing!")
 
                 return blk_filename, None
-
-        finally:
-
-            if commit:
-                txn.commit()
 
     #################################
     #    PUBLIC RAM BLK METHODS     #
@@ -2557,179 +2510,176 @@ class Register(ABC):
     @contextmanager
     def blk_by_n(self, apri, n, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
 
-        errored = False
-        load_elapsed = self.load_elapsed
-        start_time = time()
+        # the `__exit__` methods of `prior_yield` context managers are called immedatietly before the final yield
+        # those of `post_yield` are called after
+        prior_yield = ExitStack() # nothing is `push`ed to `prior_yield` for this method
+        post_yield = ExitStack()
+        yield_ = None
 
-        try:
-            # try clause followed by finally clause that increments `self.load_elapsed`
-            self._check_open_raise("blk_by_n")
-            check_type(apri, "apri", ApriInfo)
-            n = check_return_int(n, "n")
-            check_type(diskonly, "diskonly", bool)
-            check_type(recursively, "recursively", bool)
-            check_type(ret_metadata, "ret_metadata", bool)
-
-            if n < 0:
-                raise IndexError("`n` must be non-negative.")
+        with post_yield:
 
             try:
-                self._check_known_apri(apri)
 
-            except DataNotFoundError:
+                with prior_yield:
 
-                if not recursively:
-                    raise
+                    self._check_open_raise("blk_by_n")
+                    check_type(apri, "apri", ApriInfo)
+                    n = check_return_int(n, "n")
+                    check_type(diskonly, "diskonly", bool)
+                    check_type(recursively, "recursively", bool)
+                    check_type(ret_metadata, "ret_metadata", bool)
 
-            else:
+                    if n < 0:
+                        raise IndexError("`n` must be non-negative.")
 
-                for startn, length in self.intervals(apri, False, False, diskonly, recursively):
+                    try:
+                        self._check_known_apri(apri)
 
-                    if startn <= n < startn + length:
+                    except DataNotFoundError:
 
-                        with self.blk(apri, startn, length, diskonly, recursively, ret_metadata, **kwargs) as blk:
+                        if not recursively:
+                            raise
 
-                            yield self._timed_final_yield(blk, "load_elapsed", load_elapsed, start_time)
-                            return
+                    else:
 
-            raise DataNotFoundError(self._blk_not_found_err_msg(diskonly, apri, n))
+                        for startn, length in self.intervals(apri, False, False, diskonly, recursively):
 
-        except:
+                            if startn <= n < startn + length:
 
-            errored = True
-            raise
+                                yield_ = post_yield.enter_context(self.blk(
+                                    apri, startn, length, diskonly, recursively, ret_metadata, **kwargs
+                                ))
+                                raise FinalYield
 
-        finally:
+                    raise DataNotFoundError(self._blk_not_found_err_msg(diskonly, apri, n))
 
-            if errored:
-                self.load_elapsed = load_elapsed + time() - start_time
+            except FinalYield:
+
+                yield yield_
+                return
 
     @contextmanager
     def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
 
-        load_elapsed = self.load_elapsed
-        errored = False
-        start_time = time()
+        # the `__exit__` methods of `prior_yield` context managers are called immedatietly before the final yield
+        # those of `post_yield` are called after
+        prior_yield = ExitStack()
+        post_yield = ExitStack()
+        yield_ = None
 
-        try:
-            # try clause followed by finally clause that increments `self.load_elapsed`
-            self._check_open_raise("blk")
-            check_type(apri, "apri", ApriInfo)
-            startn = check_return_int_None_default(startn, "startn", None)
-            length = check_return_int_None_default(length, "length", None)
-            check_type(diskonly, "diskonly", bool)
-            check_type(recursively, "recursively", bool)
-            check_type(ret_metadata, "ret_metadata", bool)
-
-            if startn is not None and startn < 0:
-                raise ValueError("`startn` must be non-negative.")
-
-            if length is not None and length < 0:
-                raise ValueError("`length` must be non-negative.")
+        with post_yield:
 
             try:
-                self._check_known_apri(apri)
 
-            except DataNotFoundError:
+                with prior_yield:
 
-                if not recursively:
-                    raise
+                    prior_yield.enter_context(self._time("load_elapsed"))
 
-            else:
+                    self._check_open_raise("blk")
+                    check_type(apri, "apri", ApriInfo)
+                    startn = check_return_int_None_default(startn, "startn", None)
+                    length = check_return_int_None_default(length, "length", None)
+                    check_type(diskonly, "diskonly", bool)
+                    check_type(recursively, "recursively", bool)
+                    check_type(ret_metadata, "ret_metadata", bool)
 
-                startn_, length_ = self._resolve_startn_length(apri, startn, length, diskonly)
+                    if startn is not None and startn < 0:
+                        raise ValueError("`startn` must be non-negative.")
 
-                if not diskonly and apri in self._ram_blks.keys():
+                    if length is not None and length < 0:
+                        raise ValueError("`length` must be non-negative.")
 
-                    for blk in self._ram_blks[apri]:
+                    txn = prior_yield.enter_context(self._db.begin())
 
-                        try:
-                            blk_len = len(blk)
+                    try:
+                        self._check_known_apri(apri, txn)
 
-                        except BlockNotOpenError as e:
-                            raise BlockNotOpenError(
-                                _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())
-                            ) from e
+                    except DataNotFoundError:
 
-                        if blk.startn() == startn_ and blk_len == length_:
+                        if not recursively:
+                            raise
 
-                            self.load_elapsed += time() - start_time
+                    else:
 
-                            if ret_metadata:
+                        startn_, length_ = self._resolve_startn_length(apri, startn, length, diskonly, txn)
 
-                                yield self._timed_final_yield((blk, None), "load_elapsed", load_elapsed, start_time)
-                                return
+                        if not diskonly and apri in self._ram_blks.keys():
 
-                            else:
+                            for blk in self._ram_blks[apri]:
 
-                                yield self._timed_final_yield(blk, "load_elapsed", load_elapsed, start_time)
-                                return
+                                try:
+                                    blk_len = len(blk)
 
-                try:
-                    blk_key, compressed_key = self._check_blk_compressed_keys_raise(None, None, apri, None, startn_, length_)
+                                except BlockNotOpenError as e:
+                                    raise BlockNotOpenError(
+                                        _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())
+                                    ) from e
 
-                except DataNotFoundError:
-                    pass
+                                if blk.startn() == startn_ and blk_len == length_:
 
-                else:
+                                    if ret_metadata:
+                                        yield_ = (blk, None)
 
-                    with self._db.begin() as txn:
+                                    else:
+                                        yield_ = blk
 
-                        if txn.get(compressed_key) != _IS_NOT_COMPRESSED_VAL:
-                            raise CompressionError(
-                                "Could not load disk `Block` with the following data because the `Block` is compressed. "
-                                "Please call the `Register` method `decompress` first before loading the data.\n" +
-                                f"{apri}, startn = {startn_}, length = {length_}"
-                            )
-
-                    blk_filename, _ = self._check_blk_compressed_files_raise(blk_key, compressed_key, apri, startn_, length_)
-                    blk_filename = self._local_dir / blk_filename
-                    data = type(self).load_disk_data(blk_filename, **kwargs)
-                    blk = Block(data, apri, startn_)
-
-                    with blk:
-
-                        if ret_metadata:
-                            yield self._timed_final_yield(
-                                (blk, FileMetadata.from_path(blk_filename)), "load_elapsed", load_elapsed, start_time
-                            )
-
-                        else:
-                            yield self._timed_final_yield(blk, "load_elapsed", load_elapsed, start_time)
-
-                    return
-
-            if recursively:
-
-                for subreg in self._iter_subregs():
-
-                    with subreg._recursive_open(True) as subreg:
+                                    raise FinalYield
 
                         try:
-
-                            with subreg.blk(
-                                apri, startn, length, diskonly, recursively, ret_metadata, **kwargs
-                            ) as blk:
-                                yield self._timed_final_yield(blk, "load_elapsed", load_elapsed, start_time)
-
-                            return
+                            blk_key, compressed_key = self._check_blk_compressed_keys_raise(
+                                None, None, apri, None, startn_, length_, txn
+                            )
 
                         except DataNotFoundError:
                             pass
 
-            raise DataNotFoundError(
-                self._blk_not_found_err_msg(diskonly, str(apri), None, startn, length)
-            )
+                        else:
 
-        except:
+                            if txn.get(compressed_key) != _IS_NOT_COMPRESSED_VAL:
+                                raise CompressionError(
+                                    "Could not load disk `Block` with the following data because the `Block` is compressed. "
+                                    "Please call the `Register` method `decompress` first before loading the data.\n" +
+                                    f"{apri}, startn = {startn_}, length = {length_}"
+                                )
 
-            errored = True
-            raise
+                            blk_filename, _ = self._check_blk_compressed_files_raise(blk_key, compressed_key, txn)
+                            blk_filename = self._local_dir / blk_filename
+                            data = type(self).load_disk_data(blk_filename, **kwargs)
+                            blk = Block(data, apri, startn_)
+                            blk = post_yield.enter_context(blk)
 
-        finally:
+                            if ret_metadata:
+                                yield_ = (blk, FileMetadata.from_path(blk_filename))
 
-            if errored:
-                self.load_elapsed = load_elapsed + time() - start_time
+                            else:
+                                yield_ = blk
+
+                            raise FinalYield
+
+            except FinalYield:
+
+                yield yield_
+                return
+
+        if recursively:
+
+            for subreg in self._iter_subregs():
+
+                with subreg._recursive_open(True) as subreg:
+
+                    try:
+
+                        with subreg.blk(apri, startn, length, diskonly, recursively, ret_metadata, **kwargs) as yield_:
+                            yield yield_
+
+                        return
+
+                    except DataNotFoundError:
+                        pass
+
+        raise DataNotFoundError(
+            self._blk_not_found_err_msg(diskonly, str(apri), None, startn, length)
+        )
 
     def blks(self, apri, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
         """Iterate over all `Block`s with `apri`.
@@ -2771,8 +2721,8 @@ class Register(ABC):
 
                 try:
 
-                    with self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs) as blk:
-                        yield blk
+                    with self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs) as yield_:
+                        yield yield_
 
                 except DataNotFoundError:
                     pass
@@ -2782,17 +2732,15 @@ class Register(ABC):
             for subreg in self._iter_subregs():
 
                 with subreg._recursive_open(True) as subreg:
-                    yield from subreg.blks(apri, diskonly, True, ret_metadata, **kwargs)
+                    yield from subreg.blks(apri, diskonly, recursively, ret_metadata, **kwargs)
 
     def __getitem__(self, apri_n_diskonly_recursively):
         return self.get(*Register._resolve_apri_n_diskonly_recursively(apri_n_diskonly_recursively))
 
     def get(self, apri, n, diskonly = False, recursively = False, **kwargs):
 
-        start_time = time()
+        with self._time("get_elapsed"):
 
-        try:
-            # try clause followed by finally clause that increments `self.get_elapsed`
             self._check_open_raise("get")
 
             n_slice = isinstance(n, slice)
@@ -2862,24 +2810,21 @@ class Register(ABC):
                     with self.blk_by_n(apri, n, diskonly, recursively, False, **kwargs) as blk:
                         return blk[n]
 
-            if recursively:
+        if recursively:
 
-                for subreg in self._iter_subregs():
+            for subreg in self._iter_subregs():
 
-                    with subreg._recursive_open(True) as subreg:
+                with subreg._recursive_open(True) as subreg:
 
-                        try:
-                            return subreg.get(apri, n, diskonly, recursively, **kwargs)
+                    try:
+                        return subreg.get(apri, n, diskonly, recursively, **kwargs)
 
-                        except DataNotFoundError:
-                            pass
+                    except DataNotFoundError:
+                        pass
 
-            raise DataNotFoundError(
-                self._blk_not_found_err_msg(diskonly, str(apri), n)
-            )
-
-        finally:
-            self.get_elapsed += time() - start_time
+        raise DataNotFoundError(
+            self._blk_not_found_err_msg(diskonly, str(apri), n)
+        )
 
     def __setitem__(self, apri_n_diskonly_recursively, value):
 
@@ -2888,10 +2833,8 @@ class Register(ABC):
 
     def set(self, apri, n, value, diskonly = False, recursively = False, **kwargs):
 
-        start_time = time()
+        with self._time("set_elapsed"):
 
-        try:
-            # try clause followed by finally clause that increments `self.set_elapsed`
             check_type(apri, "apri", ApriInfo)
 
             if isinstance(n, slice):
@@ -2930,24 +2873,21 @@ class Register(ABC):
 
                 return
 
-            if recursively:
+        if recursively:
 
-                for subreg in self._iter_subregs():
+            for subreg in self._iter_subregs():
 
-                    with subreg._recursive_open(True) as subreg:
+                with subreg._recursive_open(True) as subreg:
 
-                        try:
-                            return subreg.set(apri, n, value, diskonly, recursively, **kwargs)
+                    try:
+                        return subreg.set(apri, n, value, diskonly, recursively, **kwargs)
 
-                        except DataNotFoundError:
-                            pass
+                    except DataNotFoundError:
+                        pass
 
-            raise DataNotFoundError(
-                self._blk_not_found_err_msg(diskonly, str(apri), n)
-            )
-
-        finally:
-            self.set_elapsed += time() - start_time
+        raise DataNotFoundError(
+            self._blk_not_found_err_msg(diskonly, str(apri), n)
+        )
 
     def intervals(self, apri, sort = False, combine = False, diskonly = False, recursively = False):
 
@@ -3178,34 +3118,36 @@ class Register(ABC):
 
                 return blk.startn(), blk_len
 
-        if startn is not None and length is None:
+        with self._conditional_db_begin(txn) as txn:
 
-            key = self._get_disk_blk_key(_BLK_KEY_PREFIX, apri, None, startn, 1, False, txn) # raises DataNotFoundError
-            first_key_sep_index = key.find(_KEY_SEP)
-            second_key_sep_index = key.find(_KEY_SEP, first_key_sep_index + 1)
-            prefix = key [ : second_key_sep_index + 1]
+            if startn is not None and length is None:
 
-            with lmdb_prefix_iter(txn if txn is not None else self._db, prefix) as it:
+                key = self._get_disk_blk_key(_BLK_KEY_PREFIX, apri, None, startn, 1, False, txn) # raises DataNotFoundError
+                first_key_sep_index = key.find(_KEY_SEP)
+                second_key_sep_index = key.find(_KEY_SEP, first_key_sep_index + 1)
+                prefix = key [ : second_key_sep_index + 1]
 
-                for key, _ in it:
-                    return self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, None)[1:]
+                with lmdb_prefix_iter(txn, prefix) as it:
 
-                else:
-                    raise DataNotFoundError(
-                        self._blk_not_found_err_msg(True, apri, None, startn, None)
-                    )
+                    for key, _ in it:
+                        return self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, txn)[1:]
 
-        else:
+                    else:
+                        raise DataNotFoundError(
+                            self._blk_not_found_err_msg(True, apri, None, startn, None)
+                        )
 
-            prefix = _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False, txn, None) + _KEY_SEP
+            else:
 
-            with lmdb_prefix_iter(self._db, prefix) as it:
+                prefix = _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False, txn, None) + _KEY_SEP
 
-                for key, _ in it:
-                    return self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, None)[1:]
+                with lmdb_prefix_iter(txn, prefix) as it:
 
-                else:
-                    raise DataNotFoundError(self._blk_not_found_err_msg(True, apri))
+                    for key, _ in it:
+                        return self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, txn)[1:]
+
+                    else:
+                        raise DataNotFoundError(self._blk_not_found_err_msg(True, apri))
 
     def _intervals_helper(self, apri, diskonly, recursively):
 
@@ -3402,22 +3344,23 @@ class NumpyRegister(Register):
                 except DataNotFoundError:
                     pass
 
-            if recursively:
-
-                for subreg in self._iter_subregs():
-
-                    with subreg._recursive_open(True) as subreg:
-
-                        try:
-                            return subreg.set(apri, n, value, diskonly, recursively, mmap_mode = mmap_mode, **kwargs)
-
-                        except DataNotFoundError:
-                            pass
-
-            raise DataNotFoundError(self._blk_not_found_err_msg(diskonly, str(apri), n))
-
         finally:
             self.set_elapsed = set_elapsed + time() - start_time
+
+        if recursively:
+
+            for subreg in self._iter_subregs():
+
+                with subreg._recursive_open(True) as subreg:
+
+                    try:
+                        return subreg.set(apri, n, value, diskonly, recursively, mmap_mode = mmap_mode, **kwargs)
+
+                    except DataNotFoundError:
+                        pass
+
+        raise DataNotFoundError(self._blk_not_found_err_msg(diskonly, str(apri), n))
+
 
 
     @contextmanager
@@ -3879,12 +3822,7 @@ def relational_encode_info(reg, info, txn = None):
     if txn is not None and not is_transaction(txn):
         raise TypeError("`txn` must be of type `lmdb.Transaction`.")
 
-    commit = txn is None
-
-    if commit:
-        txn = reg._db.begin()
-
-    try:
+    with reg._conditional_db_begin(txn) as txn:
 
         encoder = _RelationalInfoJsonEncoder(reg, txn,
             ensure_ascii = True,
@@ -3894,13 +3832,6 @@ def relational_encode_info(reg, info, txn = None):
         )
         info.set_encoder(encoder)
         return info.to_json().encode("ASCII")
-
-    finally:
-
-        info.clean_encoder() # necessary so that the garbage collector cleans Transactions properly
-
-        if commit:
-            txn.commit()
 
 def relational_decode_info(reg, cls, json, txn = None):
 
@@ -3913,17 +3844,7 @@ def relational_decode_info(reg, cls, json, txn = None):
     if txn is not None and not is_transaction(txn):
         raise TypeError("`txn` must be of type `lmdb.Transaction`.")
 
-    commit = txn is None
-
-    if commit:
-        txn = reg._db.begin()
-
-    try:
+    with reg._conditional_db_begin(txn) as txn:
 
         decoder = _RelationalInfoJsonDecoder(reg, txn)
         return cls.from_json(json.decode("ASCII"), decoder)
-
-    finally:
-
-        if commit:
-            txn.commit()

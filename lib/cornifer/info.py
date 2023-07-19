@@ -188,7 +188,7 @@ class _Info(ABC):
             kwargs = copy(self.__dict__)
 
             for kw in type(self)._reserved_kws:
-                kwargs.pop(kw,None)
+                kwargs.pop(kw, None)
 
             kwargs = order_json_obj(kwargs)
 
@@ -382,6 +382,14 @@ class _Info(ABC):
 
         if len(self.__dict__) != len(other.__dict__):
             return False
+
+        try:
+
+            if hash(self) != hash(other):
+                return False
+
+        except TypeError:
+            pass
 
         for key, val in self.__dict__.items():
 

@@ -8,7 +8,7 @@ Make sure you have Python and `pip` installed and from a terminal, run
 
 `pip install cornifer`
 
-If you are using SageMath on Windows, you cannot use Cornifer if you are running SageMath from Cygwin. You may either run SageMath
+cornifer does not work on Cygwin. In particular, if you are using SageMath on Windows, you cannot use Cornifer if you are running SageMath from Cygwin. You may either run SageMath
 from a Linux distro inside a virtualbox, or use WSL2 to run SageMath.
 
 # How to use

@@ -20,7 +20,8 @@ from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, \
     _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG, \
     _START_N_TAIL_LENGTH_DEFAULT, _LENGTH_LENGTH_KEY, _LENGTH_LENGTH_DEFAULT, _CURR_ID_KEY, \
     _INITIAL_REGISTER_SIZE_DEFAULT
-from cornifer._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, lmdb_count_keys, open_lmdb
+from cornifer._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, lmdb_count_keys, open_lmdb, \
+    num_open_readers_accurate
 from cornifer.version import CURRENT_VERSION
 
 """
@@ -173,6 +174,9 @@ class Test_Register(TestCase):
             shutil.rmtree(SAVES_DIR)
 
         Register._instances.clear()
+
+    def _assert_num_open_readers(self, db, num):
+        self.assertEqual(num_open_readers_accurate(db), num)
 
     def test___init__(self):
 
@@ -362,9 +366,6 @@ class Test_Register(TestCase):
     def test_add_ram_block(self):
 
         reg = Testy_Register(SAVES_DIR, "sh", "msg")
-        blk = Block([], ApriInfo(name ="tests"))
-
-        reg = Testy_Register(SAVES_DIR, "sh", "msg")
         blk1 = Block([], ApriInfo(name ="tests"))
         blk2 = Block([], ApriInfo(name = "testy"))
         blk3 = Block([], ApriInfo(name="testy"))
@@ -372,9 +373,12 @@ class Test_Register(TestCase):
 
         with reg.open() as reg:
 
+            self._assert_num_open_readers(reg._db, 0)
+
             with blk1:
 
                 reg.add_ram_blk(blk1)
+                self._assert_num_open_readers(reg._db, 0)
                 self.assertEqual(
                     1,
                     len(reg._ram_blks)
@@ -387,6 +391,7 @@ class Test_Register(TestCase):
                 with blk2:
 
                     reg.add_ram_blk(blk2)
+                    self._assert_num_open_readers(reg._db, 0)
                     self.assertEqual(
                         2,
                         len(reg._ram_blks)
@@ -403,6 +408,7 @@ class Test_Register(TestCase):
                     with blk3:
 
                         reg.add_ram_blk(blk3)
+                        self._assert_num_open_readers(reg._db, 0)
                         self.assertEqual(
                             2,
                             len(reg._ram_blks)
@@ -419,6 +425,7 @@ class Test_Register(TestCase):
                         with blk4:
 
                             reg.add_ram_blk(blk4)
+                            self._assert_num_open_readers(reg._db, 0)
                             self.assertEqual(
                                 2,
                                 len(reg._ram_blks)
@@ -440,16 +447,13 @@ class Test_Register(TestCase):
             self.assertTrue(reg._opened)
 
         self.assertTrue(reg._created)
-
         keyvals = {
             _START_N_HEAD_KEY : b"0",
             _START_N_TAIL_LENGTH_KEY : str(_START_N_TAIL_LENGTH_DEFAULT).encode("ASCII"),
             _LENGTH_LENGTH_KEY : str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"),
             _CURR_ID_KEY : b"0",
         }
-
         self.assertFalse(reg._opened)
-
         db = None
 
         try:
@@ -457,51 +461,64 @@ class Test_Register(TestCase):
             db = open_lmdb(reg._db_filepath, 1, False)
 
             with db.begin() as txn:
+
+                self._assert_num_open_readers(db, 1)
+
                 for key, val in keyvals.items():
+
                     self.assertEqual(
                         val,
                         txn.get(key)
                     )
 
+            self._assert_num_open_readers(db, 0)
             self.assertEqual(
                 len(keyvals),
                 lmdb_count_keys(db, b"")
             )
 
         finally:
+
             if db is not None:
                 db.close()
 
     def test_remove_ram_block(self):
 
         reg = NumpyRegister(SAVES_DIR, "sh", "msg")
-        blk1 = Block([], ApriInfo(name ="name1"))
+        blk1 = Block([], ApriInfo(name = "name1"))
 
         with reg.open() as reg:
+
+            self._assert_num_open_readers(reg._db, 0)
 
             with blk1:
 
                 reg.add_ram_blk(blk1)
+                self._assert_num_open_readers(reg._db, 0)
                 reg.rmv_ram_blk(blk1)
+                self._assert_num_open_readers(reg._db, 0)
                 self.assertEqual(
                     0,
                     len(reg._ram_blks)
                 )
-
                 reg.add_ram_blk(blk1)
+                self._assert_num_open_readers(reg._db, 0)
                 reg.rmv_ram_blk(blk1)
+                self._assert_num_open_readers(reg._db, 0)
                 self.assertEqual(
                     0,
                     len(reg._ram_blks)
                 )
-
                 reg.add_ram_blk(blk1)
+                self._assert_num_open_readers(reg._db, 0)
                 blk2 = Block([], ApriInfo(name ="name2"))
 
                 with blk2:
 
                     reg.add_ram_blk(blk2)
+                    self._assert_num_open_readers(reg._db, 0)
                     reg.rmv_ram_blk(blk1)
+                    self._assert_num_open_readers(reg._db, 0)
                     self.assertEqual(
                         1,
                         len(reg._ram_blks)
@@ -512,6 +529,7 @@ class Test_Register(TestCase):
                     )
 
                     reg.rmv_ram_blk(blk2)
+                    self._assert_num_open_readers(reg._db, 0)
                     self.assertEqual(
                         0,
                         len(reg._ram_blks)
@@ -614,18 +632,24 @@ class Test_Register(TestCase):
     def test__check_open_raise_created(self):
 
         reg = Testy_Register(SAVES_DIR, "sh", "hi")
+
         with self.assertRaisesRegex(RegisterError, "xyz"):
             reg._check_open_raise("xyz")
 
         reg = Testy_Register(SAVES_DIR, "sh", "hi")
+
         with reg.open() as reg:
+
             try:
                 reg._check_open_raise("xyz")
+
             except RegisterError:
                 self.fail("the register is open")
 
         reg = Testy_Register(SAVES_DIR, "sh", "hi")
+
         with reg.open() as reg:pass
+
         with self.assertRaisesRegex(RegisterError, "xyz"):
             reg._check_open_raise("xyz")
 
@@ -639,28 +663,29 @@ class Test_Register(TestCase):
         with self.assertRaises(ValueError):
             reg._get_id_by_apri(None, None, False)
 
-        apri1 = ApriInfo(name ="hi")
-        apri2 = ApriInfo(name ="hello")
-        apri3 = ApriInfo(name ="sup")
-        apri4 = ApriInfo(name ="hey")
+        apri1 = ApriInfo(name = "hi")
+        apri2 = ApriInfo(name = "hello")
+        apri3 = ApriInfo(name = "sup")
+        apri4 = ApriInfo(name = "hey")
         reg = Testy_Register(SAVES_DIR, "sh", "hi")
 
         with reg.open() as reg:
 
-
+            self._assert_num_open_readers(reg._db, 0)
             _id1 = reg._get_id_by_apri(apri1, None, True)
-
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _APRI_ID_KEY_PREFIX)
             )
-
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
-
+            self._assert_num_open_readers(reg._db, 0)
             _id2 = reg._get_id_by_apri(apri2, None, True)
+            self._assert_num_open_readers(reg._db, 0)
             self.assertNotEqual(
                 _id1,
                 _id2
@@ -669,12 +694,14 @@ class Test_Register(TestCase):
                 2,
                 lmdb_count_keys(reg._db, _APRI_ID_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 2,
                 lmdb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
-
+            self._assert_num_open_readers(reg._db, 0)
             _id3 = reg._get_id_by_apri(None, apri3.to_json().encode("ASCII"), True)
+            self._assert_num_open_readers(reg._db, 0)
             self.assertNotIn(
                 _id3,
                 [_id1, _id2]
@@ -683,11 +710,12 @@ class Test_Register(TestCase):
                 3,
                 lmdb_count_keys(reg._db, _APRI_ID_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 3,
                 lmdb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
-
+            self._assert_num_open_readers(reg._db, 0)
             with self.assertRaises(DataNotFoundError):
                 reg._get_id_by_apri(apri4, None, False)
 
@@ -695,16 +723,14 @@ class Test_Register(TestCase):
 
         reg1 = Testy_Register(SAVES_DIR, "sh", "msg")
 
-
         with reg1.open() as reg1: pass
+
         reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
         reg2._set_local_dir(reg1._local_dir)
-
         self.assertIs(
             reg1,
             Register._get_instance(reg2._local_dir)
         )
-
         self.assertIs(
             reg1,
             Register._get_instance(reg1._local_dir)
@@ -718,8 +744,10 @@ class Test_Register(TestCase):
             reg.set_msg("yes")
 
         except RegisterError as e:
+
             if "has not been opened" in str(e):
                 self.fail("the register doesn't need to be open for set_msg")
+
             else:
                 raise e
 
@@ -789,67 +817,81 @@ class Test_Register(TestCase):
             with blk1:
                 reg.add_disk_blk(blk1)
 
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _APRI_ID_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
 
             with blk2:
                 reg.add_disk_blk(blk2)
 
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 2,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _APRI_ID_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 1,
                 lmdb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
 
             with blk3:
                 reg.add_disk_blk(blk3)
 
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 3,
                 lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 2,
                 lmdb_count_keys(reg._db, _APRI_ID_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 2,
                 lmdb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
             )
+            self._assert_num_open_readers(reg._db, 0)
 
-            try:
-                with self.assertRaisesRegex(RegisterError, "[dD]uplicate"):
+            with self.assertRaisesRegex(RegisterError, "[dD]uplicate"):
 
-                    with blk4:
-                        reg.add_disk_blk(blk4)
+                with blk4:
+                    reg.add_disk_blk(blk4)
 
-            except AssertionError:
-                raise
+            self._assert_num_open_readers(reg._db, 0)
 
             with blk5:
                 reg.add_disk_blk(blk5)
+
+            self._assert_num_open_readers(reg._db, 0)
 
             with self.assertRaisesRegex(RegisterError, "[dD]uplicate"):
 
                 with blk6:
                     reg.add_disk_blk(blk6)
+
+            self._assert_num_open_readers(reg._db, 0)
 
         with self.assertRaisesRegex(RegisterError, "read-only"):
 
@@ -865,6 +907,8 @@ class Test_Register(TestCase):
             with Block(np.arange(30), ApriInfo(maybe ="maybe")) as blk:
                 reg.add_disk_blk(blk)
 
+            self._assert_num_open_readers(reg._db, 0)
+
             for debug in [1,2,3,4,5,6,7,8,9,10]:
 
                 apri = ApriInfo(none ="all")
@@ -876,41 +920,35 @@ class Test_Register(TestCase):
                         reg.add_disk_blk(blk)
 
                 cornifer.registers._debug = _NO_DEBUG
-
-                try:
-                    self.assertEqual(
-                        1,
-                        lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
-                    )
-                except AssertionError:
-                    raise
-
+                self.assertEqual(
+                    1,
+                    lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
+                )
+                self._assert_num_open_readers(reg._db, 0)
                 self.assertEqual(
                     1,
                     lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
                 )
-
+                self._assert_num_open_readers(reg._db, 0)
                 self.assertEqual(
                     1,
                     lmdb_count_keys(reg._db, _ID_APRI_KEY_PREFIX)
                 )
-
+                self._assert_num_open_readers(reg._db, 0)
                 self.assertEqual(
                     1,
                     lmdb_count_keys(reg._db, _APRI_ID_KEY_PREFIX)
                 )
+                self._assert_num_open_readers(reg._db, 0)
+                self.assertEqual(
+                    1,
+                    sum(1 for d in reg._local_dir.iterdir() if d.is_file())
+                )
+                self._assert_num_open_readers(reg._db, 0)
 
-                try:
-                    self.assertEqual(
-                        1,
-                        sum(1 for d in reg._local_dir.iterdir() if d.is_file())
-                    )
-                except AssertionError:
-                    raise
+                with reg.blk(ApriInfo(maybe="maybe"), 0, 30) as blk:
 
-                blk = reg.blk(ApriInfo(maybe="maybe"), 0, 30)
-
-                with blk as blk:
+                    self._assert_num_open_readers(reg._db, 0)
                     self.assertTrue(np.all(
                         np.arange(30) ==
                         blk.segment()
@@ -924,10 +962,13 @@ class Test_Register(TestCase):
     def test__get_apri_json_by_id(self):
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
-        with reg.open() as reg:
-            apri1 = ApriInfo(name ="hi")
-            _id1 = reg._get_id_by_apri(apri1, None, True)
 
+        with reg.open() as reg:
+
+            self._assert_num_open_readers(reg._db, 0)
+            apri1 = ApriInfo(name = "hi")
+            _id1 = reg._get_id_by_apri(apri1, None, True)
+            self._assert_num_open_readers(reg._db, 0)
             self.assertIsInstance(
                 _id1,
                 bytes
@@ -936,13 +977,15 @@ class Test_Register(TestCase):
                 apri1,
                 ApriInfo.from_json(reg._get_apri_json_by_id(_id1).decode("ASCII"))
             )
-
-            apri2 = ApriInfo(name ="sup")
+            self._assert_num_open_readers(reg._db, 0)
+            apri2 = ApriInfo(name = "sup")
             _id2 = reg._get_id_by_apri(apri2, None, True)
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 apri2,
                 ApriInfo.from_json(reg._get_apri_json_by_id(_id2).decode("ASCII"))
             )
+            self._assert_num_open_readers(reg._db, 0)
 
     def test_apri_infos_no_recursive(self):
 
@@ -957,15 +1000,17 @@ class Test_Register(TestCase):
 
             apri1 = ApriInfo(name ="hello")
             reg._get_id_by_apri(apri1, None, True)
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 1,
                 len(list(reg.apris()))
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 apri1,
                 list(reg.apris())[0]
             )
-
+            self._assert_num_open_readers(reg._db, 0)
             apri2 = ApriInfo(name ="hey")
 
             with Block([], apri2) as blk:
@@ -975,14 +1020,17 @@ class Test_Register(TestCase):
                 2,
                 len(list(reg.apris()))
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertIn(
                 apri1,
                 list(reg.apris())
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertIn(
                 apri2,
                 list(reg.apris())
             )
+            self._assert_num_open_readers(reg._db, 0)
 
     def test__open_created(self):
 
@@ -1019,9 +1067,14 @@ class Test_Register(TestCase):
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
         apri1 = ApriInfo(name ="hello")
+
         with reg.open() as reg:
+
+            self._assert_num_open_readers(reg._db, 0)
             _id1 = reg._get_id_by_apri(apri1, None, True)
+            self._assert_num_open_readers(reg._db, 0)
             _id2 = reg._get_id_by_apri(apri1, None, True)
+            self._assert_num_open_readers(reg._db, 0)
             self.assertIsInstance(
                 _id2,
                 bytes
@@ -1030,8 +1083,8 @@ class Test_Register(TestCase):
                 _id1,
                 _id2
             )
-
             _id3 = reg._get_id_by_apri(None, apri1.to_json().encode("ASCII"), False)
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 _id1,
                 _id3
@@ -1049,18 +1102,25 @@ class Test_Register(TestCase):
             with blk1:
                 reg.add_disk_blk(blk1)
 
+            self._assert_num_open_readers(reg._db, 0)
+
             with lmdb_prefix_iter(reg._db, _BLK_KEY_PREFIX) as it:
 
-                for curr_key,_ in it: pass
+                self._assert_num_open_readers(reg._db, 1)
 
+                for curr_key, _ in it: pass
+
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 (apri1, 0, 0),
                 reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, curr_key)
             )
+            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 (apri1, 0, 0),
                 reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, curr_key, apri1)
             )
+            self._assert_num_open_readers(reg._db, 0)
             old_keys = {curr_key}
 
             blk2 = Block(list(range(10)), apri1)
@@ -1068,9 +1128,13 @@ class Test_Register(TestCase):
             with blk2:
                 reg.add_disk_blk(blk2)
 
+            self._assert_num_open_readers(reg._db, 0)
+
             with lmdb_prefix_iter(reg._db, _BLK_KEY_PREFIX) as it:
 
-                for key,_val in it:
+                self._assert_num_open_readers(reg._db, 1)
+
+                for key, _val in it:
 
                     if key not in old_keys:
                         curr_key = key
@@ -1079,6 +1143,7 @@ class Test_Register(TestCase):
                 (apri1, 0, 10),
                 reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, curr_key)
             )
+            self._assert_num_open_readers(reg._db, 0)
             old_keys.add(curr_key)
 
             apri2 = ApriInfo(name ="hello")
@@ -1087,7 +1152,11 @@ class Test_Register(TestCase):
             with blk3:
                 reg.add_disk_blk(blk3)
 
+            self._assert_num_open_readers(reg._db, 0)
+
             with lmdb_prefix_iter(reg._db, _BLK_KEY_PREFIX) as it:
+
+                self._assert_num_open_readers(reg._db, 1)
 
                 for key,_val in it:
 
@@ -1098,13 +1167,18 @@ class Test_Register(TestCase):
                 (apri2, 10, 100),
                 reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, curr_key)
             )
+            self._assert_num_open_readers(reg._db, 0)
             old_keys.add(curr_key)
             blk4 = Block(list(range(100)), apri2)
 
             with blk4:
                 reg.add_disk_blk(blk4)
 
+            self._assert_num_open_readers(reg._db, 0)
+
             with lmdb_prefix_iter(reg._db, _BLK_KEY_PREFIX) as it:
+
+                self._assert_num_open_readers(reg._db, 1)
 
                 for key,_val in it:
 
@@ -1115,6 +1189,8 @@ class Test_Register(TestCase):
                 (apri2, 0, 100),
                 reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, curr_key)
             )
+
+            self._assert_num_open_readers(reg._db, 0)
 
     def check_reg_set_start_n_info(self, reg, mod, head, tail_length):
         self.assertEqual(
@@ -1189,11 +1265,16 @@ class Test_Register(TestCase):
 
         with reg.open() as reg:
 
+            self._assert_num_open_readers(reg._db, 0)
+
             try:
                 reg.set_startn_info(0, 3)
 
             except ValueError:
                 self.fail("head can be 0")
+
+            else:
+                self._assert_num_open_readers(reg._db, 0)
 
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
 
@@ -1209,7 +1290,6 @@ class Test_Register(TestCase):
             with self.assertRaisesRegex(ValueError, "positive"):
                 reg.set_startn_info(0, 0)
 
-
         for head, tail_length in product([0, 1, 10, 100, 1100, 450], [1,2,3,4,5]):
             # check set works
             reg = Testy_Register(SAVES_DIR, "sh",  "hello")
@@ -1222,6 +1302,8 @@ class Test_Register(TestCase):
                 except ValueError:
                     self.fail(f"head = {head}, tail_length = {tail_length} are okay")
 
+                self._assert_num_open_readers(reg._db, 0)
+
                 with reg._db.begin() as txn:
 
                     self.assertEqual(
@@ -1232,6 +1314,7 @@ class Test_Register(TestCase):
                         str(tail_length).encode("ASCII"),
                         txn.get(_START_N_TAIL_LENGTH_KEY)
                     )
+                    self._assert_num_open_readers(reg._db, 1)
             # check read-only mode doesn't work
             with reg.open(readonly= True) as reg:
 
@@ -1260,7 +1343,7 @@ class Test_Register(TestCase):
                                 reg,
                                 10 ** _START_N_TAIL_LENGTH_DEFAULT, 0, _START_N_TAIL_LENGTH_DEFAULT
                             )
-
+                            self._assert_num_open_readers(reg._db, 0)
             # tests to make sure a few permissible start_n work
             smallest = head * 10 ** tail_length
             largest = smallest + 10 ** tail_length  - 1
@@ -1277,10 +1360,13 @@ class Test_Register(TestCase):
                     with blk:
                         reg.add_disk_blk(blk)
 
+                    self._assert_num_open_readers(reg._db, 0)
+
                     for debug in [0, 1, 2]:
 
                         if debug == _NO_DEBUG:
                             reg.set_startn_info(head, tail_length)
+                            self._assert_num_open_readers(reg._db, 0)
 
                         else:
 
@@ -1295,6 +1381,7 @@ class Test_Register(TestCase):
                             reg,
                             10 ** tail_length, head, tail_length
                         )
+                        self._assert_num_open_readers(reg._db, 0)
 
                         with lmdb_prefix_iter(reg._db, _BLK_KEY_PREFIX) as it:
                             for curr_key,_ in it:pass
@@ -1316,6 +1403,8 @@ class Test_Register(TestCase):
                     with blk:
                         reg.add_disk_blk(blk)
 
+                    self._assert_num_open_readers(reg._db, 0)
+
                     with self.assertRaisesRegex(ValueError, "correct head"):
                         reg.set_startn_info(head, tail_length)
                     # make sure it exits safely
@@ -1323,6 +1412,7 @@ class Test_Register(TestCase):
                         reg,
                         10 ** _START_N_TAIL_LENGTH_DEFAULT, 0, _START_N_TAIL_LENGTH_DEFAULT
                     )
+                    self._assert_num_open_readers(reg._db, 0)
 
     def check__iter_disk_block_pairs(self, t, apri, start_n, length):
         self.assertEqual(
@@ -1367,6 +1457,7 @@ class Test_Register(TestCase):
             with blk1:
                 reg.add_disk_blk(blk1)
 
+            self._assert_num_open_readers(reg._db, 0)
             total = 0
 
             for i, t in chain(
@@ -1375,11 +1466,14 @@ class Test_Register(TestCase):
             ):
 
                 total += 1
+                self._assert_num_open_readers(reg._db, 1)
 
                 if i == 0:
 
                     t = reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, t[0], apri1)
+                    self._assert_num_open_readers(reg._db, 1)
                     self.check__iter_disk_block_pairs(t, apri1, 0, 50)
+                    self._assert_num_open_readers(reg._db, 1)
 
                 else:
                     self.fail()
@@ -1403,11 +1497,13 @@ class Test_Register(TestCase):
 
                     t = reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, t[0], apri1)
                     self.check__iter_disk_block_pairs(t, apri1, 0, 50)
+                    self._assert_num_open_readers(reg._db, 1)
 
                 elif i == 1:
 
                     t = reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, t[0], apri1)
                     self.check__iter_disk_block_pairs(t, apri1, 50, 50)
+                    self._assert_num_open_readers(reg._db, 1)
 
                 else:
                     self.fail()
@@ -1428,11 +1524,13 @@ class Test_Register(TestCase):
 
                     t = reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, t[0], apri1)
                     self.check__iter_disk_block_pairs(t, apri1, 0, 50)
+                    self._assert_num_open_readers(reg._db, 1)
 
                 elif i == 1:
 
                     t = reg._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, t[0], apri1)
                     self.check__iter_disk_block_pairs(t, apri1, 50, 50)
+                    self._assert_num_open_readers(reg._db, 1)
 
                 else:
                     self.fail()
@@ -1440,10 +1538,14 @@ class Test_Register(TestCase):
             if total != 4:
                 self.fail()
 
+            self._assert_num_open_readers(reg._db, 0)
+
     def test_open(self):
 
         reg1 = Testy_Register(SAVES_DIR, "sh",  "msg")
+
         with reg1.open() as reg2:pass
+
         self.assertIs(
             reg1,
             reg2
@@ -1456,10 +1558,14 @@ class Test_Register(TestCase):
             self.fail()
 
         reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
+
         with reg2.open() as reg2:pass
+
         reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg3._set_local_dir(reg2._local_dir)
+
         with reg3.open() as reg4:pass
+
         self.assertIs(
             reg4,
             reg2
@@ -1479,8 +1585,11 @@ class Test_Register(TestCase):
 
         # must be created
         reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
+
         with reg2.open() as reg2:pass
-        with reg2._recursive_open(False) as reg3:pass
+
+        with reg2._recursive_open(False) as reg3:
+            self._assert_num_open_readers(reg3._db, 0)
 
         self.assertIs(
             reg2,
@@ -1489,7 +1598,9 @@ class Test_Register(TestCase):
 
         reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg3._set_local_dir(reg2._local_dir)
-        with reg3._recursive_open(False) as reg4:pass
+
+        with reg3._recursive_open(False) as reg4:
+            self._assert_num_open_readers(reg4._db, 0)
 
         self.assertIs(
             reg2,
@@ -1527,31 +1638,34 @@ class Test_Register(TestCase):
     def _remove_disk_block_helper(self, reg, block_data):
 
         expected_num_blocks = len(block_data)
-
         self.assertEqual(
             expected_num_blocks,
             lmdb_count_keys(reg._db, _BLK_KEY_PREFIX)
         )
-
         self.assertEqual(
             expected_num_blocks,
             lmdb_count_keys(reg._db, _COMPRESSED_KEY_PREFIX)
         )
-
         self.assertEqual(
             sum(d.is_dir() for d in reg._local_dir.iterdir()),
             1
         )
-
         self.assertEqual(
             sum(d.is_file() for d in reg._local_dir.iterdir()),
             expected_num_blocks
         )
+        self._assert_num_open_readers(reg._db, 0)
 
         for apri, start_n, length in block_data:
+
             key = reg._get_disk_blk_key(_BLK_KEY_PREFIX, apri, None, start_n, length, False)
+            self._assert_num_open_readers(reg._db, 0)
+
             with reg._db.begin() as txn:
+
                 filename = Path(txn.get(key).decode("ASCII"))
+                self._assert_num_open_readers(reg._db, 1)
+
             self.assertTrue((reg._local_dir / filename).exists())
 
     def test_remove_disk_block(self):
