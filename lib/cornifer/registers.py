@@ -697,6 +697,8 @@ class Register(ABC):
             except lmdb.ReadersFullError:
 
                 print(self._db.readers())
+                self._db.reader_check()
+                print(self._db.readers())
                 raise
 
         else:
