@@ -1220,7 +1220,7 @@ class Register(ABC):
         with self._db.begin() as txn:
 
             key = self._get_apos_key(apri, None, False, txn)
-            apos_json = txn.get(key, default=None)
+            apos_json = txn.get(key, default = None)
 
             if apos_json is not None:
                 return relational_decode_info(self, AposInfo, apos_json, txn)
@@ -1297,7 +1297,8 @@ class Register(ABC):
         if apri is None and apri_json is None:
             raise ValueError
 
-        apri_id = self._get_id_by_apri(apri, apri_json, missing_ok, txn, None)
+        with self._conditional_db_begin(txn) as txn:
+            apri_id = self._get_id_by_apri(apri, apri_json, missing_ok, txn, None)
 
         return _APOS_KEY_PREFIX + _KEY_SEP + apri_id
 
@@ -2717,6 +2718,8 @@ class Register(ABC):
         check_type(recursively, "recursively", bool)
         check_type(ret_metadata, "ret_metadata", bool)
 
+        print("A", self._db.readers().count("\n"))
+
         try:
             self._check_known_apri(apri)
 
@@ -2727,11 +2730,16 @@ class Register(ABC):
 
         else:
 
+            print("B", self._db.readers().count("\n"))
+
             for startn, length in self.intervals(apri, False, False, diskonly, recursively):
+
+                print("C", self._db.readers().count("\n"))
 
                 try:
 
                     with self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs) as yield_:
+                        print("D", self._db.readers().count("\n"))
                         yield yield_
 
                 except DataNotFoundError:
