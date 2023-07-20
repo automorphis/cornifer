@@ -2718,7 +2718,7 @@ class Register(ABC):
         check_type(recursively, "recursively", bool)
         check_type(ret_metadata, "ret_metadata", bool)
 
-        print("A", self._db.readers().count("\n") - 2, self._db.readers().count("-"))
+        print("A", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
 
         try:
             self._check_known_apri(apri)
