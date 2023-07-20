@@ -2718,7 +2718,7 @@ class Register(ABC):
         check_type(recursively, "recursively", bool)
         check_type(ret_metadata, "ret_metadata", bool)
 
-        print("A", self._db.readers().count("\n"))
+        print("A", self._db.readers().count("\n") - 2, self._db.readers().count("-"))
 
         try:
             self._check_known_apri(apri)
@@ -2730,16 +2730,16 @@ class Register(ABC):
 
         else:
 
-            print("B", self._db.readers().count("\n"))
+            print("B", self._db.readers().count("\n") - 2, self._db.readers().count("-"))
 
             for startn, length in self.intervals(apri, False, False, diskonly, recursively):
 
-                print("C", self._db.readers().count("\n"))
+                print("C", self._db.readers().count("\n") - 2, self._db.readers().count("-"))
 
                 try:
 
                     with self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs) as yield_:
-                        print("D", self._db.readers().count("\n"))
+                        print("D", self._db.readers().count("\n") - 2, self._db.readers().count("-"))
                         yield yield_
 
                 except DataNotFoundError:
