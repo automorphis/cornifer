@@ -2730,16 +2730,16 @@ class Register(ABC):
 
         else:
 
-            print("B", self._db.readers().count("\n") - 2, self._db.readers().count("-"))
+            print("B", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
 
             for startn, length in self.intervals(apri, False, False, diskonly, recursively):
 
-                print("C", self._db.readers().count("\n") - 2, self._db.readers().count("-"))
+                print("C", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
 
                 try:
 
                     with self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs) as yield_:
-                        print("D", self._db.readers().count("\n") - 2, self._db.readers().count("-"))
+                        print("D", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
                         yield yield_
 
                 except DataNotFoundError:
