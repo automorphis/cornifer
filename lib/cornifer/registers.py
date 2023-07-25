@@ -684,26 +684,23 @@ class Register(ABC):
             self.__dict__[elapsed_name] += time() - start_time
 
     @contextmanager
-    def _conditional_db_begin(self, txn, **kwargs):
+    def _conditional_db_begin(self, txn, txn_write = False, **kwargs):
 
         errored_out = False
         commit = txn is None
+        write = kwargs.get("write", False)
 
         if commit:
-
-            try:
-                yield_ = self._db.begin(**kwargs)
-
-            except lmdb.ReadersFullError:
-
-                print(self.shorthand())
-                print(self._db.readers())
-                print(self._db.reader_check())
-                print(self._db.readers())
-                raise
+            yield_ = self._db.begin(**kwargs)
 
         else:
-            yield_ = txn
+
+            if write and not txn_write:
+                # if caller requested a writer but passed txn is a reader
+                yield_ = self._db.begin(**kwargs)
+
+            else:
+                yield_ = txn
 
         try:
             yield yield_
@@ -1006,16 +1003,15 @@ class Register(ABC):
         :return: (type `bytes`)
         """
 
-        if apri is not None:
-            apri_json =  relational_encode_info(self, apri, txn)
-
-        elif apri_json is None:
+        if apri_json is None and apri is None:
             raise ValueError
-
-        key = _APRI_ID_KEY_PREFIX + apri_json
 
         with self._conditional_db_begin(txn, write = missing_ok) as txn:
 
+            if apri_json is None:
+                apri_json =  relational_encode_info(self, apri, txn)
+
+            key = _APRI_ID_KEY_PREFIX + apri_json
             id_ = txn.get(key, default = None)
 
             if id_ is not None:
@@ -1032,7 +1028,7 @@ class Register(ABC):
                 if apri is None:
                     apri = relational_decode_info(self, ApriInfo, apri_json, txn)
 
-                raise DataNotFoundError(_NO_APRI_ERROR_MESSAGE.format(self.shorthand(), str(apri)))
+                raise DataNotFoundError(_NO_APRI_ERROR_MESSAGE.format(self.shorthand(), apri))
 
     @staticmethod
     def _add_apri(txn, id_, apri, apri_json):
