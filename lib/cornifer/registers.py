@@ -1254,12 +1254,7 @@ class Register(ABC):
 
         key = self._get_apos_key(apri, None, True, txn, True)
         apos_json = relational_encode_info(self, apos, txn)
-
-        try:
-            txn.put(key, apos_json)
-
-        except Exception as e:
-            raise
+        txn.put(key, apos_json)
 
         if 6 + 8 + _APOS_KEY_PREFIX_LEN +  len(apos_json) > 4096:
             warnings.warn(f"Long `AposInfo` result in disk memory inefficiency. Long `AposInfo`: {str(apri)}.")
