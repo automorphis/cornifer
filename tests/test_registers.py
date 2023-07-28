@@ -1820,9 +1820,6 @@ class Test_Register(TestCase):
             except DataNotFoundError:
                 self.fail("Do not need apri_info to already be there to add apos")
 
-            except Exception as e:
-                raise e
-
             self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 1,
@@ -3360,21 +3357,23 @@ class Test_Register(TestCase):
                 for i, blk in enumerate(reg1.blks(apri2, recursively = True)):
 
                     total += 1
-                    self._assert_num_open_readers(reg1._db, 1)
 
                     if i == 0:
+                        self._assert_num_open_readers(reg1._db, 1)
                         self.assertIs(
                             blk3,
                             blk
                         )
 
                     elif i == 1:
+                        self._assert_num_open_readers(reg1._db, 2)
                         self.assertIs(
                             blk4,
                             blk
                         )
 
                     elif i == 2:
+                        self._assert_num_open_readers(reg1._db, 2)
                         self.assertIs(
                             blk5,
                             blk

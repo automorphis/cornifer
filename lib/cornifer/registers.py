@@ -12,7 +12,7 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
-
+import itertools
 import pickle
 import shutil
 import warnings
@@ -32,9 +32,9 @@ from .blocks import Block, MemmapBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, is_int, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
-    write_txt_file, read_txt_file, intervals_subset, FinalYield
+    write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals
 from ._utilities.lmdb import lmdb_has_key, lmdb_prefix_iter, open_lmdb, lmdb_count_keys, \
-    ReversibleTransaction, is_transaction
+    ReversibleTransaction, is_transaction, num_open_readers_accurate
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
     REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH
@@ -687,20 +687,14 @@ class Register(ABC):
     def _conditional_db_begin(self, txn, txn_write = False, **kwargs):
 
         errored_out = False
-        commit = txn is None
         write = kwargs.get("write", False)
+        commit = txn is None or (write and not txn_write)
 
         if commit:
             yield_ = self._db.begin(**kwargs)
 
         else:
-
-            if write and not txn_write:
-                # if caller requested a writer but passed txn is a reader
-                yield_ = self._db.begin(**kwargs)
-
-            else:
-                yield_ = txn
+            yield_ = txn
 
         try:
             yield yield_
@@ -779,7 +773,6 @@ class Register(ABC):
 
         self._check_open_raise("change_apri")
         self._check_readwrite_raise("change_apri")
-        self._check_known_apri(old_apri)
 
         if old_apri == new_apri:
             return
@@ -809,7 +802,7 @@ class Register(ABC):
                     warnings.warn(f"This `Register` already has a reference to {str(new_apri)}.")
 
                 # delete old_apri and reserve its ID
-                old_id = self._get_id_by_apri(old_apri, None, False, txn, None)
+                old_id = self._get_id_by_apri(old_apri, None, False, None, txn, True)
                 old_id_apri_key = _ID_APRI_KEY_PREFIX + old_id
                 old_apri_json = txn.get(old_id_apri_key)
                 old_apri_id_key = _APRI_ID_KEY_PREFIX + old_apri_json
@@ -824,7 +817,7 @@ class Register(ABC):
                 for key, info in new_apri.iter_inner_info(mode = "dfs"):
 
                     if key is not None and isinstance(info, ApriInfo):
-                        self._get_id_by_apri(info, None, True, txn, reserved)
+                        self._get_id_by_apri(info, None, True, reserved, txn, True)
 
                 # check for duplicate keys and give old_id new new_apri
                 new_apri_json = relational_encode_info(self, new_apri, txn)
@@ -961,7 +954,7 @@ class Register(ABC):
         with self._conditional_db_begin(txn) as txn:
 
             try:
-                self._get_id_by_apri(apri, None, False, txn, None)
+                self._get_id_by_apri(apri, None, False, None, txn, False)
 
             except DataNotFoundError:
                 pass
@@ -984,7 +977,7 @@ class Register(ABC):
             return txn.get(_ID_APRI_KEY_PREFIX + id_)
 
 
-    def _get_id_by_apri(self, apri, apri_json, missing_ok, txn = None, reserved = None):
+    def _get_id_by_apri(self, apri, apri_json, missing_ok, reserved = None, txn = None, txn_write = False):
         """Get an `ApriInfo` ID for this database. If `missing_ok is True`, then create an ID if the passed `apri` or
         `apri_json` is unknown to this `Register`.
 
@@ -1006,29 +999,30 @@ class Register(ABC):
         if apri_json is None and apri is None:
             raise ValueError
 
-        with self._conditional_db_begin(txn, write = missing_ok) as txn:
+        with self._conditional_db_begin(txn) as txn:
 
             if apri_json is None:
                 apri_json =  relational_encode_info(self, apri, txn)
 
             key = _APRI_ID_KEY_PREFIX + apri_json
             id_ = txn.get(key, default = None)
+            missing = id_ is None
 
-            if id_ is not None:
-                return id_
-
-            elif missing_ok:
-
-                next_id = Register._get_new_apri_id(txn, reserved if reserved is not None else [])
-                Register._add_apri(txn, next_id, apri, apri_json)
-                return next_id
-
-            else:
+            if missing and not missing_ok:
 
                 if apri is None:
                     apri = relational_decode_info(self, ApriInfo, apri_json, txn)
 
                 raise DataNotFoundError(_NO_APRI_ERROR_MESSAGE.format(self.shorthand(), apri))
+
+            elif not missing:
+                return id_
+
+        with self._conditional_db_begin(txn, txn_write, write = True) as txn:
+            # this block only reachable if apri is not known to this register
+            next_id = Register._get_new_apri_id(txn, reserved if reserved is not None else [])
+            Register._add_apri(txn, next_id, apri, apri_json)
+            return next_id
 
     @staticmethod
     def _add_apri(txn, id_, apri, apri_json):
@@ -1076,7 +1070,7 @@ class Register(ABC):
                 self._rmv_apri_txn(apri, False, txn)
 
         apri_json = relational_encode_info(self, apri, txn)
-        apri_id = self._get_id_by_apri(apri, apri_json, False, txn, None)
+        apri_id = self._get_id_by_apri(apri, apri_json, False, None, txn, True)
         txn.delete(_ID_APRI_KEY_PREFIX + apri_id)
         txn.delete(_APRI_ID_KEY_PREFIX + apri_json)
 
@@ -1215,7 +1209,7 @@ class Register(ABC):
 
         with self._db.begin() as txn:
 
-            key = self._get_apos_key(apri, None, False, txn)
+            key = self._get_apos_key(apri, None, False, txn, False)
             apos_json = txn.get(key, default = None)
 
             if apos_json is not None:
@@ -1258,16 +1252,21 @@ class Register(ABC):
 
     def _set_apos_info_txn(self, apri, apos, txn):
 
-        key = self._get_apos_key(apri, None, True, txn)
+        key = self._get_apos_key(apri, None, True, txn, True)
         apos_json = relational_encode_info(self, apos, txn)
-        txn.put(key, apos_json)
+
+        try:
+            txn.put(key, apos_json)
+
+        except Exception as e:
+            raise
 
         if 6 + 8 + _APOS_KEY_PREFIX_LEN +  len(apos_json) > 4096:
             warnings.warn(f"Long `AposInfo` result in disk memory inefficiency. Long `AposInfo`: {str(apri)}.")
 
     def _rmv_apos_info_txn(self, apri, txn):
 
-        key = self._get_apos_key(apri, None, False, txn)
+        key = self._get_apos_key(apri, None, False, txn, True)
 
         if lmdb_has_key(txn, key):
             txn.delete(key)
@@ -1275,7 +1274,7 @@ class Register(ABC):
         else:
             raise DataNotFoundError(f"No `AposInfo` associated with `{str(apri)}`.")
 
-    def _get_apos_key(self, apri, apri_json, missing_ok, txn = None):
+    def _get_apos_key(self, apri, apri_json, missing_ok, txn = None, txn_write = False):
         """Get a key for an `AposInfo` entry.
 
         One of `apri` and `apri_json` can be `None`, but not both. If both are not `None`, then `apri` is used. If
@@ -1292,10 +1291,8 @@ class Register(ABC):
 
         if apri is None and apri_json is None:
             raise ValueError
-
-        with self._conditional_db_begin(txn) as txn:
-            apri_id = self._get_id_by_apri(apri, apri_json, missing_ok, txn, None)
-
+        # this will possibly open a writer
+        apri_id = self._get_id_by_apri(apri, apri_json, missing_ok, None, txn, txn_write)
         return _APOS_KEY_PREFIX + _KEY_SEP + apri_id
 
     #################################
@@ -2189,7 +2186,7 @@ class Register(ABC):
 
         # this will create ID's if necessary
         for i, apri in enumerate(apris):
-            self._get_id_by_apri(apri, None, True, txn, None)
+            self._get_id_by_apri(apri, None, True, None, txn, True)
 
         if _debug == 7:
             raise KeyboardInterrupt
@@ -2244,7 +2241,7 @@ class Register(ABC):
         if _debug == 12:
             raise KeyboardInterrupt
         # raises DataNotFoundError
-        self._get_id_by_apri(apri, None, False, txn, None)
+        self._get_id_by_apri(apri, None, False, None, txn, True)
 
         if _debug == 13:
             raise KeyboardInterrupt
@@ -2271,7 +2268,7 @@ class Register(ABC):
 
         return blk_filename, compr_filename
 
-    def _get_disk_blk_key(self, prefix, apri, apri_json, startn, length, missing_ok, txn = None):
+    def _get_disk_blk_key(self, prefix, apri, apri_json, startn, length, missing_ok, txn = None, txn_write = False):
         """Get the database key for a disk `Block`.
 
         One of `info` and `apri_json` can be `None`, but not both. If both are not `None`, then `info` is used.
@@ -2295,7 +2292,8 @@ class Register(ABC):
         if apri is None and apri_json is None:
             raise ValueError
 
-        id_ = self._get_id_by_apri(apri, apri_json, missing_ok, txn, None)
+        # this will possibly open a writer
+        id_ = self._get_id_by_apri(apri, apri_json, missing_ok, None, txn, txn_write)
         tail = bytify_int(startn % self._startn_tail_mod, self._startn_tail_length)
         op_length = bytify_int(self._max_length - length, self._length_length)
 
@@ -2308,15 +2306,16 @@ class Register(ABC):
 
     def _num_disk_blks_txn(self, apri, txn):
 
-        try:
+        with self._conditional_db_begin(txn) as txn:
 
-            return lmdb_count_keys(
-                txn,
-                _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False, txn, None) + _KEY_SEP
-            )
+            try:
+                apri_id = self._get_id_by_apri(apri, None, False, None, txn)
 
-        except DataNotFoundError:
-            return 0
+            except DataNotFoundError:
+                return 0
+
+            else:
+                return lmdb_count_keys(txn, _BLK_KEY_PREFIX + apri_id + _KEY_SEP)
 
     def _iter_disk_blk_pairs(self, prefix, apri, apri_json, txn = None):
         """Iterate over key-value pairs for block entries.
@@ -2333,7 +2332,7 @@ class Register(ABC):
 
         with self._conditional_db_begin(txn) as txn:
 
-            prefix += self._get_id_by_apri(apri, apri_json, False, txn, None) + _KEY_SEP
+            prefix += self._get_id_by_apri(apri, apri_json, False, None, txn) + _KEY_SEP
 
             with lmdb_prefix_iter(txn, prefix) as it:
                 yield from it
@@ -2519,7 +2518,7 @@ class Register(ABC):
 
         # the `__exit__` methods of `prior_yield` context managers are called immedatietly before the final yield
         # those of `post_yield` are called after
-        prior_yield = ExitStack() # nothing is `push`ed to `prior_yield` for this method
+        prior_yield = ExitStack()
         post_yield = ExitStack()
         yield_ = None
 
@@ -2539,8 +2538,10 @@ class Register(ABC):
                     if n < 0:
                         raise IndexError("`n` must be non-negative.")
 
+                    txn = prior_yield.enter_context(self._db.begin())
+
                     try:
-                        self._check_known_apri(apri)
+                        self._check_known_apri(apri, txn)
 
                     except DataNotFoundError:
 
@@ -2688,7 +2689,7 @@ class Register(ABC):
             self._blk_not_found_err_msg(diskonly, str(apri), None, startn, length)
         )
 
-    def blks(self, apri, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
+    def blks(self, apri, sort = False, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
         """Iterate over all `Block`s with `apri`.
 
         This is a convenience method that should be used only for simple data manipulation. This method opens
@@ -2728,25 +2729,18 @@ class Register(ABC):
 
             print("B", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
 
-            for startn, length in self.intervals(apri, False, False, diskonly, recursively):
+            for startn, length in self.intervals(apri, sort, False, diskonly, recursively):
 
                 print("C", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
 
                 try:
 
-                    with self.blk(apri, startn, length, diskonly, False, ret_metadata, **kwargs) as yield_:
+                    with self.blk(apri, startn, length, diskonly, recursively, ret_metadata, **kwargs) as yield_:
                         print("D", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
                         yield yield_
 
                 except DataNotFoundError:
                     pass
-
-        if recursively:
-
-            for subreg in self._iter_subregs():
-
-                with subreg._recursive_open(True) as subreg:
-                    yield from subreg.blks(apri, diskonly, recursively, ret_metadata, **kwargs)
 
     def __getitem__(self, apri_n_diskonly_recursively):
         return self.get(*Register._resolve_apri_n_diskonly_recursively(apri_n_diskonly_recursively))
@@ -2904,36 +2898,63 @@ class Register(ABC):
         )
 
     def intervals(self, apri, sort = False, combine = False, diskonly = False, recursively = False):
+        """
+
+        :param apri: (type `ApriInfo`)
+        :param sort: (type `bool`) Set to `True` to yield smaller startn before larger, and larger lengths before
+        smaller.
+        :param combine: (type `bool`) Combine adjacent or overlapping intervals into larger intervals. If `True`, also
+        yield smaller startn before larger, and larger lengths before smaller.
+        :param diskonly: (type `bool`)
+        :param recursively: (type `bool`)
+        """
 
         self._check_open_raise("intervals")
         check_type(apri, "apri", ApriInfo)
         check_type(diskonly, "diskonly", bool)
         check_type(recursively, "recursively", bool)
 
-        if combine:
+        # `_intervals_txn` will sort and combine intervals for a single `Register`
+        # this generator slightly breaks the usual "recursively" pattern because the sort and combine parameters must
+        # be applied after all the subregisters are accessed.
 
-            intervals_sorted = list(self.intervals(apri, True, False, diskonly, recursively))
-            ret = []
+        if not recursively:
 
-            for startn, length in intervals_sorted:
-
-                if len(ret) == 0:
-                    ret.append((startn, length))
-
-                elif startn <= ret[-1][0] + ret[-1][1]:
-                    ret[-1] = (ret[-1][0], max(startn + length - ret[-1][0], ret[-1][1]))
-
-            yield from ret
-
-        elif not sort or (diskonly and not recursively):
-            # the LMDB database returns sorted keys, so we do not need to make any slow calls to Python sort functions
-            # if it is unnecessary to do so
-            yield from self._intervals_helper(apri, diskonly, recursively)
+            with self._db.begin() as txn:
+                yield from self._intervals_txn(apri, sort, combine, diskonly, True, txn)
 
         else:
-            # if not combine and sort and (not diskonly or recursively)
-            intervals = list(self._intervals_helper(apri, diskonly, recursively))
-            yield from sorted(intervals, key = lambda t: (t[0], -t[1]))
+
+            yield_from = []
+
+            for subreg in itertools.chain([self], self._iter_subregs()):
+
+                with subreg._recursive_open(True) as subreg:
+
+                    with subreg._db.begin() as txn:
+
+                        intervals_gen = subreg._intervals_txn(apri, sort, combine, diskonly, True, txn)
+
+                        try:
+
+                            if not sort and not combine:
+                                yield from intervals_gen
+
+                            else:
+                                yield_from.extend(intervals_gen)
+
+                        except DataNotFoundError:
+                            pass
+
+            if sort or combine:
+
+                intervals_sorted = sorted(yield_from, key = lambda t : (t[0], -t[1]))
+
+                if combine:
+                    yield from combine_intervals(intervals_sorted)
+
+                else:
+                    yield from intervals_sorted
 
     def total_len(self, apri, diskonly = False, recursively = False):
 
@@ -3135,11 +3156,16 @@ class Register(ABC):
         with self._conditional_db_begin(txn) as txn:
 
             if startn is not None and length is None:
-
-                key = self._get_disk_blk_key(_BLK_KEY_PREFIX, apri, None, startn, 1, False, txn) # raises DataNotFoundError
-                first_key_sep_index = key.find(_KEY_SEP)
-                second_key_sep_index = key.find(_KEY_SEP, first_key_sep_index + 1)
-                prefix = key [ : second_key_sep_index + 1]
+                # raises DataNotFoundError
+                key = self._get_disk_blk_key(_BLK_KEY_PREFIX, apri, None, startn, 1, False, txn)
+                len_ = (
+                    _BLK_KEY_PREFIX_LEN +
+                    _MAX_NUM_APRI_LENGTH +
+                    _KEY_SEP_LEN +
+                    self._startn_tail_length +
+                    _KEY_SEP_LEN
+                )
+                prefix = key [ : len_]
 
                 with lmdb_prefix_iter(txn, prefix) as it:
 
@@ -3153,7 +3179,7 @@ class Register(ABC):
 
             else:
 
-                prefix = _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False, txn, None) + _KEY_SEP
+                prefix = _BLK_KEY_PREFIX + self._get_id_by_apri(apri, None, False, None, txn) + _KEY_SEP
 
                 with lmdb_prefix_iter(txn, prefix) as it:
 
@@ -3163,48 +3189,52 @@ class Register(ABC):
                     else:
                         raise DataNotFoundError(self._blk_not_found_err_msg(True, apri))
 
-    def _intervals_helper(self, apri, diskonly, recursively):
+    def _intervals_txn(self, apri, sort, combine, diskonly, check_known_apri, txn):
 
-        with self._db.begin() as txn:
+        if check_known_apri:
+            self._check_known_apri(apri, txn)
 
-            try:
-                self._check_known_apri(apri, txn)
+        if not sort and not combine:
 
-            except DataNotFoundError:
+            if not diskonly and apri in self._ram_blks.keys():
 
-                if not recursively:
-                    raise
+                for blk in self._ram_blks[apri]:
 
-            else:
+                    try:
+                        blk_len = len(blk)
 
-                if not diskonly and apri in self._ram_blks.keys():
+                    except BlockNotOpenError as e:
+                        raise BlockNotOpenError(
+                            _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())
+                        ) from e
 
-                    for blk in self._ram_blks[apri]:
-
-                        try:
-                            blk_len = len(blk)
-
-                        except BlockNotOpenError as e:
-                            raise BlockNotOpenError(
-                                _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())
-                            ) from e
-
+                    else:
                         yield blk.startn(), blk_len
 
-                try:
+            try:
 
-                    for key, _ in self._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri, None, txn):
-                        yield self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, txn)[1:]
+                for key, _ in self._iter_disk_blk_pairs(_BLK_KEY_PREFIX, apri, None, txn):
+                    yield self._convert_disk_block_key(_BLK_KEY_PREFIX_LEN, key, apri, txn)[1:]
 
-                except DataNotFoundError:
-                    pass
+            except DataNotFoundError:
+                pass
 
-        if recursively:
+        elif combine:
 
-            for subreg in self._iter_subregs():
+            intervals_sorted = list(self._intervals_txn(apri, True, False, diskonly, False, txn))
+            yield from combine_intervals(intervals_sorted)
 
-                with subreg._recursive_open(True) as subreg:
-                    yield from subreg._intervals_helper(apri, diskonly, recursively)
+        else:
+
+            intervals_gen = self._intervals_txn(apri, False, False, diskonly, False, txn)
+
+            if diskonly:
+                # the LMDB database returns sorted keys, so we do not need to make any slow calls to Python sort
+                # functions if it is unnecessary to do so
+                yield from intervals_gen
+
+            else:
+                yield from sorted(list(intervals_gen), key = lambda t: (t[0], -t[1]))
 
     def _blk_not_found_err_msg(self, diskonly, apri, n = None, startn = None, length = None):
 
@@ -3374,8 +3404,6 @@ class NumpyRegister(Register):
                         pass
 
         raise DataNotFoundError(self._blk_not_found_err_msg(diskonly, str(apri), n))
-
-
 
     @contextmanager
     def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
@@ -3756,8 +3784,10 @@ class _RelationalInfoJsonEncoder(_InfoJsonEncoder):
 
     def __init__(self, *args, **kwargs):
 
-        if len(args) < 2:
-            raise RuntimeError("Must give at least two optional args, a `Register` followed by `lmdb.Transaction`.")
+        if len(args) != 2:
+            raise RuntimeError(
+                "Must give exactly three optional args, a `Register` and an `lmdb.Transaction`."
+            )
 
         self._reg, self._txn = args[:2]
 
@@ -3772,7 +3802,10 @@ class _RelationalInfoJsonEncoder(_InfoJsonEncoder):
     def default(self, obj):
 
         if isinstance(obj, ApriInfo):
-            return _RELATIONAL_APRI_PREFIX + self._reg._get_id_by_apri(obj, None, False, self._txn, None).decode("ASCII")
+            return (
+                _RELATIONAL_APRI_PREFIX +
+                self._reg._get_id_by_apri(obj, None, False, None, self._txn).decode("ASCII")
+            )
 
         else:
             return super().default(obj)
@@ -3781,10 +3814,12 @@ class _RelationalInfoJsonDecoder(_InfoJsonDecoder):
 
     def __init__(self, *args, **kwargs):
 
-        if len(args) < 2:
-            raise RuntimeError("Must give at least two optional args, a `Register` followed by `lmdb.Transaction`.")
+        if len(args) != 2:
+            raise RuntimeError(
+                "Must give exactly three optional args, a `Register` and an `lmdb.Transaction`."
+            )
 
-        self._reg, self._txn = args
+        self._reg, self._txn = args[:2]
 
         if not isinstance(self._reg, Register):
             raise TypeError("The first argument must have type `Register`.")
@@ -3797,7 +3832,10 @@ class _RelationalInfoJsonDecoder(_InfoJsonDecoder):
     @staticmethod
     def check_return_apri_id(str_):
 
-        check = len(str_) > _RELATIONAL_APRI_PREFIX_LEN and str_[:_RELATIONAL_APRI_PREFIX_LEN] == _RELATIONAL_APRI_PREFIX
+        check = (
+            len(str_) > _RELATIONAL_APRI_PREFIX_LEN and
+            str_[:_RELATIONAL_APRI_PREFIX_LEN] == _RELATIONAL_APRI_PREFIX
+        )
         return check, str_[_RELATIONAL_APRI_PREFIX_LEN:].encode("ASCII") if check else None
 
     def object_hook(self, obj):

@@ -99,6 +99,20 @@ def read_txt_file(file):
 #             f"file `{str(filename)}` or the file `{str(tempfile)}`."
 #         )
 
+def combine_intervals(intervals_sorted):
+
+    ret = []
+
+    for startn, length in intervals_sorted:
+
+        if len(ret) == 0:
+            ret.append((startn, length))
+
+        elif startn <= ret[-1][0] + ret[-1][1]:
+            ret[-1] = (ret[-1][0], max(startn + length - ret[-1][0], ret[-1][1]))
+
+    return ret
+
 def replace_lists_with_tuples(obj):
 
     if isinstance(obj, dict):
