@@ -773,6 +773,7 @@ class Register(ABC):
 
         self._check_open_raise("change_apri")
         self._check_readwrite_raise("change_apri")
+        self._check_known_apri(old_apri)
 
         if old_apri == new_apri:
             return
@@ -2301,16 +2302,14 @@ class Register(ABC):
 
     def _num_disk_blks_txn(self, apri, txn):
 
-        with self._conditional_db_begin(txn) as txn:
+        try:
+            apri_id = self._get_id_by_apri(apri, None, False, None, txn)
 
-            try:
-                apri_id = self._get_id_by_apri(apri, None, False, None, txn)
+        except DataNotFoundError:
+            return 0
 
-            except DataNotFoundError:
-                return 0
-
-            else:
-                return lmdb_count_keys(txn, _BLK_KEY_PREFIX + apri_id + _KEY_SEP)
+        else:
+            return lmdb_count_keys(txn, _BLK_KEY_PREFIX + apri_id + _KEY_SEP)
 
     def _iter_disk_blk_pairs(self, prefix, apri, apri_json, txn = None):
         """Iterate over key-value pairs for block entries.
@@ -2533,10 +2532,8 @@ class Register(ABC):
                     if n < 0:
                         raise IndexError("`n` must be non-negative.")
 
-                    txn = prior_yield.enter_context(self._db.begin())
-
                     try:
-                        self._check_known_apri(apri, txn)
+                        self._check_known_apri(apri)
 
                     except DataNotFoundError:
 
@@ -2710,8 +2707,6 @@ class Register(ABC):
         check_type(recursively, "recursively", bool)
         check_type(ret_metadata, "ret_metadata", bool)
 
-        print("A", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
-
         try:
             self._check_known_apri(apri)
 
@@ -2722,16 +2717,11 @@ class Register(ABC):
 
         else:
 
-            print("B", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
-
             for startn, length in self.intervals(apri, sort, False, diskonly, recursively):
-
-                print("C", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
 
                 try:
 
                     with self.blk(apri, startn, length, diskonly, recursively, ret_metadata, **kwargs) as yield_:
-                        print("D", self._db.readers().count("\n") - 1, self._db.readers().count("-"))
                         yield yield_
 
                 except DataNotFoundError:
@@ -3779,12 +3769,10 @@ class _RelationalInfoJsonEncoder(_InfoJsonEncoder):
 
     def __init__(self, *args, **kwargs):
 
-        if len(args) != 2:
-            raise RuntimeError(
-                "Must give exactly three optional args, a `Register` and an `lmdb.Transaction`."
-            )
+        if len(args) < 2:
+            raise RuntimeError("Must give at least two optional args, a `Register` followed by `lmdb.Transaction`.")
 
-        self._reg, self._txn = args[:2]
+        self._reg, self._txn = args
 
         if not isinstance(self._reg, Register):
             raise TypeError("The first argument must have type `Register`.")
@@ -3793,6 +3781,7 @@ class _RelationalInfoJsonEncoder(_InfoJsonEncoder):
             raise TypeError("The second argument must have type `lmdb.transaction`.")
 
         super().__init__(*args[2:], **kwargs)
+
 
     def default(self, obj):
 
@@ -3809,12 +3798,10 @@ class _RelationalInfoJsonDecoder(_InfoJsonDecoder):
 
     def __init__(self, *args, **kwargs):
 
-        if len(args) != 2:
-            raise RuntimeError(
-                "Must give exactly three optional args, a `Register` and an `lmdb.Transaction`."
-            )
+        if len(args) < 2:
+            raise RuntimeError("Must give at least two optional args, a `Register` followed by `lmdb.Transaction`.")
 
-        self._reg, self._txn = args[:2]
+        self._reg, self._txn = args
 
         if not isinstance(self._reg, Register):
             raise TypeError("The first argument must have type `Register`.")
@@ -3823,6 +3810,7 @@ class _RelationalInfoJsonDecoder(_InfoJsonDecoder):
             raise TypeError("The second argument must have type `lmdb.transaction`.")
 
         super().__init__(*args[2:], **kwargs)
+
 
     @staticmethod
     def check_return_apri_id(str_):
