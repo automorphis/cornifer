@@ -45,18 +45,17 @@ class Block:
         self._apri = apri
         self._seg = segment
         self._seg_ndarray = None
-        self._entered = False
+        self._num_entered = 0
 
     def _check_entered_raise(self, method_name):
 
-        if not self._entered:
+        if self._num_entered == 0:
             raise BlockNotOpenError(f"You must do `with blk:` before you call `blk.{method_name}()`.")
 
     @classmethod
     def cast(cls, obj):
 
         check_type(obj, "obj", Block)
-
         return cls(obj._seg, obj._apri, obj._startn)
 
     def _check_and_warn_custom_get_ndarray(self, method_name):
@@ -87,7 +86,6 @@ class Block:
     def segment(self):
 
         self._check_entered_raise("segment")
-
         return self._seg
 
     def apri(self):
@@ -108,7 +106,6 @@ class Block:
     def subdivide(self, subinterval_len):
 
         self._check_entered_raise("subdivide")
-
         subinterval_len = check_return_int(subinterval_len, "subinterval_len")
 
         if subinterval_len <= 1:
@@ -188,7 +185,12 @@ class Block:
         key -= self.startn()
 
         if check_has_method(self._seg, "__setitem__"):
-            self._seg[key, ...] = value
+
+            if issubclass(self.segment_type, np.ndarray):
+                self._seg[key, ...] = value
+
+            else:
+                self._seg[key] = value
 
         else:
             raise NotImplementedError
@@ -222,6 +224,16 @@ class Block:
     def __repr__(self):
         return str(self)
 
+    def __lt__(self, other):
+
+        self._check_entered_raise("__lt__")
+        return self._startn < other.startn or len(self) > len(other)
+
+    def __gt__(self, other):
+
+        self._check_entered_raise("__gt__")
+        return self._startn > other.startn or len(self) < len(other)
+
     def __eq__(self, other):
 
         self._check_entered_raise("__eq__")
@@ -245,12 +257,11 @@ class Block:
 
     def __enter__(self):
 
-        self._entered = True
+        self._num_entered += 1
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-
-        self._entered = False
+        self._num_entered -= 1
 
 class ReleaseBlock(Block, ABC):
 

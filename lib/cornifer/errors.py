@@ -24,11 +24,27 @@ class RegisterError(RuntimeError):pass
 class RegisterRecoveryError(RegisterError):pass
 
 class RegisterAlreadyOpenError(RegisterError):
-    def __init__(self):
-        super().__init__("This register is already opened.")
+
+    def __init__(self, reg):
+        super().__init__(
+            f"The following `Register` is already opened in {'readonly' if reg._readonly else 'read-write'} mode :\n"
+            f"{reg}"
+        )
+
+class RegisterNotCreatedError(RegisterError):
+
+    def __init__(self, reg, method_name):
+        super().__init__(
+            f"The the following `Register` database has not been created. You must do `with {reg.shorthand()}.open() "
+            f"as {reg.shorthand()}:` at least once before calling the method `{method_name}`.\n{reg}"
+        )
 
 class CompressionError(RuntimeError):pass
 
 class DecompressionError(RuntimeError):pass
 
-class DataNotFoundError(RuntimeError):pass
+class DataError(RuntimeError):pass
+
+class DataNotFoundError(DataError):pass
+
+class DataExistsError(DataError):pass

@@ -2,7 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from copy import copy, deepcopy
 
-from ._utilities import is_int, order_json_obj
+from ._utilities import is_int, order_json_obj, check_type, check_type_None_default
 
 _APRI_ENCODED_PREFIX = "ApriInfo.from_json("
 _APRI_ENCODED_SUFFIX = ")"
@@ -123,7 +123,6 @@ class _InfoJsonDecoder(JSONDecoderWithRoot):
 
         return decoded_json
 
-
 class _Info(ABC):
 
     _reserved_kws = ["_memoize_json", "_str", "_json", "_encoder"]
@@ -169,12 +168,8 @@ class _Info(ABC):
     @classmethod
     def from_json(cls, json_str, decoder = None):
 
-        if decoder is None:
-            decoder = cls._default_decoder
-
-        if not isinstance(decoder, JSONDecoderWithRoot):
-            raise TypeError("`decoder` must subclass `JSONDecoderWithRoot`.")
-
+        check_type(json_str, "json_str", str)
+        decoder = check_type_None_default(decoder, "decoder", JSONDecoderWithRoot, cls._default_decoder)
         decoded = decoder.decode_root(json_str)
         return cls(**decoded)
 
@@ -253,8 +248,7 @@ class _Info(ABC):
         :return: (type `_Info`) Keyword values, `self` for the root.
         """
 
-        if not isinstance(mode, str):
-            raise TypeError("`mode` must be of type `str`.")
+        check_type(mode, "mode", str)
 
         if mode != "dfs" and mode != "bfs":
             raise ValueError("`mode` must be either 'dfs' or 'bfs'.")
@@ -267,14 +261,8 @@ class _Info(ABC):
 
     def change_info(self, old_info, new_info, _root_call = True):
 
-        if not isinstance(old_info, _Info):
-            raise TypeError("`old_info` must be of type `_Info`.")
-
-        if not isinstance(new_info, _Info):
-            raise TypeError("`new_info` must be of type `_Info`.")
-
-        if not isinstance(_root_call, bool):
-            raise TypeError("`_rootCall` must be of type `bool`.")
+        check_type(old_info, "old_info", _Info)
+        check_type(old_info, "new_info", _Info)
 
         if _root_call:
             replaced_info = deepcopy(self)
@@ -306,9 +294,7 @@ class _Info(ABC):
 
     def set_encoder(self, encoder):
 
-        if not isinstance(encoder, json.JSONEncoder):
-            raise TypeError("`encoder` must be of type `json.JSONEncoder`.")
-
+        check_type(encoder, "encoder", json.JSONEncoder)
         self._encoder = encoder
 
     def clean_encoder(self):
@@ -321,12 +307,10 @@ class _Info(ABC):
             if key not in type(self)._reserved_kws:
                 yield key, val
 
-    def __contains__(self, apri):
+    def __contains__(self, info):
 
-        if not isinstance(apri, ApriInfo):
-            raise TypeError("`info` must be of type `ApriInfo`.")
-
-        return any(inner == apri for _, inner in self.iter_inner_info())
+        check_type(info, "info", _Info)
+        return any(inner == info for _, inner in self.iter_inner_info())
 
     def __lt__(self, other):
 

@@ -27,32 +27,18 @@ class ReversibleTransaction:
 
         self.db = db
         self.txn = None
-        self.errors = False
         self.committed = False
         self.undo = {}
 
     @contextmanager
-    def begin(self, write = False):
+    def begin(self):
 
-        self.txn = self.db.begin(write = write)
+        with self.db.begin(write = True) as rw_txn:
 
-        try:
+            self.txn = rw_txn
             yield self
 
-        except:
-
-            self.errors = True
-            raise
-
-        finally:
-
-            if self.errors:
-                self.txn.abort()
-
-            else:
-
-                self.txn.commit()
-                self.committed = True
+        self.committed = True
 
     def cursor(self):
         return self.txn.cursor()
@@ -86,25 +72,6 @@ class ReversibleTransaction:
 
         self.txn.delete(key)
 
-# def lmdb_is_closed(db):
-#
-#     try:
-#         print("lmdb_is_closed before", db.info()['num_readers'])
-#         with db.begin() as _:
-#             pass
-#         print("lmdb_is_closed after", db.info()['num_readers'])
-#
-#     except BaseException as e:
-#
-#         if isinstance(e, lmdb.Error) and "Attempt to operate on closed/deleted/dropped object." in str(e):
-#             return True
-#
-#         else:
-#             raise e
-#
-#     else:
-#         return False
-
 def open_lmdb(filepath, mapsize, readonly):
 
     check_type(filepath, "filepath", Path)
@@ -125,49 +92,55 @@ def open_lmdb(filepath, mapsize, readonly):
         create = False
     )
 
-def lmdb_has_key(db_or_txn, key):
-    """
-    :param db_or_txn: If type `lmdb_cornifer.Environment`, open a new read-only transaction and close it after this function
-    resolves. If type `lmdb_cornifer.Transaction`, do not close it after the function resolves.
-    :param key: (type `bytes`)
-    :return: (type `bool`)
-    """
+def db_has_key(key, db):
+    """DEPRECATED, use `r_txn_has_key` instead."""
+    with db.begin() as r_txn:
+        return r_txn_has_key(key, r_txn)
 
-    with _resolve_db_or_txn(db_or_txn) as txn:
-        return txn.get(key, default = None) is not None
+def r_txn_has_key(key, r_txn):
+    return r_txn.get(key, default = None) is not None
 
-def lmdb_prefix_list(db_or_txn, prefix):
+def db_prefix_list(prefix, db):
+    """DEPRECATED, use `r_txn_prefix_list` instead."""
+    with db.begin() as r_txn:
+        return r_txn_prefix_list(prefix, r_txn)
 
-    with lmdb_prefix_iter(db_or_txn, prefix) as it:
-        return [t for t in it]
+def r_txn_prefix_list(prefix, r_txn):
+
+    with r_txn_prefix_iter(r_txn, prefix) as it:
+        return list(it)
 
 @contextmanager
-def lmdb_prefix_iter(db_or_txn, prefix):
-    """Iterate over all key-value pairs where they key begins with given prefix.
+def db_prefix_iter(prefix, db):
+    """DEPRECATED, use `r_txn_prefix_iter` instead."""
+    with db.begin() as r_txn:
 
-    :param db_or_txn: If type `lmdb_cornifer.Environment`, open a new read-only transaction and close it after this function
-    resolves. If type `lmdb_cornifer.Transaction`, do not close it after the function resolves.
-    :param prefix: (type `bytes`)
-    :return: (type `_LMDB_Prefix_Iterator`)
-    """
-
-    with _resolve_db_or_txn(db_or_txn) as txn:
-
-        it = _LmdbPrefixIter(txn, prefix)
-
-        try:
+        with r_txn_prefix_iter(prefix, r_txn) as it:
             yield it
 
-        finally:
-            it.cursor.close()
+@contextmanager
+def r_txn_prefix_iter(prefix, r_txn):
 
-def lmdb_count_keys(db_or_txn, prefix):
+    it = _LmdbPrefixIter(prefix, r_txn)
+
+    try:
+        yield it
+
+    finally:
+        it.cursor.close()
+
+def db_count_keys(prefix, db):
+    """DEPRECATED, use `r_txn_count_keys` instead."""
+    with db.begin() as r_txn:
+        return r_txn_count_keys(prefix, r_txn)
+
+def r_txn_count_keys(prefix, r_txn):
 
     count = 0
 
-    with lmdb_prefix_iter(db_or_txn, prefix) as it:
+    with r_txn_prefix_iter(prefix, r_txn) as it:
 
-         for _ in it:
+        for _ in it:
             count += 1
 
     return count
@@ -185,33 +158,9 @@ def num_open_readers_accurate(db):
 def is_transaction(txn):
     return isinstance(txn, (lmdb.Transaction, ReversibleTransaction))
 
-@contextmanager
-def _resolve_db_or_txn(db_or_txn):
-
-    if isinstance(db_or_txn, lmdb.Environment):
-
-        txn = db_or_txn.begin()
-        commit = True
-
-    elif is_transaction(db_or_txn):
-
-        txn = db_or_txn
-        commit = False
-
-    else:
-        raise TypeError
-
-    try:
-        yield txn
-
-    finally:
-
-        if commit:
-            txn.commit()
-
 class _LmdbPrefixIter:
 
-    def __init__(self, txn, prefix):
+    def __init__(self, prefix, txn):
 
         self.prefix = prefix
         self.prefix_len = len(prefix)
