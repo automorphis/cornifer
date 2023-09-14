@@ -1627,7 +1627,7 @@ class Register(ABC):
     def subregs(self):
 
         self._check_open_raise("subregs")
-        
+
         with self._db.begin() as ro_txn:
             yield from Register._subregs_disk(ro_txn)
 
@@ -1883,7 +1883,7 @@ class Register(ABC):
 
             self._check_open_raise("append_disk_blk")
             self._check_readwrite_raise("append_disk_blk")
-            Register._check_blk_open_raise(blk, "append_disk_blk")
+            self._check_blk_open_raise(blk, "append_disk_blk")
             check_type(blk, "blk", Block)
             check_type(ret_metadata, "ret_metadata", bool)
 
@@ -2282,8 +2282,7 @@ class Register(ABC):
 
         return blk_key, compressed_key, filename, add_apri
 
-    @staticmethod
-    def _check_blk_open_raise(blk, method_name):
+    def _check_blk_open_raise(self, blk, method_name):
 
         if blk._num_entered == 0:
             raise BlockNotOpenError(f"You must do `with blk:` before you call `{self._shorthand}.{method_name}()`.")
@@ -2844,7 +2843,7 @@ class Register(ABC):
 
         self._check_open_raise("add_ram_blk")
         self._check_readwrite_raise("add_ram_blk")
-        Register._check_blk_open_raise(blk, "add_ram_blk")
+        self._check_blk_open_raise(blk, "add_ram_blk")
         check_type(blk, "blk", Block)
         apri = blk.apri()
 
@@ -2884,7 +2883,7 @@ class Register(ABC):
         apri = blk.apri()
 
         try:
-            Register._check_blk_open_raise(blk, "rmv_ram_blk")
+            self._check_blk_open_raise(blk, "rmv_ram_blk")
 
         except BlockNotOpenError as e:
             raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())) from e
@@ -3017,7 +3016,7 @@ class Register(ABC):
                     if not diskonly:
 
                         try:
-                            yield_ =  self._blk_ram(apri, startn, length, ret_metadata)
+                            yield_ = self._blk_ram(apri, startn, length, ret_metadata)
 
                         except DataNotFoundError:
                             pass
@@ -4655,7 +4654,9 @@ class NumpyRegister(Register):
         )
         return False, combined_blk_key, combined_compressed_key, combined_filename, combined_seg, del_keys, del_filenames
 
-    def _concat_disk_blks_disk(self, combined_blk_key, combined_compressed_key, combined_filename, del_keys, delete, rw_txn):
+    def _concat_disk_blks_disk(
+        self, combined_blk_key, combined_compressed_key, combined_filename, del_keys, delete, rw_txn
+    ):
 
         if delete:
 
