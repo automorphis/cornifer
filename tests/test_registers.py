@@ -5384,8 +5384,6 @@ class Test_Register(TestCase):
 
                 for i in range(len(expected)):
 
-                    print(i)
-
                     if expected[i] is not None:
                         self.assertEqual(
                             reg[apri, i],
@@ -5471,6 +5469,45 @@ class Test_Register(TestCase):
                                     expected[i : min(j, 20) : step]
                                 )
 
+        reg = NumpyRegister(SAVES_DIR, "sh", "msg")
+        apri = ApriInfo(hi = "hello")
+
+        with reg.open() as reg:
+
+            with Block(np.arange(10), apri) as blk:
+                reg.add_disk_blk(blk)
+
+            it = reg[apri, :]
+
+            for i in range(10):
+                self.assertEqual(
+                    next(it),
+                    i
+                )
+
+            with Block(np.arange(10, 20), apri, 10) as blk:
+
+                reg.add_ram_blk(blk)
+
+                for i in range(10, 20):
+                    self.assertEqual(
+                        next(it),
+                        i
+                    )
+
+                with Block(np.arange(10, 30), apri, 10) as blk:
+                    reg.add_disk_blk(blk)
+
+                for i in range(20, 30):
+                    self.assertEqual(
+                        next(it),
+                        i
+                    )
+
+                with self.assertRaises(StopIteration):
+                    next(it)
+
+
     def test_set(self):
 
         reg = NumpyRegister(SAVES_DIR, "sh", "msg")
@@ -5538,6 +5575,10 @@ class Test_Register(TestCase):
 
         finally:
             print(j)
+
+    def test_num_blks(self):
+
+        pass # TODO
 
 def _set_block_datas_compressed(block_datas, apri, start_n = None, length = None, compressed = True):
 

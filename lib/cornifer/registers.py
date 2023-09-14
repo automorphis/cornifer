@@ -3146,7 +3146,7 @@ class Register(ABC):
                 if n.stop is not None and n.stop < 0:
                     raise ValueError("Stop index cannot be negative.")
 
-                return self._get_slice(apri, None, True, start, stop, step, diskonly, kwargs)
+                return self._get_slice(apri, start, stop, step, diskonly, kwargs)
 
             else:
 
@@ -3593,86 +3593,70 @@ class Register(ABC):
     #################################
     # PROTEC RAM & DISK BLK METHODS #
 
-    def _get_slice(self, apri, apri_json, reencode, start, stop, step, diskonly, kwargs):
+    def _get_slice(self, apri, start, stop, step, diskonly, kwargs):
 
         with self._db.begin() as ro_txn:
-
-            if reencode:
-
-                try:
-                    apri_json = self._relational_encode_info(apri, ro_txn)
-
-                except DataNotFoundError:
-                    apri_json = None
-            # begin resolve `start`
+            # resolve `start`
             if start is None:
                 start, _ = self._resolve_startn_length_ram(apri, start, None)
 
             if start is None:
+                start, _ = self._resolve_startn_length_disk(apri, None, True, None, None, ro_txn)
 
-                if apri_json is None:
-                    return
+        if start is None:
+            return
 
-                else:
-                    start, _ = self._resolve_startn_length_disk(apri, apri_json, False, None, None, ro_txn)
+        else:
+            n = start
 
-            if start is None:
-                return
-            else:
-                n = start
-            # end resolve `start`
+        if stop is not None and n >= stop:
+            return
 
-            if stop is not None and n >= stop:
-                return
+        loop_ram_and_disk = True
 
-            loop_ram_and_disk = True
+        while loop_ram_and_disk:
+            # always check RAM `Block`s first, followed by disk `Block`s
+            if not diskonly:
 
-            while loop_ram_and_disk:
-                # always check RAM `Block`s first, followed by disk `Block`s
-                if not diskonly:
+                loop_ram = True
 
-                    loop_ram = True
-
-                    while loop_ram:
-
-                        try:
-                            blk = self._blk_by_n_ram(apri, n)
-
-                        except DataNotFoundError:
-                            loop_ram = False
-
-                        else:
-
-                            while n in blk and (stop is None or n < stop):
-
-                                yield blk[n]
-                                n += step
-
-                            if stop is not None and n >= stop:
-                                return
-
-                if apri_json is not None:
+                while loop_ram:
 
                     try:
-                        blk_filename, startn = self._blk_by_n_pre(apri, apri_json, False, n, ro_txn)
+                        blk = self._blk_by_n_ram(apri, n)
 
                     except DataNotFoundError:
-                        loop_ram_and_disk = False
+                        loop_ram = False
 
                     else:
 
-                        with type(self)._blk_disk(blk_filename, apri, startn, False, kwargs) as blk:
+                        while n in blk and (stop is None or n < stop):
 
-                            while n in blk and (stop is None or n < stop):
+                            yield blk[n]
+                            n += step
 
-                                yield blk[n]
-                                n += step
+                        if stop is not None and n >= stop:
+                            return
 
-                            if stop is not None and n >= stop:
-                                return
+            with self._db.begin() as ro_txn:
+                # need to refresh reader
+                try:
+                    blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
+
+                except DataNotFoundError:
+                    loop_ram_and_disk = False
 
                 else:
-                    loop_ram_and_disk = False
+
+                    with type(self)._blk_disk(blk_filename, apri, startn, False, kwargs) as blk:
+
+                        while n in blk and (stop is None or n < stop):
+
+                            yield blk[n]
+                            n += step
+
+                        if stop is not None and n >= stop:
+                            return
 
     def _num_blks_ram(self, apri):
 
@@ -3687,7 +3671,12 @@ class Register(ABC):
         if reencode:
             apri_json = self._relational_encode_info(apri, r_txn)
 
-        return self._get_disk_blk_prefixes(apri, apri_json, False, r_txn)[0]
+        prefix = self._get_disk_blk_prefixes(apri, apri_json, False, r_txn)[0]
+
+        if prefix is None:
+            raise DataNotFoundError(_NO_APRI_ERROR_MESSAGE.format(apri, self))
+
+        return prefix
 
     @staticmethod
     def _num_blks_disk(prefix, r_txn):
