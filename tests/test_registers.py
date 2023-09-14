@@ -115,8 +115,8 @@ PROTECTED READ-WRITE METHODS FOR LMDB:
     
 """
 
-# SAVES_DIR = random_unique_filename(Path.home() / "cornifer_test_cases")
-SAVES_DIR = random_unique_filename("D:/cornifer_test_cases")
+SAVES_DIR = random_unique_filename(Path.home() / "cornifer_test_cases")
+# SAVES_DIR = random_unique_filename("D:/cornifer_test_cases")
 # SAVES_DIR = Path.home() / "tmp" / "tests"
 
 class Testy_Register(Register):
@@ -1779,12 +1779,16 @@ class Test_Register(TestCase):
             with self.assertRaises(DataExistsError):
                 reg.set_apos(ApriInfo(weird = "right"), AposInfo(maybe = "maybe"), exists_ok = False)
 
-            self._assert_num_open_readers(reg._db, 0)
             self.assertEqual(
                 2,
                 db_count_keys(_APOS_KEY_PREFIX, reg._db)
             )
-            self._assert_num_open_readers(reg._db, 0)
+
+            reg.set_apos(ApriInfo(fun = "yep"), AposInfo(respective = ApriInfo(why = "not")))
+            self.assertEqual(
+                reg.apos(ApriInfo(fun = "yep")),
+                AposInfo(respective = ApriInfo(why = "not"))
+            )
 
         with reg.open(readonly= True) as reg:
             with self.assertRaisesRegex(RegisterError, "read-write"):
@@ -4742,8 +4746,7 @@ class Test_Register(TestCase):
             block_datas[data(blk)] = [seg, False]
             self._composite_helper(reg, block_datas, apris)
 
-            for start_n, length in reg.intervals(
-                    ApriInfo(descr="ApriInfo.from_json(hi = \"lol\")", respective=inner_apri)):
+            for start_n, length in reg.intervals(ApriInfo(descr="ApriInfo.from_json(hi = \"lol\")", respective=inner_apri)):
                 reg.compress(ApriInfo(descr ="ApriInfo.from_json(hi = \"lol\")", respective = inner_apri), start_n, length)
 
             _set_block_datas_compressed(block_datas,
@@ -5515,6 +5518,26 @@ class Test_Register(TestCase):
                                 list(blk2_),
                                 list(range(5)) + list(range(15, 10 + i + 1)) + list(range(i + 1, 15))
                             )
+
+    def test_readers(self):
+
+        reg = NumpyRegister(SAVES_DIR, "sh", "msg")
+        num_apos_queries = 100000
+        apri = ApriInfo(hi = "hello")
+        apos = AposInfo(hey = "sup")
+
+        with reg.open() as reg:
+            reg.set_apos(apri, apos)
+
+        try:
+
+            with reg.open(readonly=True) as reg:
+
+                    for j in range(num_apos_queries):
+                        y = reg.apos(apri)
+
+        finally:
+            print(j)
 
 def _set_block_datas_compressed(block_datas, apri, start_n = None, length = None, compressed = True):
 

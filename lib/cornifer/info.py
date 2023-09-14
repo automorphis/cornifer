@@ -4,33 +4,12 @@ from copy import copy, deepcopy
 
 from ._utilities import is_int, order_json_obj, check_type, check_type_None_default
 
-_APRI_ENCODED_PREFIX = "ApriInfo.from_json("
-_APRI_ENCODED_SUFFIX = ")"
-_APRI_ENCODED_PREFIX_LEN = len(_APRI_ENCODED_PREFIX)
-_APRI_ENCODED_SUFFIX_LEN = len(_APRI_ENCODED_SUFFIX)
-_APRI_ENCODED_PRE_SUFFIX_LEN = _APRI_ENCODED_PREFIX_LEN + _APRI_ENCODED_SUFFIX_LEN
-_APOS_ENCODED_PREFIX = "AposInfo.from_json("
-_APOS_ENCODED_SUFFIX = ")"
-_APOS_ENCODED_PREFIX_LEN = len(_APOS_ENCODED_PREFIX)
-_APOS_ENCODED_SUFFIX_LEN = len(_APOS_ENCODED_SUFFIX)
-_APOS_ENCODED_PRE_SUFFIX_LEN = _APOS_ENCODED_PREFIX_LEN + _APOS_ENCODED_SUFFIX_LEN
-
-
-class JSONDecoderWithRoot(json.JSONDecoder, ABC):
-
-    @abstractmethod
-    def decode_root(self, obj):pass
-
-
 class _InfoJsonEncoder(json.JSONEncoder):
 
     def default(self, obj):
 
-        if isinstance(obj, ApriInfo):
-            return _APRI_ENCODED_PREFIX + obj.to_json() + _APRI_ENCODED_SUFFIX
-
-        elif isinstance(obj, AposInfo):
-            return _APOS_ENCODED_PREFIX + obj.to_json() + _APOS_ENCODED_SUFFIX
+        if isinstance(obj, _Info):
+            return type(obj).__name__ + obj.to_json()
 
         elif is_int(obj):
             return int(obj)
@@ -41,102 +20,21 @@ class _InfoJsonEncoder(json.JSONEncoder):
         else:
             return super().default(obj)
 
-
-class _InfoJsonDecoder(JSONDecoderWithRoot):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(object_hook=self.object_hook, *args, **kwargs)
-
-    @staticmethod
-    def check_return_apri_info_json(str_):
-
-        check = (
-            len(str_) > _APRI_ENCODED_PRE_SUFFIX_LEN and
-            str_[ : _APRI_ENCODED_PREFIX_LEN] == _APRI_ENCODED_PREFIX and
-            str_[-_APRI_ENCODED_SUFFIX_LEN : ] == _APRI_ENCODED_SUFFIX
-        )
-        return (
-            check,
-            str_[_APRI_ENCODED_PREFIX_LEN : -_APRI_ENCODED_SUFFIX_LEN].strip(" \t") if check else None
-        )
-
-    @staticmethod
-    def check_return_apos_info_json(str_):
-
-        check = (
-            len(str_) > _APOS_ENCODED_PRE_SUFFIX_LEN and
-            str_[ : _APOS_ENCODED_PREFIX_LEN] == _APOS_ENCODED_PREFIX and
-            str_[-_APOS_ENCODED_SUFFIX_LEN : ] == _APOS_ENCODED_SUFFIX
-        )
-        return (
-            check,
-            str_[_APOS_ENCODED_PREFIX_LEN : -_APOS_ENCODED_SUFFIX_LEN].strip(" \t") if check else None
-        )
-
-    def object_hook(self, obj):
-
-        if isinstance(obj, str):
-
-            obj = obj.strip(" \t")
-
-            check_apri, apri_json = _InfoJsonDecoder.check_return_apri_info_json(obj)
-            check_apos, apos_json = _InfoJsonDecoder.check_return_apos_info_json(obj)
-
-            if check_apri:
-
-                try:
-                    return ApriInfo(**self.decode(apri_json))
-
-                except json.JSONDecodeError:
-                    return obj
-
-            elif check_apos:
-
-                try:
-                    return AposInfo(**self.decode(apos_json))
-
-                except json.JSONDecodeError:
-                    return obj
-
-            else:
-                return obj
-
-        elif isinstance(obj, dict):
-            return {key : self.object_hook(val) for key, val in obj.items()}
-
-        elif isinstance(obj, list):
-            return tuple([self.object_hook(item) for item in obj])
-
-        else:
-            return obj
-
-    def decode_root(self, obj):
-
-        decoded_json = self.decode(obj)
-
-        if not isinstance(decoded_json, dict):
-            raise ValueError(
-                "The outermost layer of the passed JSON string must be a JavaScript `object`, that is, " +
-                f"a Python `dict`. The outermost layer of the passed `json_string` is: " +
-                f"`{decoded_json.__class__.__name__}`."
-            )
-
-        return decoded_json
-
 class _Info(ABC):
 
-    _reserved_kws = ["_memoize_json", "_str", "_json", "_encoder"]
+    _reserved_kws = ["_memoize_json", "_str", "_json", "_default_encoder"]
+    _subclasses = []
     _default_encoder = _InfoJsonEncoder(
         ensure_ascii = True,
         allow_nan = True,
         indent = None,
         separators = (',', ':')
     )
-    _default_decoder = _InfoJsonDecoder()
 
     def __init_subclass__(cls, reserved_kws = None, **kwargs):
 
         super().__init_subclass__(**kwargs)
+        _Info._subclasses.append(cls)
 
         if reserved_kws is None:
             cls._reserved_kws = _Info._reserved_kws
@@ -154,7 +52,26 @@ class _Info(ABC):
         self._json = None
         self._str = None
         self._memoize_json = False
-        self._encoder = _Info._default_encoder
+
+    @classmethod
+    def _default_str_hook(cls, str_):
+
+        if str_[ : len(cls.__name__)] != cls.__name__:
+            return str_
+
+        try:
+            decoded = json.JSONDecoder().decode(str_[len(cls.__name__) : ])
+
+        except json.JSONDecodeError:
+            return str_
+
+        else:
+
+            if isinstance(decoded, dict):
+                return decoded
+
+            else:
+                return str_
 
     @classmethod
     def _check_reserved_kws(cls, kwargs):
@@ -166,14 +83,67 @@ class _Info(ABC):
             )
 
     @classmethod
-    def from_json(cls, json_str, decoder = None):
+    def from_json(cls, json_, str_hook = None):
 
-        check_type(json_str, "json_str", str)
-        decoder = check_type_None_default(decoder, "decoder", JSONDecoderWithRoot, cls._default_decoder)
-        decoded = decoder.decode_root(json_str)
-        return cls(**decoded)
+        check_type(json_, "json_", str)
 
-    def to_json(self):
+        if str_hook is None:
+            str_hook = lambda cls_, str_ : cls_._default_str_hook(str_)
+
+        info_decoded_json = json.JSONDecoder().decode(json_)
+
+        if not isinstance(info_decoded_json, dict):
+            raise ValueError(
+                "The outermost layer of the passed JSON string must be a JavaScript `object`, that is, "
+                f"a Python `dict`. The outermost layer of the passed `json_` is: "
+                f"`{info_decoded_json.__class__.__name__}`."
+            )
+
+        stack = [(None, None, cls, info_decoded_json)]
+
+        while len(stack) > 0:
+
+            index = len(stack) - 1
+            current = stack[-1]
+            old_index, old_key, current_cls, current_info_decoded_json = current
+
+            if isinstance(current_info_decoded_json, str):
+                raise Exception
+
+            for key, val in current_info_decoded_json.items():
+
+                if isinstance(val, str):
+
+                    str_ = val.strip(" \t")
+
+                    for cls_ in _Info._subclasses:
+
+                        decoded_str = str_hook(cls_, str_)
+
+                        if isinstance(decoded_str, dict):
+
+                            stack.append((index, key, cls_, decoded_str))
+                            current_info_decoded_json[key] = decoded_str
+                            break # cls_ loop
+
+                elif isinstance(val, list):
+                    current_info_decoded_json[key] = tuple(val)
+
+            if index + 1 == len(stack):
+                # nothing pushed
+                if index == 0:
+                    # top level
+                    return current_cls(**current_info_decoded_json)
+                else:
+                    # pop
+                    old_info_decoded_json = stack[old_index][3]
+                    old_info_decoded_json[old_key] = current_cls(**current_info_decoded_json)
+                    del stack[-1]
+
+
+    def to_json(self, encoder = None):
+
+        encoder = check_type_None_default(encoder, "encoder", _InfoJsonEncoder, type(self)._default_encoder)
 
         if self._memoize_json and self._json is not None:
             return self._json
@@ -188,7 +158,7 @@ class _Info(ABC):
             kwargs = order_json_obj(kwargs)
 
             try:
-                json_rep = self._encoder.encode(kwargs)
+                json_rep = encoder.encode(kwargs)
 
             except (TypeError, ValueError) as e:
 
@@ -262,7 +232,7 @@ class _Info(ABC):
     def change_info(self, old_info, new_info, _root_call = True):
 
         check_type(old_info, "old_info", _Info)
-        check_type(old_info, "new_info", _Info)
+        check_type(new_info, "new_info", _Info)
 
         if _root_call:
             replaced_info = deepcopy(self)
@@ -291,14 +261,6 @@ class _Info(ABC):
                         kw[key] = val
 
             return type(self)(**kw)
-
-    def set_encoder(self, encoder):
-
-        check_type(encoder, "encoder", json.JSONEncoder)
-        self._encoder = encoder
-
-    def clean_encoder(self):
-        self._encoder = type(self)._default_encoder
 
     def __iter__(self):
 
@@ -419,7 +381,6 @@ class _Info(ABC):
     def __deepcopy__(self, memo):
         return self.__copy__()
 
-
 class ApriInfo(_Info, reserved_kws = ["_hash"]):
 
     def __init__(self, **kwargs):
@@ -448,8 +409,7 @@ class ApriInfo(_Info, reserved_kws = ["_hash"]):
     def __hash__(self):
         return self._hash
 
-
 class AposInfo(_Info):
 
     def __hash__(self):
-        raise TypeError("`Apos_Info` is not a hashable type.")
+        raise TypeError(f"`{type(self).__name__}` is not a hashable type.")

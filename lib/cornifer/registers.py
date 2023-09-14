@@ -13,6 +13,7 @@
     GNU General Public License for more details.
 """
 import itertools
+import json
 import pickle
 import shutil
 import warnings
@@ -28,7 +29,7 @@ import numpy as np
 from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, CompressionError, \
     DecompressionError, NOT_ABSOLUTE_ERROR_MESSAGE, RegisterRecoveryError, BlockNotOpenError, DataExistsError, \
     RegisterNotCreatedError
-from .info import ApriInfo, AposInfo, _InfoJsonEncoder, _InfoJsonDecoder
+from .info import ApriInfo, AposInfo, _InfoJsonEncoder
 from .blocks import Block, MemmapBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
@@ -514,7 +515,6 @@ class Register(ABC):
         :param tail_len: (type `int`) Positive. If omitted, resets this `Register` to the default `tail_len`.
         """
 
-
         self._check_open_raise("set_startn_info")
         self._check_readwrite_raise("set_startn_info")
         head = check_return_int_None_default(head, "head", _START_N_HEAD_DEFAULT)
@@ -532,7 +532,6 @@ class Register(ABC):
         with self._db.begin() as ro_txn:
             changes = self._set_startn_info_pre(head, tail_len, ro_txn)
 
-
         with self._db.begin(write = True) as rw_txn:
             self._set_startn_info_disk(head, tail_len, changes, rw_txn)
 
@@ -546,7 +545,7 @@ class Register(ABC):
         if not self._created and not readonly:
 
             # set local directory info and create levelDB database
-            local_dir = random_unique_filename(self.saves_dir, length = 4, alphabet = LOCAL_DIR_CHARS)
+            local_dir = random_unique_filename(self.saves_dir, length = 4, alphabet=LOCAL_DIR_CHARS)
 
             try:
 
@@ -825,18 +824,17 @@ class Register(ABC):
         encoder = _RelationalInfoJsonEncoder(
             self,
             r_txn,
-            ensure_ascii=True,
-            allow_nan=True,
-            indent=None,
-            separators=(',', ':')
+            ensure_ascii = True,
+            allow_nan = True,
+            indent = None,
+            separators = (',', ':')
         )
-        info.set_encoder(encoder)
-        return info.to_json().encode("ASCII")
+        return info.to_json(encoder).encode("ASCII")
 
     def _relational_decode_info(self, cls, json, r_txn):
 
-        decoder = _RelationalInfoJsonDecoder(self, r_txn)
-        return cls.from_json(json.decode("ASCII"), decoder)
+        str_hook = _RelationalApriInfoStrHook(self, r_txn)
+        return cls.from_json(json.decode("ASCII"), str_hook)
 
     #################################
     #      PUBLIC APRI METHODS      #
@@ -1140,7 +1138,7 @@ class Register(ABC):
 
         if reencode:
             # uncaught `DataNotFoundError` (see pattern VI.1)
-            apri_json =  self._relational_encode_info(apri, r_txn)
+            apri_json = self._relational_encode_info(apri, r_txn)
 
         key = Register._get_apri_id_key(apri_json)
         apri_id = r_txn.get(key, default = None)
@@ -1830,7 +1828,7 @@ class Register(ABC):
 
             self._check_open_raise("add_disk_blk")
             self._check_readwrite_raise("add_disk_blk")
-            Register._check_blk_open_raise(blk, "add_disk_blk")
+            self._check_blk_open_raise(blk, "add_disk_blk")
             check_type(blk, "blk", Block)
             check_type(exists_ok, "exists_ok", bool)
             check_type(dups_ok, "dups_ok", bool)
@@ -2288,7 +2286,7 @@ class Register(ABC):
     def _check_blk_open_raise(blk, method_name):
 
         if blk._num_entered == 0:
-            raise BlockNotOpenError(f"You must do `with blk:` before you call `self.{method_name}()`.")
+            raise BlockNotOpenError(f"You must do `with blk:` before you call `{self._shorthand}.{method_name}()`.")
 
     def _blk_metadata_pre(self, apri, apri_json, reencode, startn, length, r_txn):
 
@@ -4749,86 +4747,50 @@ class _CopyRegister(Register):
     def set_cls_name(self, cls_name):
         write_txt_file(cls_name, self._cls_filepath)
 
-###################
-# RELATIONAL INFO #
-###################
+class _RelationalApriInfoStrHook:
 
-_RELATIONAL_APRI_PREFIX = _APRI_ID_KEY_PREFIX.decode("ASCII")
-_RELATIONAL_APRI_PREFIX_LEN = len(_RELATIONAL_APRI_PREFIX)
+    def __init__(self, reg, r_txn):
+
+        self._reg = reg
+        self._r_txn = r_txn
+
+    def __call__(self, cls, str_):
+
+        if cls == ApriInfo:
+
+            id_ = str_[len(ApriInfo.__name__) : ]
+
+            if len(id_) == _MAX_NUM_APRI_LEN:
+
+                try:
+                    int(id_)
+
+                except ValueError:
+                    return str_
+
+                else:
+                    return json.JSONDecoder().decode(
+                        self._reg._get_apri_json(id_.encode("ASCII"), self._r_txn).decode("ASCII")
+                    )
+
+            else:
+                return str_
+
+        else:
+            return cls._default_str_hook(str_)
 
 class _RelationalInfoJsonEncoder(_InfoJsonEncoder):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, reg, r_txn, *args, **kwargs):
 
-        if len(args) < 2:
-            raise RuntimeError("Must give at least two optional args, a `Register` followed by `lmdb.Transaction`.")
-
-        self._reg, self._r_txn = args[:2]
-
-        if not isinstance(self._reg, Register):
-            raise TypeError("The first argument must have type `Register`.")
-
-        if not is_transaction(self._r_txn):
-            raise TypeError("The second argument must have type `lmdb.transaction`.")
-
-        super().__init__(*args[2:], **kwargs)
+        self._reg = reg
+        self._r_txn = r_txn
+        super().__init__(*args, **kwargs)
 
     def default(self, obj):
 
         if isinstance(obj, ApriInfo):
-            return (
-                _RELATIONAL_APRI_PREFIX +
-                self._reg._get_apri_id(obj, None, True, self._r_txn).decode("ASCII")
-            )
+            return ApriInfo.__name__ + self._reg._get_apri_id(obj, None, True, self._r_txn).decode("ASCII")
 
         else:
             return super().default(obj)
-
-class _RelationalInfoJsonDecoder(_InfoJsonDecoder):
-
-    def __init__(self, *args, **kwargs):
-
-        if len(args) < 2:
-            raise RuntimeError("Must give at least two optional args, a `Register` followed by `lmdb.Transaction`.")
-
-        self._reg, self._r_txn = args[:2]
-
-        if not isinstance(self._reg, Register):
-            raise TypeError("The first argument must have type `Register`.")
-
-        if not is_transaction(self._r_txn):
-            raise TypeError("The second argument must have type `lmdb.transaction`.")
-
-        super().__init__(*args[2:], **kwargs)
-
-    @staticmethod
-    def check_return_apri_id(str_):
-
-        check = (
-            len(str_) > _RELATIONAL_APRI_PREFIX_LEN and
-            str_[:_RELATIONAL_APRI_PREFIX_LEN] == _RELATIONAL_APRI_PREFIX
-        )
-        return check, str_[_RELATIONAL_APRI_PREFIX_LEN:].encode("ASCII") if check else None
-
-    def object_hook(self, obj):
-
-        if isinstance(obj, str):
-
-            obj = obj.strip(" \t")
-
-            check_apri, apri_id = _RelationalInfoJsonDecoder.check_return_apri_id(obj)
-            check_apos, apos_json = _InfoJsonDecoder.check_return_apos_info_json(obj)
-
-            if check_apri:
-
-                apri_json = self._reg._get_apri_json(apri_id, self._r_txn).decode("ASCII")
-                return ApriInfo(**self.decode(apri_json))
-
-            elif check_apos:
-                return AposInfo(**self.decode(apos_json))
-
-            else:
-                return obj
-
-        else:
-            return super().object_hook(obj)

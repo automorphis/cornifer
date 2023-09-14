@@ -2,7 +2,7 @@ import json
 from copy import copy
 from unittest import TestCase
 
-from cornifer.info import ApriInfo
+from cornifer.info import ApriInfo, AposInfo
 
 
 class Test__Info(TestCase):
@@ -48,7 +48,7 @@ class Test__Info(TestCase):
         self.assertEqual(apri.msg, "primes")
         self.assertEqual(apri.mod4, 1)
 
-    def test__from_json(self):
+    def test_from_json(self):
 
         with self.assertRaises(ValueError):
             ApriInfo.from_json("[\"no\"]")
@@ -62,15 +62,21 @@ class Test__Info(TestCase):
         apri = ApriInfo.from_json("{\"tup\": [1,2,3]}")
         self.assertEqual(apri.tup, (1,2,3))
 
-        apri = ApriInfo.from_json("""{"msg" : "primes", "respective" : "ApriInfo.from_json({\\"haha\\" : \\"lol\\"})" }""")
+        apri = ApriInfo.from_json("""{"msg" : "primes", "respective" : "ApriInfo{\\"haha\\" : \\"lol\\"}"}""")
         self.assertEqual(apri.msg, "primes")
         self.assertEqual(apri.respective, ApriInfo(haha ="lol"))
+
+        apos = AposInfo.from_json('{"haha":"ApriInfo{\\"four\\":5}","msg":"primes","respective":"AposInfo{\\"haha\\":\\"ApriInfo{\\\\\\"four\\\\\\":5}\\",\\"num\\":3}"}')
+        self.assertEqual(apos.msg, "primes")
+        self.assertEqual(apos.respective, AposInfo(num = 3, haha = ApriInfo(four = 5)))
+        self.assertEqual(apos.haha, ApriInfo(four = 5))
 
         apri = ApriInfo.from_json(ApriInfo(msg = "primes", respective = ApriInfo(haha = "lol")).to_json())
         self.assertEqual(apri.msg, "primes")
         self.assertEqual(apri.respective, ApriInfo(haha = "lol"))
 
-    def test__to_json(self):
+
+    def test_to_json(self):
 
         _json = ApriInfo(msg ="primes", mod4 = 3).to_json()
         self.assertTrue(isinstance(_json, str))
@@ -88,6 +94,12 @@ class Test__Info(TestCase):
 
         apri = ApriInfo(msg ="primes", primes = (2, 3, 5), respective = ApriInfo(lol ="haha"))
         self.assertEqual(apri, ApriInfo.from_json(apri.to_json()))
+
+        apos = AposInfo(msg ="primes", respective = AposInfo(num = 3, haha = ApriInfo(four = 5)), haha = ApriInfo(four = 5))
+        self.assertEqual(
+            apos,
+            AposInfo.from_json(apos.to_json())
+        )
 
     def test___hash__(self):
 
