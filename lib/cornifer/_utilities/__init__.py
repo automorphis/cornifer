@@ -57,13 +57,13 @@ def intervals_overlap(int1, int2):
 def intervals_subset(int1, int2):
     return int2[0] <= int1[0] and int1[0] + int1[1] <= int2[0] + int2[1]
 
-def random_unique_filename(directory, suffix ="", length = 6, alphabet = BASE52, num_attempts = 10):
+def random_unique_filename(directory, suffix = "", length = 6, alphabet = BASE52, num_attempts = 10):
 
     directory = Path(directory)
 
     for n in range(num_attempts):
 
-        filename =  directory / "".join(random.choices(alphabet, k=length + n))
+        filename =  directory / "".join(random.choices(alphabet, k = length + n))
 
         if suffix != "":
             filename = filename.with_suffix(suffix)

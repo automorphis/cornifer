@@ -122,10 +122,6 @@ SAVES_DIR = random_unique_filename(Path.home() / "cornifer_test_cases")
 class Testy_Register(Register):
 
     @classmethod
-    def with_suffix(cls, filename):
-        return filename
-
-    @classmethod
     def dump_disk_data(cls, data, filename, **kwargs):
         filename.touch()
 
@@ -144,10 +140,6 @@ class Testy_Register(Register):
         except RegisterError:pass
 
 class Testy_Register2(Register):
-
-    @classmethod
-    def with_suffix(cls, filename):
-        return filename
 
     @classmethod
     def dump_disk_data(cls, data, filename, **kwargs): pass
@@ -4874,10 +4866,10 @@ class Test_Register(TestCase):
                 reg.rmv_disk_blk(apri, start_n, length)
 
             reg.set_startn_info()
-            reg.increase_reg_size(reg.reg_size() + 1)
+            reg.increase_size(reg.reg_size() + 1)
 
             with self.assertRaises(ValueError):
-                reg.increase_reg_size(reg.reg_size() - 1)
+                reg.increase_size(reg.reg_size() - 1)
 
     def test_remove_apri_info(self):
 

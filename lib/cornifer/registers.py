@@ -78,7 +78,7 @@ _SUB_VAL                   = b""
 #        ERROR MESSAGES         #
 
 _MEMORY_FULL_ERROR_MESSAGE = (
-    "Exceeded max `Register` size of {0} Bytes. Please increase the max size using the method `increase_reg_size`."
+    "Exceeded max `Register` size of {0} Bytes. Please increase the max size using the method `increase_size`."
 )
 _NO_APRI_ERROR_MESSAGE = "The following `ApriInfo` is not known to this register :\n{0}\n{1}"
 _NO_APOS_ERROR_MESSAGE = "No apos associated with the following apri : \n{0}\n{1}"
@@ -267,6 +267,8 @@ class Register(ABC):
     # 1. Some contextmanagers may need to be `__exit__`ed in an order that is not opposite to the order they were
     #    `__enter__`ed. To accomplish this we use an `ExitStack`.
 
+    file_suffix = ""
+
     #################################
     #     PUBLIC INITIALIZATION     #
 
@@ -278,7 +280,7 @@ class Register(ABC):
         :param initial_reg_size: (type `int`, default 5) Size in bytes. You may wish to set this lower
         than 5 MB if you do not expect to add many disk `Block`s to your register and you are concerned about disk
         memory. If your `Register` exceeds `initial_register_size`, then you can adjust the database size later via the
-        method `increase_reg_size`. If you are on a non-Windows system, there is no harm in setting this value
+        method `increase_size`. If you are on a non-Windows system, there is no harm in setting this value
         to be very large (e.g. 1 TB).
         """
 
@@ -335,8 +337,20 @@ class Register(ABC):
 
     def __init_subclass__(cls, **kwargs):
 
-        super().__init_subclass__(**kwargs)
         Register._constructors[cls.__name__] = cls
+        file_suffix = kwargs.pop("file_suffix", None)
+
+        if file_suffix is not None:
+
+            if not isinstance(file_suffix, str):
+                raise TypeError(f"`file_suffix` keyword argument must be of type `str`, not `{type(file_suffix)}`.")
+
+            if len(file_suffix) > 0 and file_suffix[0] != ".":
+                file_suffix = "." + file_suffix
+
+            cls.file_suffix = file_suffix
+
+        super().__init_subclass__(**kwargs)
 
     #################################
     #     PROTEC INITIALIZATION     #
@@ -545,7 +559,7 @@ class Register(ABC):
         if not self._created and not readonly:
 
             # set local directory info and create levelDB database
-            local_dir = random_unique_filename(self.saves_dir, length = 4, alphabet=LOCAL_DIR_CHARS)
+            local_dir = random_unique_filename(self.saves_dir, length = 4, alphabet = LOCAL_DIR_CHARS)
 
             try:
 
@@ -560,17 +574,12 @@ class Register(ABC):
                 self._set_local_dir(local_dir)
                 self._db = open_lmdb(self._db_filepath, self._db_map_size, False)
 
-                try:
-
-                    with self._db.begin(write = True) as rw_txn:
-                        # set register info
-                        rw_txn.put(_START_N_HEAD_KEY, str(self._startn_head).encode("ASCII"))
-                        rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startn_tail_length).encode("ASCII"))
-                        rw_txn.put(_LENGTH_LENGTH_KEY, str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"))
-                        rw_txn.put(_CURR_ID_KEY, b"0")
-
-                except lmdb.MapFullError as e:
-                    raise RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._db_map_size)) from e
+                with self._db.begin(write = True) as rw_txn:
+                    # set register info
+                    rw_txn.put(_START_N_HEAD_KEY, str(self._startn_head).encode("ASCII"))
+                    rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startn_tail_length).encode("ASCII"))
+                    rw_txn.put(_LENGTH_LENGTH_KEY, str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"))
+                    rw_txn.put(_CURR_ID_KEY, b"0")
 
                 Register._add_instance(local_dir, self)
                 yield_ = self
@@ -599,7 +608,7 @@ class Register(ABC):
         finally:
             yield_._close_created()
 
-    def increase_reg_size(self, num_bytes):
+    def increase_size(self, num_bytes):
         """WARNING: DO NOT CALL THIS METHOD FROM MORE THAN ONE PYTHON PROCESS AT A TIME. You are safe if you call it
         from only one Python process. You are safe if you have multiple Python processes running and call it from only
         ONE of them. But do NOT call it from multiple processes at once. Doing so may result in catastrophic loss of
@@ -608,8 +617,8 @@ class Register(ABC):
         :param num_bytes: (type `int`) Positive.
         """
 
-        self._check_open_raise("increase_reg_size")
-        self._check_readwrite_raise("increase_reg_size")
+        self._check_open_raise("increase_size")
+        self._check_readwrite_raise("increase_size")
         num_bytes = check_return_int(num_bytes, "num_bytes")
 
         if num_bytes <= 0:
@@ -646,6 +655,18 @@ class Register(ABC):
 
     #################################
     #    PROTEC REGISTER METHODS    #
+
+    def _approx_memory(self):
+        # use only for debugging
+        stat = self._db.stat()
+        current_size = stat['psize'] * (stat['leaf_pages'] + stat['branch_pages'] + stat['overflow_pages'] )
+
+        with self._db.begin() as ro_txn:
+
+            with r_txn_prefix_iter(b"", ro_txn) as it:
+                entry_size_bytes = sum(len(key) + len(value) for key, value in it) * 1
+
+        return current_size + entry_size_bytes
 
     def _set_startn_info_pre(self, head, tail_len, r_txn):
 
@@ -1813,15 +1834,6 @@ class Register(ABC):
         except FileNotFoundError as e:
             raise DataNotFoundError from e
 
-    @classmethod
-    @abstractmethod
-    def with_suffix(cls, filename):
-        """Adds a suffix to a filename and returns it.
-
-        :param filename: (type `pathlib.Path`)
-        :return: (type `pathlib.Path`)
-        """
-
     def add_disk_blk(self, blk, exists_ok = False, dups_ok = True, ret_metadata = False, **kwargs):
 
         with self._time("add_elapsed"):
@@ -1911,7 +1923,9 @@ class Register(ABC):
                 if rrw_txn is not None:
 
                     with self._db.begin(write = True) as rw_txn:
-                        self._add_disk_blk_error(filename, rw_txn, rrw_txn, e)
+                        ee = self._add_disk_blk_error(filename, rw_txn, rrw_txn, e)
+
+                    raise ee
 
                 else:
                     raise
@@ -2154,8 +2168,7 @@ class Register(ABC):
             apri_id_key = Register._get_apri_id_key(apri_json)
             add_apri = not Register._disk_apri_key_exists(apri_id_key, r_txn)
 
-        filename = random_unique_filename(self._local_dir, length = 6)
-        filename = type(self).with_suffix(filename)
+        filename = random_unique_filename(self._local_dir, suffix = type(self).file_suffix, length = 6)
 
         if not add_apri:
 
@@ -2261,15 +2274,14 @@ class Register(ABC):
             apri_id_key = Register._get_apri_id_key(apri_json)
             add_apri = not Register._disk_apri_key_exists(apri_id_key, r_txn)
 
-        filename = random_unique_filename(self._local_dir, length = 6)
-        filename = type(self).with_suffix(filename)
+        filename = random_unique_filename(self._local_dir, suffix = type(self).file_suffix, length = 6)
 
         if not add_apri:
 
             try:
                 prefix = self._maxn_pre(apri, apri_json, False, r_txn)
 
-            except DataNotFoundError:
+            except DataNotFoundError: # if apri has no disk blks (used passed startn)
                 pass
 
             else:
@@ -2605,7 +2617,7 @@ class Register(ABC):
             )
 
         blk_filename = self._local_dir / r_txn.get(blk_key).decode("ASCII")
-        compressed_filename = random_unique_filename(self._local_dir, COMPRESSED_FILE_SUFFIX)
+        compressed_filename = random_unique_filename(self._local_dir, suffix = COMPRESSED_FILE_SUFFIX)
 
         return blk_key, compressed_key, blk_filename, compressed_filename
 
@@ -3595,19 +3607,26 @@ class Register(ABC):
 
     def _get_slice(self, apri, start, stop, step, diskonly, kwargs):
 
-        with self._db.begin() as ro_txn:
-            # resolve `start`
-            if start is None:
-                start, _ = self._resolve_startn_length_ram(apri, start, None)
-
-            if start is None:
-                start, _ = self._resolve_startn_length_disk(apri, None, True, None, None, ro_txn)
-
         if start is None:
-            return
 
-        else:
-            n = start
+            with self._db.begin() as ro_txn:
+
+                ram_start, _ = self._resolve_startn_length_ram(apri, start, None)
+                disk_start, _ = self._resolve_startn_length_disk(apri, None, True, None, None, ro_txn)
+
+                if ram_start is not None and disk_start is not None:
+                    start = min(ram_start, disk_start)
+
+                elif ram_start is not None:
+                    start = ram_start
+
+                elif disk_start is not None:
+                    start = disk_start
+
+                else:
+                    return
+
+        n = start
 
         if stop is not None and n >= stop:
             return
@@ -3759,7 +3778,19 @@ class Register(ABC):
     def _maxn_ram(self, apri):
 
         if self.___contains___ram(apri) and self._num_blks_ram(apri) > 0:
-            return max(startn + length - 1 for startn, length in self._intervals_ram(apri))
+
+            ret = -1
+
+            for startn, length in self._intervals_ram(apri):
+
+                if length > 0:
+                    ret = max(ret, startn + length - 1)
+
+            if ret >= 0:
+                return ret
+
+            else:
+                raise DataNotFoundError
 
         else:
             raise DataNotFoundError
@@ -3782,7 +3813,9 @@ class Register(ABC):
         ret = -1
 
         for startn, length in self._intervals_disk(prefix, r_txn):
-            ret = max(ret, startn + length - 1)
+
+            if length > 0:
+                ret = max(ret, startn + length - 1)
 
         return ret
 
@@ -4249,30 +4282,26 @@ class Register(ABC):
         if recursive:
             msg = (
                 f"No {type_} `Block` found in the following `Register`, nor in any of its subregisters, with the "
-                f"following data :\n{self}\n{apri}"
+                f"following data :\n{apri}"
             )
 
         else:
-            msg = f"No {type_} `Block` found in the following `Register` with the following data :\n{self}"
+            msg = f"No {type_} `Block` found in the following `Register` with the following data :\n{apri}"
 
         if n is not None:
-            return f"{msg}\nn = {n}"
+            return f"{msg}\nn = {n}\n{self}"
 
         elif startn is not None and length is None:
-            return f"{msg}\nstartn = {startn}"
+            return f"{msg}\nstartn = {startn}\n{self}"
 
         elif startn is not None and length is not None:
-            return f"{msg}\nstartn = {startn}\nlength = {length}"
+            return f"{msg}\nstartn = {startn}\nlength = {length}\n{self}"
 
         else:
             return msg
 
 
-class PickleRegister(Register):
-
-    @classmethod
-    def with_suffix(cls, filename):
-        return filename.with_suffix(".pkl")
+class PickleRegister(Register, file_suffix = ".pickle"):
 
     @classmethod
     def dump_disk_data(cls, data, filename, **kwargs):
@@ -4286,7 +4315,7 @@ class PickleRegister(Register):
         with filename.open("rb") as fh:
             return pickle.load(fh), filename
 
-class NumpyRegister(Register):
+class NumpyRegister(Register, file_suffix = ".npy"):
 
     @classmethod
     def dump_disk_data(cls, data, filename, **kwargs):
@@ -4310,12 +4339,7 @@ class NumpyRegister(Register):
         if len(kwargs) > 0:
             raise KeyError("This method accepts no keyword-arguments.")
 
-        filename = filename.with_suffix(".npy")
         return Register.clean_disk_data(filename)
-
-    @classmethod
-    def with_suffix(cls, filename):
-        return filename.with_suffix(".npy")
 
     @staticmethod
     def _check_mmap_mode_raise(mmap_mode):
@@ -4713,10 +4737,6 @@ class NumpyRegister(Register):
             return no_recover
 
 class _CopyRegister(Register):
-
-    @classmethod
-    def with_suffix(cls, filename):
-        return filename
 
     @classmethod
     def dump_disk_data(cls, data, filename, **kwargs):
