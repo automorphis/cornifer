@@ -1013,6 +1013,25 @@ class Register(ABC):
             else:
                 return self.___contains___disk(apri_id_key, ro_txn)
 
+    def num_apri(self):
+
+        self._check_open_raise("num_apri")
+        ram_apri = set(self._apris_ram())
+        ret = len(ram_apri)
+
+        with self._db.begin() as ro_txn:
+
+            for apri in self._apris_disk(ro_txn):
+
+                if apri not in ram_apri:
+                    ret += 1
+
+        return ret
+
+
+
+
+
     def __iter__(self):
         return iter(self.apris())
 
@@ -1903,7 +1922,7 @@ class Register(ABC):
                 raise ValueError
 
             with self._db.begin() as ro_txn:
-                blk_key, compressed_key, filename, add_apri = self._append_disk_blk_pre(
+                blk_key, compressed_key, filename, add_apri, startn = self._append_disk_blk_pre(
                     blk.apri(), None, True, blk.startn(), len(blk), ro_txn
                 )
 
@@ -1916,7 +1935,13 @@ class Register(ABC):
                         blk.apri(), blk.startn(), len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
                     )
 
-                return type(self)._add_disk_blk_disk2(blk.segment(), filename, ret_metadata, kwargs)
+                file_metadata = type(self)._add_disk_blk_disk2(blk.segment(), filename, ret_metadata, kwargs)
+
+                if ret_metadata:
+                    return startn, file_metadata
+
+                else:
+                    return startn
 
             except BaseException as e:
 
@@ -2225,6 +2250,9 @@ class Register(ABC):
         if ret_metadata:
             return FileMetadata.from_path(filename)
 
+        else:
+            return None
+
     def _add_disk_blk_error(self, filename, rw_txn, rrw_txn, e):
 
         if isinstance(e, RegisterRecoveryError):
@@ -2292,7 +2320,7 @@ class Register(ABC):
         else:
             blk_key = compressed_key = None
 
-        return blk_key, compressed_key, filename, add_apri
+        return blk_key, compressed_key, filename, add_apri, startn
 
     def _check_blk_open_raise(self, blk, method_name):
 
