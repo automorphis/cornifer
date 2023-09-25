@@ -17,7 +17,7 @@ import re
 import warnings
 from pathlib import Path
 
-from .errors import RegisterError
+from .errors import RegisterError, DataExistsError, DataNotFoundError
 from .registers import Register
 from .regfilestructure import LOCAL_DIR_CHARS, check_reg_structure
 from ._utilities import resolve_path
@@ -88,7 +88,56 @@ def set_search_args(**kwargs):
 
         _args[key] = val
 
-def load(identifier):
+def load_shorthand(shorthand, saves_dir = None):
+
+    if saves_dir is None:
+        saves_dir = Path.cwd()
+
+    else:
+
+        if not isinstance(saves_dir, (str, Path)):
+            raise TypeError("`saves_dir` must be a string or a `pathlib.Path`.")
+
+        if not saves_dir.is_absolute():
+            saves_dir = Path.cwd() / saves_dir
+
+
+    ret = None
+
+    for d in saves_dir.iterdir():
+
+        if d.is_dir():
+
+            try:
+                check_reg_structure(d)
+
+            except FileNotFoundError:
+                pass
+
+            else:
+
+                reg = Register._from_local_dir(d)
+
+                if reg.shorthand() == shorthand:
+
+                    if ret is not None:
+                        raise DataExistsError(
+                            f"More than one `Register` found with shorthand `{shorthand}` (you can also use the "
+                            f"function `load_ident` to load a `Register`) :\n{str(reg)}\n{str(ret)}")
+
+                    else:
+                        ret = reg
+
+    if ret is not None:
+        return ret
+
+    else:
+        raise DataNotFoundError(f"No `Register` found with shorthand `{shorthand}`.")
+
+
+
+
+def load_ident(identifier):
 
     if not isinstance(identifier, (str, Path)):
         raise TypeError("`ident` must be a string or a `pathlib.Path`.")

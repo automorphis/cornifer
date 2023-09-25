@@ -2634,6 +2634,8 @@ class Register(ABC):
         blk_key, compressed_key = self._get_disk_blk_keys(apri, apri_json, False, startn_, length_, r_txn)
 
         if not self._disk_blk_keys_exist(blk_key, compressed_key, r_txn):
+
+            print(blk_key, compressed_key)
             raise DataNotFoundError(errmsg)
 
         compressed_val = r_txn.get(compressed_key)

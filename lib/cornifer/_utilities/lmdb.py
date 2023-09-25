@@ -159,6 +159,24 @@ def num_open_readers_accurate(db):
 def is_transaction(txn):
     return isinstance(txn, (lmdb.Transaction, ReversibleTransaction))
 
+def to_str(db):
+
+    ret = ""
+
+    with db_prefix_iter(b"", db) as it:
+
+        for key, val in it:
+            ret += key.decode("ASCII") + ", " + val.decode("ASCII") + "\n"
+
+    if len(ret) > 0:
+        return ret[:-1]
+
+    else:
+        return ""
+
+
+
+
 class _LmdbPrefixIter:
 
     def __init__(self, prefix, txn):

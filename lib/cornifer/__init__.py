@@ -17,7 +17,7 @@ from contextlib import contextmanager, ExitStack, AbstractContextManager
 from .info import ApriInfo, AposInfo
 from .blocks import Block
 from .registers import Register, PickleRegister, NumpyRegister
-from .regloader import search, load
+from .regloader import search, load_ident, load_shorthand
 from .errors import DataNotFoundError, CompressionError, DecompressionError, RegisterError
 
 __all__ = [
@@ -28,7 +28,8 @@ __all__ = [
     "PickleRegister",
     "NumpyRegister",
     "search",
-    "load",
+    "load_ident",
+    "load_shorthand",
     "DataNotFoundError",
     "CompressionError",
     "DecompressionError",
