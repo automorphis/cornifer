@@ -89,8 +89,7 @@ def open_lmdb(filepath, mapsize, readonly):
         map_size = mapsize,
         subdir = True,
         readonly = readonly,
-        create = False,
-        lock = not readonly
+        create = False
     )
 
 def db_has_key(key, db):

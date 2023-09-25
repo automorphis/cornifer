@@ -34,6 +34,45 @@ class AddDiskBlk(RegisterWriteMethod):
 class AppendDiskBlk(AddDiskBlk):
     pass
 
+class RmvDiskBlk(RegisterWriteMethod):
+    pass
+
+class Compress(RegisterWriteMethod):
+    pass
+
+class Decompress(RegisterWriteMethod):
+    pass
+
+class ChangeApri(RegisterWriteMethod):
+    pass
+
+class RmvApri(RegisterWriteMethod):
+    pass
+
+class SetMsg(RegisterWriteMethod):
+    pass
+
+class SetShorthand(RegisterWriteMethod):
+    pass
+
+class SetStartnInfo(RegisterWriteMethod):
+    pass
+
+class IncreaseSize(RegisterWriteMethod):
+    pass
+
+class AddSubreg(RegisterWriteMethod):
+    pass
+
+class RmvSubreg(RegisterWriteMethod):
+    pass
+
+class SetApos(RegisterWriteMethod):
+    pass
+
+class RmvApos(RegisterWriteMethod):
+    pass
+
 class RegisterTransaction:
 
     def __init__(self, reg):
