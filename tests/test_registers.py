@@ -9,7 +9,7 @@ from unittest import TestCase
 import cornifer
 import numpy as np
 
-from cornifer import NumpyRegister, Register, Block, load, openblks, openregs
+from cornifer import NumpyRegister, Register, Block, load_ident, openblks, openregs
 from cornifer.info import ApriInfo, AposInfo
 from cornifer._utilities import random_unique_filename, intervals_overlap
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
@@ -4797,7 +4797,7 @@ class Test_Register(TestCase):
             f'sh ({reg._local_dir}): \\\\new msg""\\\''
         )
 
-        reg = load(reg._local_dir)
+        reg = load_ident(reg._local_dir)
 
         with reg.open() as reg:
 
