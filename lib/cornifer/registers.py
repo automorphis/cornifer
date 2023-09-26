@@ -742,9 +742,10 @@ class Register(ABC):
         str_ = ""
         with (Path.home() / "argh.txt").open("w") as fh:
             with ret._db.begin() as ro_txn:
-                with r_txn_prefix_iter(b"a", ro_txn) as it:
-                    for key, val in it:
-                        fh.write(f"{key.decode()}, {val.decode()}")
+                for i in range(128):
+                    with r_txn_prefix_iter(chr(i).encode("ASCII"), ro_txn) as it:
+                        for key, val in it:
+                            fh.write(f"{key.decode()}, {val.decode()}\n")
 
         with ret._db.begin() as ro_txn:
             ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
