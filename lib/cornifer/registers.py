@@ -739,19 +739,17 @@ class Register(ABC):
 
         ret._readonly = readonly
         ret._db = open_lmdb(ret._db_filepath, ret._db_map_size, readonly)
-
-        try:
-            with ret._db.begin() as ro_txn:
-                ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
-
-        except BaseException as e:
-            str_ = ""
-            logging.basicConfig(filename="/home/lane.662/argh.txt", level = logging.INFO)
+        str_ = ""
+        with (Path.home() / "argh.txt").open("w") as fh:
             with ret._db.begin() as ro_txn:
                 with r_txn_prefix_iter(b"", ro_txn) as it:
                     for key, val in it:
-                        logging.info(f"{key.decode()}, {val.decode()}")
-                        raise ValueError(f"{key.decode}, {val.decode()}")
+                        fh.write(f"{key.decode()}, {val.decode()}")
+                        raise ValueError(f"{key.decode()}, {val.decode()}")
+
+        with ret._db.begin() as ro_txn:
+            ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
+
 
         ret._max_length = 10 ** ret._length_length - 1
         ret._opened = True
