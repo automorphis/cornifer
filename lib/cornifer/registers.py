@@ -744,10 +744,12 @@ class Register(ABC):
                 ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
 
         except BaseException as e:
+            ret = ""
             with ret._db.begin() as ro_txn:
                 with r_txn_prefix_iter(b"", ro_txn) as it:
                     for key, val in it:
-                        raise ValueError("=(!") from e
+                        ret += key.decode("ASCII") + ", " + val.decode("ASCII") + "\n"
+            raise ValueError(ret)
 
         ret._max_length = 10 ** ret._length_length - 1
         ret._opened = True
