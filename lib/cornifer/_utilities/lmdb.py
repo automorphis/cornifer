@@ -165,7 +165,7 @@ def to_str(db):
     with db_prefix_iter(b"", db) as it:
 
         for key, val in it:
-            ret += key.decode("ASCII") + ", " + val.decode("ASCII") + "\n"
+            ret += key.decode("ASCII") + b", " + val.decode("ASCII") + "\n"
 
     if len(ret) > 0:
         return ret[:-1]
