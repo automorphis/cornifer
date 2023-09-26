@@ -36,7 +36,7 @@ from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_d
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
     write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int
 from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleTransaction, is_transaction, \
-    num_open_readers_accurate, r_txn_prefix_iter, r_txn_count_keys
+    num_open_readers_accurate, r_txn_prefix_iter, r_txn_count_keys, to_str
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
     REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH
@@ -738,6 +738,7 @@ class Register(ABC):
 
         ret._readonly = readonly
         ret._db = open_lmdb(ret._db_filepath, ret._db_map_size, readonly)
+        print(to_str(ret._db))
 
         with ret._db.begin() as ro_txn:
             ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
