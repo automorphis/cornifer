@@ -14,6 +14,7 @@
 """
 import itertools
 import json
+import logging
 import pickle
 import shutil
 import warnings
@@ -745,10 +746,11 @@ class Register(ABC):
 
         except BaseException as e:
             str_ = ""
+            logging.basicConfig(filename="~/argh.txt", level = logging.INFO)
             with ret._db.begin() as ro_txn:
                 with r_txn_prefix_iter(b"", ro_txn) as it:
                     for key, val in it:
-                        raise ValueError(f"{key.decode()}, {val.decode()}") from e
+                        logging.error(f"{key.decode()}, {val.decode()}")
 
         ret._max_length = 10 ** ret._length_length - 1
         ret._opened = True
