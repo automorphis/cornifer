@@ -751,6 +751,7 @@ class Register(ABC):
                 with r_txn_prefix_iter(b"", ro_txn) as it:
                     for key, val in it:
                         logging.error(f"{key.decode()}, {val.decode()}")
+                        raise ValueError(f"{key.decode}, {val.decode()}")
 
         ret._max_length = 10 ** ret._length_length - 1
         ret._opened = True
