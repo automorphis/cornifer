@@ -738,10 +738,13 @@ class Register(ABC):
 
         ret._readonly = readonly
         ret._db = open_lmdb(ret._db_filepath, ret._db_map_size, readonly)
-        print(to_str(ret._db))
 
-        with ret._db.begin() as ro_txn:
-            ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
+        try:
+            with ret._db.begin() as ro_txn:
+                ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
+
+        except BaseException as e:
+            raise ValueError(to_str(ret._db)) from e
 
         ret._max_length = 10 ** ret._length_length - 1
         ret._opened = True
