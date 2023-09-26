@@ -748,8 +748,7 @@ class Register(ABC):
             with ret._db.begin() as ro_txn:
                 with r_txn_prefix_iter(b"", ro_txn) as it:
                     for key, val in it:
-                        str_ += key.decode("ASCII") + ", " + val.decode("ASCII") + "\n"
-            raise ValueError(str_)
+                        raise ValueError(f"{key.decode()}, {val.decode()}") from e
 
         ret._max_length = 10 ** ret._length_length - 1
         ret._opened = True
