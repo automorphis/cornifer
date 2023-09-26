@@ -743,6 +743,7 @@ class Register(ABC):
         with ret._db.begin() as ro_txn:
             with r_txn_prefix_iter(b"a", ro_txn) as it:
                 for key, val in it:
+                    print(key, val)
                     print(f"{key.decode()}, {val.decode()}\n")
 
         with ret._db.begin() as ro_txn:
