@@ -741,7 +741,7 @@ class Register(ABC):
         ret._db = open_lmdb(ret._db_filepath, ret._db_map_size, readonly)
         str_ = ""
         with ret._db.begin() as ro_txn:
-            with r_txn_prefix_iter(b"b", ro_txn) as it:
+            with r_txn_prefix_iter(b"a", ro_txn) as it:
                 for key, val in it:
                     print(f"{key.decode()}, {val.decode()}\n")
 
