@@ -740,11 +740,10 @@ class Register(ABC):
         ret._readonly = readonly
         ret._db = open_lmdb(ret._db_filepath, ret._db_map_size, readonly)
         str_ = ""
-        with (Path.home() / "argh.txt").open("w") as fh:
-            with ret._db.begin() as ro_txn:
-                with r_txn_prefix_iter(b"b", ro_txn) as it:
-                    for key, val in it:
-                        fh.write(f"{key.decode()}, {val.decode()}\n")
+        with ret._db.begin() as ro_txn:
+            with r_txn_prefix_iter(b"b", ro_txn) as it:
+                for key, val in it:
+                    print(f"{key.decode()}, {val.decode()}\n")
 
         with ret._db.begin() as ro_txn:
             ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
