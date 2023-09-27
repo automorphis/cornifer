@@ -61,7 +61,7 @@ f"""#!/usr/bin/env bash
             )
 
         subprocess.run(["sbatch", str(test_filename)])
-        completed_process = subprocess.run(["squeue", "-o", "%.2t"], capture_output = True)
+        completed_process = subprocess.run(["squeue", "--me", "-o", "%.2t"], capture_output = True)
         print(completed_process.stdout)
         querying = True
 
