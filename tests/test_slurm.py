@@ -60,6 +60,7 @@ f"""#!/usr/bin/env bash
             )
 
         subprocess.run(["sbatch", str(test_filename)])
+        subprocess.run(['squeue', '--me'])
         print(f"waiting for {allocation_wait_sec + wait_sec} seconds....")
         sleep(allocation_wait_sec + wait_sec)
         self.assertTrue(error_filename.exists())
