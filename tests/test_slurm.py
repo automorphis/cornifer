@@ -67,8 +67,8 @@ f"""#!/usr/bin/env bash
         while querying:
 
             sleep(allocation_query_wait_sec)
-            squeue_process = subprocess.run(["squeue", "-j", job_id, "-o", "%.2t"], capture_output = True)
-            print(squeue_process.stdout)
+            squeue_process = subprocess.run(["squeue", "-j", job_id, "-o", "%.2t"], capture_output = True, text = True)
+            querying = "PD" in squeue_process.stdout.decode("ASCII")
 
 
 
