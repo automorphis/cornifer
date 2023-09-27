@@ -24,12 +24,11 @@ if __name__ == "__main__":
             stop_index = min((blk_index + 1) * blk_size, total_indices)
             seg = list(n ** 2 for n in range(start_index, stop_index))
 
-            with Block(seg, apri) as blk:
-                startn = reg.append_disk_blk(blk)
+            with Block(seg, apri, start_index) as blk:
+                reg.add_disk_blk(blk)
                 print(f"blk_index = {blk_index}")
                 print(f"start_index = {start_index}")
                 print(f"stop_index = {stop_index}")
-                print(f"startn = {startn}")
                 print(f"len(blk) = {len(blk)}")
                 print()
 
