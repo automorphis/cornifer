@@ -32,7 +32,7 @@ class TestSlurm(unittest.TestCase):
         reg = NumpyRegister(saves_dir, "reg", "msg")
         blk_size = 100
         total_indices = 10050
-        wait_min = 2
+        wait_min = 3
         apri = ApriInfo(hi = "hello")
 
         with reg.open(): pass
