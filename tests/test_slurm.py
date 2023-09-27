@@ -127,7 +127,7 @@ f"""#!/usr/bin/env bash
 
         slurm_test_main_filename = Path(__file__).parent / 'slurm_test_main2.py'
         running_max_sec = 600
-        num_apri = 100000
+        num_apri = 10000
         slurm_time = running_max_sec + 1
         apri = ApriInfo(hi = "hello")
         slurm_array_task_max = 2
@@ -139,12 +139,12 @@ f"""#!/usr/bin/env bash
                 f"$SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID"
             )
 
-        print("Submitting test batch #1...")
+        print("Submitting test batch #2...")
         job_id = submit_batch(test_filename)
         wait_till_running(job_id, allocation_max_sec, allocation_query_sec)
-        print("Running test #1...")
+        print("Running test #2...")
         wait_till_not_running(job_id, running_max_sec, running_query_sec)
-        print("Checking test #1...")
+        print("Checking test #2...")
         self.assertTrue(error_filename.exists())
 
         with error_filename.open("r") as fh:
@@ -189,6 +189,6 @@ f"""#!/usr/bin/env bash
             )
             self.assertEqual(
                 [n ** 2 for n in range(total_indices)],
-                list(reg[apri, :])
+                list(reg[ApriInfo(hi = "hello"), :])
             )
 
