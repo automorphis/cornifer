@@ -39,7 +39,8 @@ f"""#!/usr/bin/env bash
 #SBATCH --array=1-{{1}}
 
 """)
-        allocation_wait_sec = 30
+        allocation_query_wait_sec = 0.5
+        allocation_wait_max_sec = 60
         test_filename = saves_dir / 'test.sbatch'
         reg = NumpyRegister(saves_dir, "reg", "msg", 2 ** 40)
 
@@ -60,8 +61,16 @@ f"""#!/usr/bin/env bash
             )
 
         subprocess.run(["sbatch", str(test_filename)])
-        subprocess.run(['squeue', '--me'])
-        print(f"waiting for {allocation_wait_sec + wait_sec} seconds....")
+        completed_process = subprocess.run(["squeue", "-o", "%.2t"], capture_output = True)
+        print(completed_process.stdout)
+        querying = True
+
+        while querying:
+
+            sleep(allocation_query_wait_sec)
+
+
+
         sleep(allocation_wait_sec + wait_sec)
         self.assertTrue(error_filename.exists())
 
