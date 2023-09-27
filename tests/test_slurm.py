@@ -36,7 +36,6 @@ f"""#!/usr/bin/env bash
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
-#SBATCH --output=/dev/null
 #SBATCH --array=1-{{1}}
 
 """)
@@ -48,7 +47,7 @@ f"""#!/usr/bin/env bash
         slurm_test_main_filename = Path(__file__).parent / 'slurm_test_main1.py'
         blk_size = 100
         total_indices = 10050
-        wait_sec = 30
+        wait_sec = 15
         apri = ApriInfo(hi = "hello")
         slurm_array_task_max = 10
 
