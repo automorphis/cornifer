@@ -90,7 +90,7 @@ f"""#!/usr/bin/env bash
         slurm_test_main_filename = Path(__file__).parent / 'slurm_test_main2.py'
         num_apri = 100000
         slurm_array_task_max = 2
-        wait_sec = 120
+        wait_sec = 240
 
         with test_filename.open("w") as fh:
             fh.write(
