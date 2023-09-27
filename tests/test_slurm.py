@@ -107,8 +107,14 @@ f"""#!/usr/bin/env bash
         self.assertTrue(error_filename.exists())
 
         with error_filename.open("r") as fh:
-            for _ in fh:
-                self.fail("Must be empty error file!")
+
+            contents = ""
+
+            for line in fh:
+                contents += line
+
+        if len(contents) > 0:
+            self.fail(f"Must be empty error file! Contents: {contents}")
 
         with reg.open(readonly = True):
 
