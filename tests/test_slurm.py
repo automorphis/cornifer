@@ -32,7 +32,7 @@ class TestSlurm(unittest.TestCase):
         reg = NumpyRegister(saves_dir, "reg", "msg")
         blk_size = 100
         total_indices = 10050
-        wait_min = 3
+        wait_min = 1
         apri = ApriInfo(hi = "hello")
 
         with reg.open(): pass
@@ -52,7 +52,7 @@ srun {python_command} {slurm_test_main_filename} {saves_dir} {blk_size} {total_i
 """)
 
         subprocess.run(["sbatch", str(test_filename)])
-        sleep((wait_min + 3) * 60)
+        sleep((wait_min + 1) * 60)
         self.assertTrue(error_filename.exists())
 
         with error_filename.open("r") as fh:
