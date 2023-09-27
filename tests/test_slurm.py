@@ -61,12 +61,14 @@ f"""#!/usr/bin/env bash
             )
 
         sbatch_process = subprocess.run(["sbatch", str(test_filename)], capture_output = True)
-        print(sbatch_process.stdout)
+        job_id = sbatch_process.stdout[20:-1].decode("ASCII")
         querying = True
 
         while querying:
 
             sleep(allocation_query_wait_sec)
+            squeue_process = subprocess.run(["squeue", "-j", job_id, "-o", "%.2t"], capture_output = True)
+            print(squeue_process.stdout)
 
 
 
