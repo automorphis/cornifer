@@ -25,7 +25,14 @@ if __name__ == "__main__":
             seg = list(n ** 2 for n in range(start_index, stop_index))
 
             with Block(seg, apri) as blk:
-                reg.append_disk_blk(blk)
+                startn = reg.append_disk_blk(blk)
+                print(f"blk_index = {blk_index}")
+                print(f"start_index = {start_index}")
+                print(f"stop_index = {stop_index}")
+                print(f"startn = {startn}")
+                print(f"len(blk) = {len(blk)}")
+                print()
+
 
 
 
