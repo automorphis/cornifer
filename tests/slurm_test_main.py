@@ -14,6 +14,7 @@ if __name__ == "__main__":
     reg = load_shorthand("reg", saves_dir)
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")
+    print("maybe work?")
 
     with reg.open() as reg:
 
