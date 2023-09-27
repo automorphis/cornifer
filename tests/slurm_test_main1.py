@@ -14,7 +14,6 @@ if __name__ == "__main__":
     reg = load_shorthand("reg", saves_dir)
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")
-    print("maybe work?")
 
     with reg.open() as reg:
 
@@ -26,11 +25,6 @@ if __name__ == "__main__":
 
             with Block(seg, apri, start_index) as blk:
                 reg.add_disk_blk(blk)
-                print(f"blk_index = {blk_index}")
-                print(f"start_index = {start_index}")
-                print(f"stop_index = {stop_index}")
-                print(f"len(blk) = {len(blk)}")
-                print()
 
 
 

@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 from time import sleep
 
-from cornifer import NumpyRegister, ApriInfo
+from cornifer import NumpyRegister, ApriInfo, AposInfo
 
 saves_dir = Path.home() / "cornifer_slurm_testcases"
 python_command = "sage -python"
@@ -26,32 +26,41 @@ class TestSlurm(unittest.TestCase):
 
     def test_slurm(self):
 
-        test_filename = saves_dir / 'test1.sbatch'
         error_filename = saves_dir / 'test_slurm_error.txt'
-        slurm_test_main_filename = Path(__file__).parent / 'slurm_test_main.py'
+        sbatch_header = (
+f"""#!/usr/bin/env bash
+
+#SBATCH --job-name=corniferslurmtests
+#SBATCH --time=00:{{0:02d}}:00
+#SBATCH --ntasks=1
+#SBATCH --ntasks-per-core=1
+#SBATCH --error={error_filename}
+#SBATCH --output=/dev/null
+#SBATCH --array=1-{{1}}
+
+""")
+
+        test_filename = saves_dir / 'test.sbatch'
         reg = NumpyRegister(saves_dir, "reg", "msg")
+
+        slurm_test_main_filename = Path(__file__).parent / 'slurm_test_main1.py'
         blk_size = 100
         total_indices = 10050
         wait_min = 1
         apri = ApriInfo(hi = "hello")
+        slurm_array_task_max = 10
 
         with reg.open(): pass
 
         with test_filename.open("w") as fh:
             fh.write(
-f"""#!/usr/bin/env bash
-
-#SBATCH --job-name=corniferslurmtests
-#SBATCH --time=00:{wait_min:02d}:00
-#SBATCH --ntasks=1
-#SBATCH --ntasks-per-core=1
-#SBATCH --error={error_filename}
-#SBATCH --array=1-10
-
-srun {python_command} {slurm_test_main_filename} {saves_dir} {blk_size} {total_indices} $SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID
-""")
+                sbatch_header.format(wait_min, slurm_array_task_max) +
+                f"srun {python_command} {slurm_test_main_filename} {saves_dir} {blk_size} {total_indices} "
+                f"$SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID"
+            )
 
         subprocess.run(["sbatch", str(test_filename)])
+        print(f"waiting for {wait_min + 1} minutes....")
         sleep((wait_min + 1) * 60)
         self.assertTrue(error_filename.exists())
 
@@ -78,4 +87,59 @@ srun {python_command} {slurm_test_main_filename} {saves_dir} {blk_size} {total_i
                 list(reg[apri, :])
             )
 
+        slurm_test_main_filename = Path(__file__).parent / 'slurm_test_main2.py'
+        num_apri = 100000
+        slurm_array_task_max = 2
+        wait_min = 3
+
+        with test_filename.open("w") as fh:
+            fh.write(
+                sbatch_header.format(wait_min, slurm_array_task_max) +
+                f"srun {python_command} {slurm_test_main_filename} {saves_dir} {num_apri} "
+                f"$SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID"
+            )
+
+        subprocess.run(["sbatch", str(test_filename)])
+        print(f"waiting for {wait_min + 1} minutes....")
+        sleep((wait_min + 1) * 60)
+        self.assertTrue(error_filename.exists())
+
+        with error_filename.open("r") as fh:
+            for _ in fh:
+                self.fail("Must be empty error file!")
+
+        with reg.open(readonly = True):
+
+            for i in range(num_apri):
+
+                apri = ApriInfo(i = i)
+                self.assertIn(
+                    apri,
+                    reg
+                )
+                self.assertEqual(
+                    0,
+                    reg.num_blks(apri)
+                )
+                self.assertEqual(
+                    AposInfo(i = i + 1),
+                    reg.apos(apri)
+                )
+
+            self.assertIn(
+                ApriInfo(hi = "hello"),
+                reg
+            )
+            self.assertEqual(
+                num_apri + 1,
+                reg.num_apri()
+            )
+            self.assertEqual(
+                total_indices,
+                reg.total_len(ApriInfo(hi = "hello"))
+            )
+            self.assertEqual(
+                [n ** 2 for n in range(total_indices)],
+                list(reg[apri, :])
+            )
 
