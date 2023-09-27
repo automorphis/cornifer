@@ -52,7 +52,7 @@ srun {python_command} {slurm_test_main_filename} {saves_dir} {blk_size} {total_i
 """)
 
         subprocess.run(["sbatch", str(test_filename)])
-        sleep((wait_min + 1) * 60)
+        sleep((wait_min + 3) * 60)
         self.assertTrue(error_filename.exists())
 
         with error_filename.open("r") as fh:
