@@ -1,3 +1,4 @@
+import datetime
 import shutil
 import unittest
 import subprocess
@@ -31,7 +32,7 @@ class TestSlurm(unittest.TestCase):
 f"""#!/usr/bin/env bash
 
 #SBATCH --job-name=corniferslurmtests
-#SBATCH --time=00:{{0:02d}}:00
+#SBATCH --time={{0}}
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
@@ -39,6 +40,7 @@ f"""#!/usr/bin/env bash
 #SBATCH --array=1-{{1}}
 
 """)
+        allocation_wait_sec = 30
 
         test_filename = saves_dir / 'test.sbatch'
         reg = NumpyRegister(saves_dir, "reg", "msg")
@@ -46,7 +48,7 @@ f"""#!/usr/bin/env bash
         slurm_test_main_filename = Path(__file__).parent / 'slurm_test_main1.py'
         blk_size = 100
         total_indices = 10050
-        wait_min = 1
+        wait_sec = 30
         apri = ApriInfo(hi = "hello")
         slurm_array_task_max = 10
 
@@ -54,14 +56,14 @@ f"""#!/usr/bin/env bash
 
         with test_filename.open("w") as fh:
             fh.write(
-                sbatch_header.format(wait_min, slurm_array_task_max) +
+                sbatch_header.format(datetime.timedelta(seconds = wait_sec), slurm_array_task_max) +
                 f"srun {python_command} {slurm_test_main_filename} {saves_dir} {blk_size} {total_indices} "
                 f"$SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID"
             )
 
         subprocess.run(["sbatch", str(test_filename)])
-        print(f"waiting for {wait_min + 1} minutes....")
-        sleep((wait_min + 1) * 60)
+        print(f"waiting for {allocation_wait_sec + wait_sec} seconds....")
+        sleep(allocation_wait_sec + wait_sec)
         self.assertTrue(error_filename.exists())
 
         with error_filename.open("r") as fh:
@@ -90,18 +92,18 @@ f"""#!/usr/bin/env bash
         slurm_test_main_filename = Path(__file__).parent / 'slurm_test_main2.py'
         num_apri = 100000
         slurm_array_task_max = 2
-        wait_min = 3
+        wait_sec = 120
 
         with test_filename.open("w") as fh:
             fh.write(
-                sbatch_header.format(wait_min, slurm_array_task_max) +
+                sbatch_header.format(datetime.timedelta(seconds = wait_sec), slurm_array_task_max) +
                 f"srun {python_command} {slurm_test_main_filename} {saves_dir} {num_apri} "
                 f"$SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID"
             )
 
         subprocess.run(["sbatch", str(test_filename)])
-        print(f"waiting for {wait_min + 1} minutes....")
-        sleep((wait_min + 1) * 60)
+        print(f"waiting for {wait_sec + allocation_wait_sec} seconds....")
+        sleep(wait_sec + allocation_wait_sec)
         self.assertTrue(error_filename.exists())
 
         with error_filename.open("r") as fh:
