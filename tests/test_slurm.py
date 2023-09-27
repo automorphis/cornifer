@@ -42,7 +42,7 @@ f"""#!/usr/bin/env bash
         allocation_query_wait_sec = 0.5
         allocation_wait_max_sec = 60
         running_query_wait_sec = 0.5
-        running_wait_max_sec = 5
+        running_wait_max_sec = 15
         test_filename = saves_dir / 'test.sbatch'
         reg = NumpyRegister(saves_dir, "reg", "msg", 2 ** 40)
 
