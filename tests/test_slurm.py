@@ -3,7 +3,7 @@ import shutil
 import unittest
 import subprocess
 from pathlib import Path
-from time import sleep
+import time
 
 from cornifer import NumpyRegister, ApriInfo, AposInfo
 
@@ -41,13 +41,15 @@ f"""#!/usr/bin/env bash
 """)
         allocation_query_wait_sec = 0.5
         allocation_wait_max_sec = 60
+        running_query_wait_sec = 0.5
+        running_wait_max_sec = 5
         test_filename = saves_dir / 'test.sbatch'
         reg = NumpyRegister(saves_dir, "reg", "msg", 2 ** 40)
 
         slurm_test_main_filename = Path(__file__).parent / 'slurm_test_main1.py'
         blk_size = 100
         total_indices = 10050
-        wait_sec = 45
+        slurm_time = running_wait_max_sec + 1
         apri = ApriInfo(hi = "hello")
         slurm_array_task_max = 10
 
@@ -55,24 +57,39 @@ f"""#!/usr/bin/env bash
 
         with test_filename.open("w") as fh:
             fh.write(
-                sbatch_header.format(datetime.timedelta(seconds = wait_sec), slurm_array_task_max) +
+                sbatch_header.format(datetime.timedelta(seconds = slurm_time), slurm_array_task_max) +
                 f"srun {python_command} {slurm_test_main_filename} {saves_dir} {blk_size} {total_indices} "
                 f"$SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID"
             )
 
-        sbatch_process = subprocess.run(["sbatch", str(test_filename)], capture_output = True)
-        job_id = sbatch_process.stdout[20:-1].decode("ASCII")
+        print("Submitting test batch #1...")
+        sbatch_process = subprocess.run(["sbatch", str(test_filename)], capture_output = True, text = True)
+        job_id = sbatch_process.stdout[20:-1]
         querying = True
+        start = time.time()
 
         while querying:
 
-            sleep(allocation_query_wait_sec)
+            if time.time() - start >= allocation_wait_max_sec:
+                raise Exception("Ran out of time!")
+
+            time.sleep(allocation_query_wait_sec)
             squeue_process = subprocess.run(["squeue", "-j", job_id, "-o", "%.2t"], capture_output = True, text = True)
             querying = "PD" in squeue_process.stdout
 
+        print("Running test #1...")
+        querying = True
+        start = time.time()
 
+        while querying:
 
-        sleep(allocation_wait_sec + wait_sec)
+            if time.time() - start >= running_wait_max_sec:
+                raise Exception("Ran out of time!")
+
+            time.sleep(running_query_wait_sec)
+            squeue_process = subprocess.run(["squeue", "-j", job_id, "-o", "%.2t"], capture_output = True, text = True)
+            querying = squeue_process.stdout != "ST\n"
+
         self.assertTrue(error_filename.exists())
 
         with error_filename.open("r") as fh:
