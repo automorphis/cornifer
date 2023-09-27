@@ -40,9 +40,8 @@ f"""#!/usr/bin/env bash
 
 """)
         allocation_wait_sec = 30
-
         test_filename = saves_dir / 'test.sbatch'
-        reg = NumpyRegister(saves_dir, "reg", "msg")
+        reg = NumpyRegister(saves_dir, "reg", "msg", 2 ** 40)
 
         slurm_test_main_filename = Path(__file__).parent / 'slurm_test_main1.py'
         blk_size = 100
