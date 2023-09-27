@@ -60,9 +60,8 @@ f"""#!/usr/bin/env bash
                 f"$SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID"
             )
 
-        subprocess.run(["sbatch", str(test_filename)])
-        completed_process = subprocess.run(["squeue", "--me", "-o", "%.2t"], capture_output = True)
-        print(completed_process.stdout)
+        sbatch_process = subprocess.run(["sbatch", str(test_filename)], capture_output = True)
+        print(sbatch_process.stdout)
         querying = True
 
         while querying:
