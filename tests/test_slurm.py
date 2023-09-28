@@ -195,10 +195,11 @@ class TestSlurm(unittest.TestCase):
             ret = []
 
             for i in range(num_apri):
+
                 if ApriInfo(i = i) not in reg:
                     ret.append(ApriInfo(i = i))
 
-                print(ret)
+            print(ret)
 
 
             for i in range(num_apri):

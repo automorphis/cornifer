@@ -23,3 +23,5 @@ if __name__ == "__main__":
 
             with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
                 fh.write(f"2, {i}\n")
+
+            reg.apos(ApriInfo(i = i))
