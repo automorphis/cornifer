@@ -19,11 +19,6 @@ allocation_max_sec = 60
 total_indices = 10050
 num_apri = 100
 
-def submit_batch(batch_filename):
-
-    sbatch_process = subprocess.run(["sbatch", str(batch_filename)], capture_output = True, text = True)
-    return sbatch_process.stdout[20:-1]
-
 def write_batch_file(batch_filename, time_sec, slurm_task_array_max, slurm_test_main_filename, args, output):
 
     with batch_filename.open("w") as fh:

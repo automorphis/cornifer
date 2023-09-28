@@ -21,7 +21,9 @@ if __name__ == "__main__":
                 cornifer.registers._debug = 1
 
             reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 2), exists_ok = True)
-            print(ApriInfo(i = i), AposInfo(i = i + 2))
+
+            with (saves_dir / f"log{slurm_array_task_id}.txt").open("a") as fh:
+                fh.write(f"{ApriInfo(i = i)}, {AposInfo(i = i + 2)}\n")
 
             if slurm_array_task_id == 1 and i == 2 * slurm_array_task_max:
                 cornifer.registers._debug = 0
