@@ -39,6 +39,8 @@ if __name__ == "__main__":
 
                     while querying:
 
+                        time.sleep(0.5)
+
                         try:
                             apos = str(reg.apos(ApriInfo(i = i)))
 
