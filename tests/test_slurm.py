@@ -181,6 +181,7 @@ class TestSlurm(unittest.TestCase):
         )
         print("Submitting test batch #2...")
         job_id = submit_batch(test_filename)
+        self.job_id = job_id
         wait_till_running(job_id, allocation_max_sec, allocation_query_sec)
         print("Running test #2...")
         wait_till_not_running(job_id, running_max_sec, running_query_sec)
@@ -237,6 +238,7 @@ class TestSlurm(unittest.TestCase):
         )
         print("Submitting test batch #3...")
         job_id = submit_batch(test_filename)
+        self.job_id = job_id
         wait_till_running(job_id, allocation_max_sec, allocation_query_sec)
         print("Running test #3...")
         time.sleep(slurm_time + 1)
@@ -300,6 +302,7 @@ class TestSlurm(unittest.TestCase):
         )
         print("Submitting test batch #4...")
         job_id = submit_batch(test_filename)
+        self.job_id = job_id
         wait_till_running(job_id, allocation_max_sec, allocation_query_sec)
         print("Running test #4...")
         time.sleep(slurm_time + 1)
