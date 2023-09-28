@@ -227,7 +227,7 @@ class TestSlurm(unittest.TestCase):
         # (The writer of `cornifer.registers.Register.set_apos` will sleep for a long time)
         reg = type(self).reg
         slurm_test_main_filename = slurm_tests_filename / 'test3.py'
-        running_max_sec = 60
+        running_max_sec = 15
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 7
         write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri), True)
@@ -235,9 +235,9 @@ class TestSlurm(unittest.TestCase):
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print("Running test #3...")
-        time.sleep(slurm_time + 5 )
+        time.sleep(slurm_time + 60)
         print("Checking test #3...")
-        # self.check_timeout_error_file(slurm_array_task_max)
+        self.check_timeout_error_file(slurm_array_task_max)
 
         with reg.open(readonly = True):
 
