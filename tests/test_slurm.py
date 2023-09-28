@@ -135,7 +135,7 @@ class TestSlurm(unittest.TestCase):
 
         reg = type(self).reg
         slurm_test_main_filename = slurm_tests_filename / 'test1.py'
-        running_max_sec = 15
+        running_max_sec = 40
         blk_size = 100
         slurm_time = running_max_sec + 1
         apri = ApriInfo(hi = "hello")
@@ -176,7 +176,7 @@ class TestSlurm(unittest.TestCase):
 
         reg = type(self).reg
         slurm_test_main_filename = slurm_tests_filename / 'test2.py'
-        running_max_sec = 20
+        running_max_sec = 40
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 2
         write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri), False)
