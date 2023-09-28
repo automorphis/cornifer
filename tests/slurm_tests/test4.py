@@ -17,10 +17,10 @@ if __name__ == "__main__":
 
         for i in range(slurm_array_task_id - 1, num_apri, slurm_array_task_max):
 
-            if slurm_array_task_id == 2 and i == 10 * slurm_array_task_max:
+            if slurm_array_task_id == 2 and i == 10 * slurm_array_task_max + 1:
                 cornifer.registers._debug = 2
 
             reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 3), exists_ok = True)
 
-            if slurm_array_task_id == 2 and i == 10 * slurm_array_task_max:
+            if slurm_array_task_id == 2 and i == 10 * slurm_array_task_max + 1:
                 cornifer.registers._debug = 0
