@@ -57,7 +57,7 @@ class TestSlurm(unittest.TestCase):
         if saves_dir.exists():
             shutil.rmtree(saves_dir)
 
-        saves_dir.mkdir(parents=True, exist_ok=False)
+        saves_dir.mkdir(parents = True, exist_ok = False)
         cls.reg = NumpyRegister(saves_dir, "reg", "msg", 2 ** 40)
 
         with cls.reg.open(): pass
@@ -107,7 +107,9 @@ class TestSlurm(unittest.TestCase):
                 raise Exception("Ran out of time!")
 
             time.sleep(query_sec)
-            squeue_process = subprocess.run(["squeue", "-j", self.job_id, "-o", "%.2t"], capture_output=True, text=True)
+            squeue_process = subprocess.run(
+                ["squeue", "-j", self.job_id, "-o", "%.2t"], capture_output = True, text = True
+            )
             querying = "PD" in squeue_process.stdout
 
     def wait_till_not_running(self, max_sec, query_sec):
@@ -121,12 +123,16 @@ class TestSlurm(unittest.TestCase):
                 raise Exception("Ran out of time!")
 
             time.sleep(query_sec)
-            squeue_process = subprocess.run(["squeue", "-j", self.job_id, "-o", "%.2t"], capture_output=True, text=True)
+            squeue_process = subprocess.run(
+                ["squeue", "-j", self.job_id, "-o", "%.2t"], capture_output = True, text = True
+            )
             querying = squeue_process.stdout != "ST\n"
 
     def submit_batch(self, batch_filename):
 
-        sbatch_process = subprocess.run(["sbatch", str(batch_filename)], capture_output=True, text=True)
+        sbatch_process = subprocess.run(
+            ["sbatch", str(batch_filename)], capture_output = True, text = True
+        )
         self.job_id = sbatch_process.stdout[20:-1]
 
     def test_slurm_1(self):
@@ -242,7 +248,7 @@ class TestSlurm(unittest.TestCase):
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print("Running test #3...")
-        time.sleep(slurm_time + 1)
+        time.sleep(slurm_time + 5)
         print("Checking test #3...")
         self.check_timeout_error_file(slurm_array_task_max)
 
