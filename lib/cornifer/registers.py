@@ -1424,7 +1424,6 @@ class Register(ABC):
             if _debug == 2:
                 sleep(10 ** 8)
 
-
         with self._db.begin(write = True) as rw_txn:
 
             self._set_apos_disk(apri, apos, add_apri, add_apos_inner, apos_key, apos_json, rw_txn)

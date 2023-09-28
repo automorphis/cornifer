@@ -26,6 +26,9 @@ if __name__ == "__main__":
             with Block(seg, apri, start_index) as blk:
                 reg.add_disk_blk(blk)
 
+            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
+                fh.write(f"{start_index}, {stop_index}\n")
+
 
 
 
