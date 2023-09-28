@@ -17,6 +17,7 @@ allocation_query_sec = 0.5
 running_query_sec = 0.5
 allocation_max_sec = 60
 total_indices = 10050
+timeout_extra_wait_sec = 60
 num_apri = 100
 
 def write_batch_file(time_sec, slurm_task_array_max, slurm_test_main_filename, args, output):
@@ -235,7 +236,7 @@ class TestSlurm(unittest.TestCase):
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print("Running test #3...")
-        time.sleep(slurm_time + 40)
+        time.sleep(slurm_time + timeout_extra_wait_sec)
         print("Checking test #3...")
         self.check_timeout_error_file(1)
 
@@ -295,7 +296,7 @@ class TestSlurm(unittest.TestCase):
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print("Running test #4...")
-        time.sleep(slurm_time + 1)
+        time.sleep(slurm_time + timeout_extra_wait_sec)
         print("Checking test #4...")
         self.check_timeout_error_file(slurm_array_task_max)
 
