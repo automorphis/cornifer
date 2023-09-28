@@ -21,7 +21,7 @@ import zipfile
 from contextlib import contextmanager, ExitStack
 from pathlib import Path
 from abc import ABC, abstractmethod
-from time import time
+from time import time, sleep
 
 import lmdb
 import numpy as np
@@ -1416,12 +1416,21 @@ class Register(ABC):
         check_type(apos, "apos", AposInfo)
 
         with self._db.begin() as ro_txn:
+
             add_apri, add_apos_inner, apos_key, apos_json = self._set_apos_pre(
                 apri, None, True, apos, None, True, exists_ok, ro_txn
             )
 
+            if _debug == 2:
+                sleep(10 ** 8)
+
+
         with self._db.begin(write = True) as rw_txn:
+
             self._set_apos_disk(apri, apos, add_apri, add_apos_inner, apos_key, apos_json, rw_txn)
+
+            if _debug == 1:
+                sleep(10 ** 8)
 
     def apos(self, apri, recursively = False):
         """Get some `AposInfo` associated with a given `ApriInfo`.
