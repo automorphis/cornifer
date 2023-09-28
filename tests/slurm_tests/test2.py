@@ -26,9 +26,11 @@ if __name__ == "__main__":
 
             reg.apos(ApriInfo(i = i))
 
-        if slurm_array_task_id == 1:
+    if slurm_array_task_id == 1:
 
-            time.sleep(5)
+        time.sleep(5)
+
+        with reg.open(readonly = True):
 
             with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
 
