@@ -30,26 +30,25 @@ if __name__ == "__main__":
 
         with reg.open(readonly = True):
 
-            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
+            for i in range(num_apri):
 
-                for i in range(num_apri):
+                querying = True
+                num_queries = 1
 
-                    querying = True
-                    num_queries = 1
+                while querying:
 
-                    while querying:
+                    time.sleep(0.5)
 
-                        time.sleep(0.5)
+                    try:
+                        apos = str(reg.apos(ApriInfo(i = i)))
 
-                        try:
-                            apos = str(reg.apos(ApriInfo(i = i)))
+                    except DataNotFoundError:
+                        num_queries += 1
 
-                        except DataNotFoundError:
-                            num_queries += 1
+                    else:
+                        querying = False
 
-                        else:
-                            querying = False
-
+                with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
                     fh.write(f"{i}, {num_queries}\n")
 
 
