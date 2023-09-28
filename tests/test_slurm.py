@@ -19,9 +19,9 @@ allocation_max_sec = 60
 total_indices = 10050
 num_apri = 100
 
-def write_batch_file(batch_filename, time_sec, slurm_task_array_max, slurm_test_main_filename, args, output):
+def write_batch_file(time_sec, slurm_task_array_max, slurm_test_main_filename, args, output):
 
-    with batch_filename.open("w") as fh:
+    with test_filename.open("w") as fh:
         fh.write(
 f"""#!/usr/bin/env bash
 
@@ -139,11 +139,8 @@ class TestSlurm(unittest.TestCase):
         slurm_time = running_max_sec + 1
         apri = ApriInfo(hi = "hello")
         slurm_array_task_max = 10
-        write_batch_file(
-            test_filename, slurm_time, slurm_array_task_max, slurm_test_main_filename,
-            f"{blk_size} {total_indices}",
-            False
-        )
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{blk_size} {total_indices}",
+                         False)
         print("Submitting test batch #1...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
@@ -178,11 +175,7 @@ class TestSlurm(unittest.TestCase):
         running_max_sec = 600
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 2
-        write_batch_file(
-            test_filename, slurm_time, slurm_array_task_max, slurm_test_main_filename,
-            str(num_apri),
-            False
-        )
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri), False)
         print("Submitting test batch #2...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
@@ -234,11 +227,7 @@ class TestSlurm(unittest.TestCase):
         running_max_sec = 60
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 7
-        write_batch_file(
-            test_filename, slurm_time, slurm_array_task_max, slurm_test_main_filename,
-            str(num_apri),
-            True
-        )
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri), True)
         print("Submitting test batch #3...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
@@ -298,10 +287,7 @@ class TestSlurm(unittest.TestCase):
         running_max_sec = 60
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 5
-        write_batch_file(
-            test_filename, slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri),
-            False
-        )
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri), False)
         print("Submitting test batch #4...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
