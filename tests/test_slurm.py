@@ -24,34 +24,6 @@ def submit_batch(batch_filename):
     sbatch_process = subprocess.run(["sbatch", str(batch_filename)], capture_output = True, text = True)
     return sbatch_process.stdout[20:-1]
 
-def wait_till_running(job_id, max_sec, query_sec):
-
-    querying = True
-    start = time.time()
-
-    while querying:
-
-        if time.time() - start >= max_sec:
-            raise Exception("Ran out of time!")
-
-        time.sleep(query_sec)
-        squeue_process = subprocess.run(["squeue", "-j", job_id, "-o", "%.2t"], capture_output = True, text = True)
-        querying = "PD" in squeue_process.stdout
-
-def wait_till_not_running(job_id, max_sec, query_sec):
-
-    querying = True
-    start = time.time()
-
-    while querying:
-
-        if time.time() - start >= max_sec:
-            raise Exception("Ran out of time!")
-
-        time.sleep(query_sec)
-        squeue_process = subprocess.run(["squeue", "-j", job_id, "-o", "%.2t"], capture_output=True, text=True)
-        querying = squeue_process.stdout != "ST\n"
-
 def write_batch_file(batch_filename, time_sec, slurm_task_array_max, slurm_test_main_filename, args, output):
 
     with batch_filename.open("w") as fh:
@@ -124,6 +96,38 @@ class TestSlurm(unittest.TestCase):
         if len(re.findall(r".*CANCELLED AT.*DUE TO TIME LIMIT.*", contents)) != num_timouts:
             self.fail(f"Invalid error file. Contents: {contents}")
 
+    def wait_till_running(self, max_sec, query_sec):
+
+        querying = True
+        start = time.time()
+
+        while querying:
+
+            if time.time() - start >= max_sec:
+                raise Exception("Ran out of time!")
+
+            time.sleep(query_sec)
+            squeue_process = subprocess.run(["squeue", "-j", self.job_id, "-o", "%.2t"], capture_output=True, text=True)
+            querying = "PD" in squeue_process.stdout
+
+    def wait_till_not_running(self, max_sec, query_sec):
+
+        querying = True
+        start = time.time()
+
+        while querying:
+
+            if time.time() - start >= max_sec:
+                raise Exception("Ran out of time!")
+
+            time.sleep(query_sec)
+            squeue_process = subprocess.run(["squeue", "-j", self.job_id, "-o", "%.2t"], capture_output=True, text=True)
+            querying = squeue_process.stdout != "ST\n"
+
+    def submit_batch(self, batch_filename):
+
+        sbatch_process = subprocess.run(["sbatch", str(batch_filename)], capture_output=True, text=True)
+        self.job_id = sbatch_process.stdout[20:-1]
 
     def test_slurm_1(self):
 
@@ -140,11 +144,10 @@ class TestSlurm(unittest.TestCase):
             False
         )
         print("Submitting test batch #1...")
-        job_id = submit_batch(test_filename)
-        self.job_id = job_id
-        wait_till_running(job_id, allocation_max_sec, allocation_query_sec)
+        self.submit_batch(test_filename)
+        self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print("Running test #1...")
-        wait_till_not_running(job_id, running_max_sec, running_query_sec)
+        self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #1...")
         self.check_empty_error_file()
 
@@ -180,11 +183,10 @@ class TestSlurm(unittest.TestCase):
             False
         )
         print("Submitting test batch #2...")
-        job_id = submit_batch(test_filename)
-        self.job_id = job_id
-        wait_till_running(job_id, allocation_max_sec, allocation_query_sec)
+        self.submit_batch(test_filename)
+        self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print("Running test #2...")
-        wait_till_not_running(job_id, running_max_sec, running_query_sec)
+        self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #2...")
         self.check_empty_error_file()
 
@@ -237,13 +239,12 @@ class TestSlurm(unittest.TestCase):
             True
         )
         print("Submitting test batch #3...")
-        job_id = submit_batch(test_filename)
-        self.job_id = job_id
-        wait_till_running(job_id, allocation_max_sec, allocation_query_sec)
+        self.submit_batch(test_filename)
+        self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print("Running test #3...")
         time.sleep(slurm_time + 1)
         print("Checking test #3...")
-        self.check_timeout_error_file(0)
+        self.check_timeout_error_file(slurm_array_task_max)
 
         with reg.open(readonly = True):
 
@@ -301,13 +302,12 @@ class TestSlurm(unittest.TestCase):
             False
         )
         print("Submitting test batch #4...")
-        job_id = submit_batch(test_filename)
-        self.job_id = job_id
-        wait_till_running(job_id, allocation_max_sec, allocation_query_sec)
+        self.submit_batch(test_filename)
+        self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print("Running test #4...")
         time.sleep(slurm_time + 1)
         print("Checking test #4...")
-        self.check_timeout_error_file(0)
+        self.check_timeout_error_file(slurm_array_task_max)
 
         with reg.open(readonly = True):
 
