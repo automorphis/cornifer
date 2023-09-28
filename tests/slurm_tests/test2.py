@@ -16,40 +16,40 @@ if __name__ == "__main__":
 
         for i in range(slurm_array_task_id - 1, num_apri, slurm_array_task_max):
 
-            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
-                fh.write(f"a, {i}\n")
+            # with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
+            #     fh.write(f"a, {i}\n")
 
             reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 1))
 
-            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
-                fh.write(f"b, {i}\n")
+            # with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
+            #     fh.write(f"b, {i}\n")
 
-            reg.apos(ApriInfo(i = i))
+            # reg.apos(ApriInfo(i = i))
 
-    if slurm_array_task_id == 1:
-
-        with reg.open(readonly = True):
-
-            for i in range(num_apri):
-
-                querying = True
-                num_queries = 1
-
-                while querying:
-
-                    time.sleep(0.5)
-
-                    try:
-                        apos = str(reg.apos(ApriInfo(i = i)))
-
-                    except DataNotFoundError:
-                        num_queries += 1
-
-                    else:
-                        querying = False
-
-                with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
-                    fh.write(f"{i}, {num_queries}\n")
+    # if slurm_array_task_id == 1:
+    #
+    #     with reg.open(readonly = True):
+    #
+    #         for i in range(num_apri):
+    #
+    #             querying = True
+    #             num_queries = 1
+    #
+    #             while querying:
+    #
+    #                 time.sleep(0.5)
+    #
+    #                 try:
+    #                     apos = str(reg.apos(ApriInfo(i = i)))
+    #
+    #                 except DataNotFoundError:
+    #                     num_queries += 1
+    #
+    #                 else:
+    #                     querying = False
+    #
+    #             with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
+    #                 fh.write(f"{i}, {num_queries}\n")
 
 
 
