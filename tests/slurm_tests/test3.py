@@ -17,16 +17,18 @@ if __name__ == "__main__":
 
         for i in range(slurm_array_task_id - 1, num_apri, slurm_array_task_max):
 
-            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
-                fh.write(f"{cornifer.registers._debug}, {slurm_array_task_id}, {i}, {ApriInfo(i = i)}, {AposInfo(i = i + 2)}\n")
 
             if slurm_array_task_id == 1 and i == 2 * slurm_array_task_max:
                 cornifer.registers._debug = 1
 
+            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
+                fh.write(f"{cornifer.registers._debug}, {slurm_array_task_id}, {i}, {ApriInfo(i = i)}, {AposInfo(i = i + 2)}\n")
+
             reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 2), exists_ok = True)
+
+            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
+                fh.write(f"{cornifer.registers._debug}, {slurm_array_task_id}, {i}, {ApriInfo(i = i)}, {AposInfo(i = i + 2)}\n")
 
             if slurm_array_task_id == 1 and i == 2 * slurm_array_task_max:
                 cornifer.registers._debug = 0
 
-            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
-                fh.write(f"{cornifer.registers._debug}, {slurm_array_task_id}, {i}, {ApriInfo(i = i)}, {AposInfo(i = i + 2)}\n")
