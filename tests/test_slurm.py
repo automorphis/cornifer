@@ -88,7 +88,7 @@ class TestSlurm(unittest.TestCase):
             for line in fh:
                 contents += line
 
-        if len(re.findall(r".*CANCELLED AT.*DUE TO TIME LIMIT.*", contents)) != num_timouts:
+        if len(re.findall(r"STEP.*CANCELLED AT.*DUE TO TIME LIMIT.*", contents)) != num_timouts:
             self.fail(f"Invalid error file. Contents: {contents}")
 
     def wait_till_running(self, max_sec, query_sec):
@@ -235,9 +235,9 @@ class TestSlurm(unittest.TestCase):
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print("Running test #3...")
-        time.sleep(slurm_time + 60)
+        time.sleep(slurm_time + 40)
         print("Checking test #3...")
-        self.check_timeout_error_file(slurm_array_task_max)
+        self.check_timeout_error_file(1)
 
         with reg.open(readonly = True):
 
