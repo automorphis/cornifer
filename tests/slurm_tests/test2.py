@@ -2,7 +2,7 @@ import sys
 import time
 from pathlib import Path
 
-from cornifer import ApriInfo, load_shorthand, AposInfo
+from cornifer import ApriInfo, load_shorthand, AposInfo, DataNotFoundError
 
 if __name__ == "__main__":
 
@@ -17,25 +17,38 @@ if __name__ == "__main__":
         for i in range(slurm_array_task_id - 1, num_apri, slurm_array_task_max):
 
             with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
-                fh.write(f"1, {i}\n")
+                fh.write(f"a, {i}\n")
 
             reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 1))
 
             with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
-                fh.write(f"2, {i}\n")
+                fh.write(f"b, {i}\n")
 
             reg.apos(ApriInfo(i = i))
 
     if slurm_array_task_id == 1:
-
-        time.sleep(5)
 
         with reg.open(readonly = True):
 
             with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
 
                 for i in range(num_apri):
-                    fh.write(str(reg.apos(ApriInfo(i = i))) + "\n")
+
+                    querying = True
+                    num_queries = 1
+
+                    while querying:
+
+                        try:
+                            apos = str(reg.apos(ApriInfo(i = i)))
+
+                        except DataNotFoundError:
+                            num_queries += 1
+
+                        else:
+                            querying = False
+
+                    fh.write(f"{i}, {num_queries}\n")
 
 
 
