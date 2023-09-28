@@ -17,7 +17,7 @@ allocation_query_sec = 0.5
 running_query_sec = 0.5
 allocation_max_sec = 60
 total_indices = 10050
-timeout_extra_wait_sec = 60
+timeout_extra_wait_sec = 90
 num_apri = 100
 
 def write_batch_file(time_sec, slurm_task_array_max, slurm_test_main_filename, args, output):
