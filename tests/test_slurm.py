@@ -63,6 +63,7 @@ f"""#!/usr/bin/env bash
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
+#SBATCH --output=/dev/null
 #SBATCH --array=1-{slurm_task_array_max}
 
 srun {python_command} {slurm_test_main_filename} {saves_dir} {args} $SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID
