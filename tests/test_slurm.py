@@ -271,7 +271,7 @@ class TestSlurm(unittest.TestCase):
         # (The reader of `cornifer.registers.Register.set_apos` will sleep for a long time)
         reg = type(self).reg
         slurm_test_main_filename = slurm_tests_filename / 'test3.py'
-        running_max_sec = 600
+        running_max_sec = 60
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 5
         write_batch_file(test_filename, slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
