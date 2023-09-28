@@ -30,7 +30,7 @@ if __name__ == "__main__":
                     if i % slurm_array_task_max != 0:
 
                         try:
-                            reg.apos(AposInfo(i = i))
+                            reg.apos(ApriInfo(i = i))
 
                         except DataNotFoundError:
                             break # i loop
