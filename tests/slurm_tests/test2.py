@@ -16,10 +16,10 @@ if __name__ == "__main__":
 
         for i in range(slurm_array_task_id - 1, num_apri, slurm_array_task_max):
 
-            with (Path.home() / f"log{slurm_array_task_id}.txt").open("w") as fh:
+            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
                 fh.write(f"1, {i}")
 
             reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 1))
 
-            with (Path.home() / f"log{slurm_array_task_id}.txt").open("w") as fh:
+            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
                 fh.write(f"2, {i}")
