@@ -192,6 +192,15 @@ class TestSlurm(unittest.TestCase):
 
         with reg.open(readonly = True):
 
+            ret = []
+
+            for i in range(num_apri):
+                if ApriInfo(i = i) not in reg:
+                    ret.append(ApriInfo(i = i))
+
+                print(ret)
+
+
             for i in range(num_apri):
 
                 apri = ApriInfo(i = i)
