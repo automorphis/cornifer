@@ -22,7 +22,7 @@ if __name__ == "__main__":
 
             reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 2), exists_ok = True)
 
-            with (saves_dir / f"log{slurm_array_task_id}.txt").open("a") as fh:
+            with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
                 fh.write(f"{ApriInfo(i = i)}, {AposInfo(i = i + 2)}\n")
 
             if slurm_array_task_id == 1 and i == 2 * slurm_array_task_max:
