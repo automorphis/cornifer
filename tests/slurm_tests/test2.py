@@ -26,6 +26,8 @@ if __name__ == "__main__":
 
             # reg.apos(ApriInfo(i = i))
 
+        reg._db.sync()
+
     # if slurm_array_task_id == 1:
     #
     #     with reg.open(readonly = True):
