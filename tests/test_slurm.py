@@ -124,6 +124,8 @@ class TestSlurm(unittest.TestCase):
             )
             querying = squeue_process.stdout != "ST\n"
 
+        time.sleep(query_sec)
+
     def submit_batch(self, batch_filename):
 
         sbatch_process = subprocess.run(
