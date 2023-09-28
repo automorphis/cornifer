@@ -113,6 +113,8 @@ class TestSlurm(unittest.TestCase):
             for line in fh:
                 contents += line
 
+        print(f"\n\n\n{contents}\n\n\n")
+
 
     def test_slurm_1(self):
 
@@ -216,7 +218,7 @@ class TestSlurm(unittest.TestCase):
         job_id = submit_batch(test_filename)
         wait_till_running(job_id, allocation_max_sec, allocation_query_sec)
         print("Running test #3...")
-        wait_till_not_running(job_id, running_max_sec, running_query_sec)
+        time.sleep(slurm_time + 1)
         print("Checking test #3...")
         self.check_timeout_error_file()
 
@@ -276,7 +278,7 @@ class TestSlurm(unittest.TestCase):
         job_id = submit_batch(test_filename)
         wait_till_running(job_id, allocation_max_sec, allocation_query_sec)
         print("Running test #4...")
-        wait_till_not_running(job_id, running_max_sec, running_query_sec)
+        time.sleep(slurm_time + 1)
         print("Checking test #4...")
         self.check_timeout_error_file()
 
