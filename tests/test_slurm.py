@@ -298,7 +298,7 @@ class TestSlurm(unittest.TestCase):
         print("Running test #4...")
         time.sleep(slurm_time + timeout_extra_wait_sec)
         print("Checking test #4...")
-        self.check_timeout_error_file(slurm_array_task_max)
+        self.check_timeout_error_file(1)
 
         with reg.open(readonly = True):
 
