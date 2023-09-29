@@ -140,6 +140,7 @@ class TestSlurm(unittest.TestCase):
     def test_slurm_1(self):
 
         filename = random_unique_filename(saves_dir)
+        filename.mkdir(exist_ok = False, parents = False)
         db = open_lmdb(filename, 2 ** 40, False)
         db.close()
         slurm_test_main_filename = slurm_tests_filename / 'test1.py'
