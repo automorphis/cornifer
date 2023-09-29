@@ -148,7 +148,7 @@ class TestSlurm(unittest.TestCase):
         running_max_sec = 100
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 2
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{filename.name}, {num_entries}")
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{filename.name} {num_entries}")
         print("Submitting test batch #1...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
