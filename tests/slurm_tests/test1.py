@@ -2,33 +2,22 @@ import math
 import sys
 from pathlib import Path
 
-from cornifer import ApriInfo, load_shorthand, Block
+from cornifer._utilities.lmdb import open_lmdb
 
 if __name__ == "__main__":
 
     saves_dir = Path(sys.argv[1])
-    blk_size = int(sys.argv[2])
-    total_indices = int(sys.argv[3])
+    filename = saves_dir / sys.argv[2]
+    num_entries = int(sys.argv[3])
     slurm_array_task_max = int(sys.argv[4])
     slurm_array_task_id = int(sys.argv[5])
-    reg = load_shorthand("reg", saves_dir)
-    total_blks = math.ceil(total_indices / blk_size)
-    apri = ApriInfo(hi = "hello")
+    db = open_lmdb(filename, 2 ** 40, False)
 
-    with reg.open() as reg:
+    for i in range(slurm_array_task_id - 1, num_entries, slurm_array_task_max):
 
-        for blk_index in range(slurm_array_task_id - 1, total_blks, slurm_array_task_max):
+        i = str(i).encode("ASCII")
+        db.put(i, i)
 
-            start_index = blk_index * blk_size
-            stop_index = min((blk_index + 1) * blk_size, total_indices)
-            seg = list(n ** 2 for n in range(start_index, stop_index))
-
-            with Block(seg, apri, start_index) as blk:
-                reg.add_disk_blk(blk)
-
-
-
-
-
+    db.close()
 
 

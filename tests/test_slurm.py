@@ -6,7 +6,11 @@ import subprocess
 from pathlib import Path
 import time
 
+import lmdb
+
 from cornifer import NumpyRegister, ApriInfo, AposInfo
+from cornifer._utilities import random_unique_filename
+from cornifer._utilities.lmdb import open_lmdb, r_txn_prefix_iter
 
 saves_dir = Path.home() / "cornifer_slurm_testcases"
 python_command = "sage -python"
@@ -20,7 +24,7 @@ total_indices = 10050
 timeout_extra_wait_sec = 90
 num_apri = 100
 
-def write_batch_file(time_sec, slurm_task_array_max, slurm_test_main_filename, args, output):
+def write_batch_file(time_sec, slurm_task_array_max, slurm_test_main_filename, args):
 
     with test_filename.open("w") as fh:
         fh.write(
@@ -31,7 +35,7 @@ f"""#!/usr/bin/env bash
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
-{'#SBATCH --output=/dev/null' if not output else ''}
+#SBATCH --output=/dev/null
 #SBATCH --array=1-{slurm_task_array_max}
 
 srun {python_command} {slurm_test_main_filename} {saves_dir} {args} $SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID
@@ -135,24 +139,59 @@ class TestSlurm(unittest.TestCase):
 
     def test_slurm_1(self):
 
-        reg = type(self).reg
+        filename = random_unique_filename(saves_dir)
+        db = open_lmdb(filename, 2 ** 40, False)
+        db.close()
         slurm_test_main_filename = slurm_tests_filename / 'test1.py'
-        running_max_sec = 40
-        blk_size = 100
+        num_entries = 10000
+        running_max_sec = 100
         slurm_time = running_max_sec + 1
-        apri = ApriInfo(hi = "hello")
-        slurm_array_task_max = 10
-        write_batch_file(
-            slurm_time, slurm_array_task_max, slurm_test_main_filename,
-            f"{blk_size} {total_indices}",
-            False
-        )
+        slurm_array_task_max = 2
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{filename.name}, {num_entries}")
         print("Submitting test batch #1...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print("Running test #1...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #1...")
+        self.check_empty_error_file()
+
+        db = open_lmdb(filename, 2 ** 40, True)
+
+        with db.begin() as ro_txn:
+
+            for i in range(num_entries):
+
+                i = str(i).encode("ASCII")
+                self.assertEqual(
+                    ro_txn.get(i),
+                    i
+                )
+
+            with r_txn_prefix_iter(b"", ro_txn) as it:
+                total = sum(1 for _ in it)
+
+            self.assertEqual(
+                total,
+                num_entries
+            )
+
+    def test_slurm_2(self):
+
+        reg = type(self).reg
+        slurm_test_main_filename = slurm_tests_filename / 'test2.py'
+        running_max_sec = 40
+        blk_size = 100
+        slurm_time = running_max_sec + 1
+        apri = ApriInfo(hi = "hello")
+        slurm_array_task_max = 10
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{blk_size} {total_indices}")
+        print("Submitting test batch #2...")
+        self.submit_batch(test_filename)
+        self.wait_till_running(allocation_max_sec, allocation_query_sec)
+        print("Running test #2...")
+        self.wait_till_not_running(running_max_sec, running_query_sec)
+        print("Checking test #2...")
         self.check_empty_error_file()
 
         with reg.open(readonly = True):
@@ -174,20 +213,20 @@ class TestSlurm(unittest.TestCase):
                 list(reg[apri, :])
             )
 
-    def test_slurm_2(self):
+    def test_slurm_3(self):
 
         reg = type(self).reg
-        slurm_test_main_filename = slurm_tests_filename / 'test2.py'
+        slurm_test_main_filename = slurm_tests_filename / 'test3.py'
         running_max_sec = 80
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 2
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri), False)
-        print("Submitting test batch #2...")
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
+        print("Submitting test batch #3...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print("Running test #2...")
+        print("Running test #3...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
-        print("Checking test #2...")
+        print("Checking test #3...")
         self.check_empty_error_file()
 
         with reg.open(readonly = True):
@@ -235,21 +274,21 @@ class TestSlurm(unittest.TestCase):
                 list(reg[ApriInfo(hi = "hello"), :])
             )
 
-    def test_slurm_3(self):
+    def test_slurm_4(self):
         # this one is forced to crash due to low time limit
         # (The writer of `cornifer.registers.Register.set_apos` will sleep for a long time)
         reg = type(self).reg
-        slurm_test_main_filename = slurm_tests_filename / 'test3.py'
+        slurm_test_main_filename = slurm_tests_filename / 'test4.py'
         running_max_sec = 20
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 7
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri), True)
-        print("Submitting test batch #3...")
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
+        print("Submitting test batch #4...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print("Running test #3...")
+        print("Running test #4...")
         time.sleep(slurm_time + timeout_extra_wait_sec)
-        print("Checking test #3...")
+        print("Checking test #4...")
         self.check_timeout_error_file(1)
 
         with reg.open(readonly = True):
@@ -295,21 +334,21 @@ class TestSlurm(unittest.TestCase):
                 list(reg[ApriInfo(hi = "hello"), :])
             )
 
-    def test_slurm_4(self):
+    def test_slurm_5(self):
         # this one is forced to crash due to low time limit
         # (The reader of `cornifer.registers.Register.set_apos` will sleep for a long time)
         reg = type(self).reg
-        slurm_test_main_filename = slurm_tests_filename / 'test3.py'
+        slurm_test_main_filename = slurm_tests_filename / 'test5.py'
         running_max_sec = 60
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 5
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri), False)
-        print("Submitting test batch #4...")
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
+        print("Submitting test batch #5...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print("Running test #4...")
+        print("Running test #5...")
         time.sleep(slurm_time + timeout_extra_wait_sec)
-        print("Checking test #4...")
+        print("Checking test #5...")
         self.check_timeout_error_file(1)
 
         with reg.open(readonly = True):

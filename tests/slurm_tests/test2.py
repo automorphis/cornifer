@@ -1,57 +1,34 @@
+import math
 import sys
-import time
 from pathlib import Path
 
-from cornifer import ApriInfo, load_shorthand, AposInfo, DataNotFoundError
+from cornifer import ApriInfo, load_shorthand, Block
 
 if __name__ == "__main__":
 
     saves_dir = Path(sys.argv[1])
-    num_apri = int(sys.argv[2])
-    slurm_array_task_max = int(sys.argv[3])
-    slurm_array_task_id = int(sys.argv[4])
+    blk_size = int(sys.argv[2])
+    total_indices = int(sys.argv[3])
+    slurm_array_task_max = int(sys.argv[4])
+    slurm_array_task_id = int(sys.argv[5])
     reg = load_shorthand("reg", saves_dir)
+    total_blks = math.ceil(total_indices / blk_size)
+    apri = ApriInfo(hi = "hello")
 
     with reg.open() as reg:
 
-        for i in range(slurm_array_task_id - 1, num_apri, slurm_array_task_max):
+        for blk_index in range(slurm_array_task_id - 1, total_blks, slurm_array_task_max):
 
-            # with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
-            #     fh.write(f"a, {i}\n")
+            start_index = blk_index * blk_size
+            stop_index = min((blk_index + 1) * blk_size, total_indices)
+            seg = list(n ** 2 for n in range(start_index, stop_index))
 
-            reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 1))
+            with Block(seg, apri, start_index) as blk:
+                reg.add_disk_blk(blk)
 
-            # with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
-            #     fh.write(f"b, {i}\n")
 
-            # reg.apos(ApriInfo(i = i))
 
-        reg._db.sync()
 
-    # if slurm_array_task_id == 1:
-    #
-    #     with reg.open(readonly = True):
-    #
-    #         for i in range(num_apri):
-    #
-    #             querying = True
-    #             num_queries = 1
-    #
-    #             while querying:
-    #
-    #                 time.sleep(0.5)
-    #
-    #                 try:
-    #                     apos = str(reg.apos(ApriInfo(i = i)))
-    #
-    #                 except DataNotFoundError:
-    #                     num_queries += 1
-    #
-    #                 else:
-    #                     querying = False
-    #
-    #             with (Path.home() / f"log{slurm_array_task_id}.txt").open("a") as fh:
-    #                 fh.write(f"{i}, {num_queries}\n")
 
 
 
