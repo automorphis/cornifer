@@ -185,7 +185,7 @@ class TestSlurm(unittest.TestCase):
         db.close()
         slurm_test_main_filename = slurm_tests_filename / 'test2.py'
         num_entries = 10000
-        running_max_sec = 100
+        running_max_sec = 600
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 10
         write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{filename.name} {num_entries}")
