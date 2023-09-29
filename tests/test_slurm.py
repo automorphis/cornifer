@@ -103,7 +103,7 @@ class TestSlurm(unittest.TestCase):
 
         while querying:
 
-            if time.time() - start >= max_sec:
+            if time.time() - start >= max_sec + timeout_extra_wait_sec:
                 raise Exception("Ran out of time!")
 
             time.sleep(query_sec)
