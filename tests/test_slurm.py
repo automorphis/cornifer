@@ -184,7 +184,7 @@ class TestSlurm(unittest.TestCase):
         db = open_lmdb(filename, 2 ** 40, False)
         db.close()
         slurm_test_main_filename = slurm_tests_filename / 'test2.py'
-        num_entries = 100
+        num_entries = 1000
         running_max_sec = 600
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 10
