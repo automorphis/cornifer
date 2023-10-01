@@ -12,11 +12,14 @@ if __name__ == "__main__":
     slurm_array_task_id = int(sys.argv[5])
     db = open_lmdb(filename, 2 ** 40, False)
 
-    for i in range(slurm_array_task_id - 1, num_entries, slurm_array_task_max):
+    with (Path.home() / f"log{slurm_array_task_id}.txt").open("w") as fh:
 
-        with db.begin(write = True) as rw_txn:
+        for i in range(slurm_array_task_id - 1, num_entries, slurm_array_task_max):
 
-            i = str(i).encode("ASCII")
-            rw_txn.put(i, i)
+            with db.begin(write = True) as rw_txn:
 
-    db.close()
+                i = str(i).encode("ASCII")
+                rw_txn.put(i, i)
+                fh.write(i.decode("ASCII"))
+
+        db.close()
