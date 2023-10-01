@@ -20,6 +20,6 @@ if __name__ == "__main__":
 
                 i = str(i).encode("ASCII")
                 rw_txn.put(i, i)
-                fh.write(i.decode("ASCII"))
+                fh.write(i.decode("ASCII") + "\n")
 
         db.close()
