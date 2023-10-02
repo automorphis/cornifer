@@ -24,6 +24,7 @@ total_indices = 10050
 timeout_extra_wait_sec = 90
 num_apri = 100
 subprocess._USE_VFORK = False
+subprocess._USE_POSIX_SPAWN = True
 
 def write_batch_file(time_sec, slurm_task_array_max, slurm_test_main_filename, args):
 
@@ -33,11 +34,10 @@ f"""#!/usr/bin/env bash
 
 #SBATCH --job-name=corniferslurmtests
 #SBATCH --time={datetime.timedelta(seconds = time_sec)}
-#SBATCH --ntasks=1
+#SBATCH --ntasks={ntasks}
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
 #SBATCH --output=/dev/null
-#SBATCH --array=1-{slurm_task_array_max}
 
 srun {python_command} {slurm_test_main_filename} {saves_dir} {args} $SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID
 """)

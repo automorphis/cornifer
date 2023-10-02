@@ -653,6 +653,10 @@ class Register(ABC):
         self.compress_elapsed = 0
         self.decompress_elapsed = 0
 
+    @contextmanager
+    def pool(self):
+        pass
+
     #################################
     #    PROTEC REGISTER METHODS    #
 
