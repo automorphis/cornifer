@@ -4,4 +4,4 @@
 #SBATCH --ntasks-per-core=1
 
 export PYTHONUNBUFFERED=TRUE
-sage -python ~/cornifer/scripts/test.py
+srun sage -python ~/cornifer/scripts/test.py
