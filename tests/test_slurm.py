@@ -26,7 +26,7 @@ num_apri = 100
 subprocess._USE_VFORK = False
 subprocess._USE_POSIX_SPAWN = True
 
-def write_batch_file(time_sec, slurm_task_array_max, slurm_test_main_filename, args):
+def write_batch_file(time_sec, slurm_test_main_filename, num_processes, args):
 
     with test_filename.open("w") as fh:
         fh.write(
@@ -34,12 +34,12 @@ f"""#!/usr/bin/env bash
 
 #SBATCH --job-name=corniferslurmtests
 #SBATCH --time={datetime.timedelta(seconds = time_sec)}
-#SBATCH --ntasks={ntasks}
+#SBATCH --ntasks={num_processes}
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
 #SBATCH --output=/dev/null
 
-srun {python_command} {slurm_test_main_filename} {saves_dir} {args} $SLURM_ARRAY_TASK_MAX $SLURM_ARRAY_TASK_ID
+{python_command} {slurm_test_main_filename} {saves_dir} {num_processes} {args}
 """)
 
 class TestSlurm(unittest.TestCase):
@@ -148,8 +148,8 @@ class TestSlurm(unittest.TestCase):
         num_entries = 10000
         running_max_sec = 100
         slurm_time = running_max_sec + 1
-        slurm_array_task_max = 2
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{filename.name} {num_entries}")
+        num_processes = 2
+        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{filename.name} {num_entries}")
         print("Submitting test batch #1...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
