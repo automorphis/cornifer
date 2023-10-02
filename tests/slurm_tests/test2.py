@@ -2,12 +2,12 @@ import multiprocessing
 import sys
 from pathlib import Path
 
-import lmdb
+from cornifer._utilities.lmdb import open_lmdb
 
 
 def f(db_filename, num_entries, num_processes, proc_id):
 
-    db = lmdb.open(str(db_filename))
+    db = open_lmdb(db_filename, 2 ** 40, True)
 
     for i in range(proc_id, num_entries, num_processes):
 
