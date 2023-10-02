@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from cornifer._utilities.lmdb import open_lmdb
+import lmdb
 
 if __name__ == "__main__":
 
@@ -10,7 +10,7 @@ if __name__ == "__main__":
     num_entries = int(sys.argv[3])
     slurm_array_task_max = int(sys.argv[4])
     slurm_array_task_id = int(sys.argv[5])
-    db = open_lmdb(filename, 2 ** 40, False)
+    db = lmdb.open(str(filename))
 
     with (Path.home() / f"log{slurm_array_task_id}.txt").open("w") as fh:
 
