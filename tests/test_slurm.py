@@ -184,15 +184,14 @@ class TestSlurm(unittest.TestCase):
         filename.mkdir(exist_ok = False, parents = False)
         db = open_lmdb(filename, 2 ** 40, False)
         db.close()
-        del db
         slurm_test_main_filename = slurm_tests_filename / 'test2.py'
         running_max_sec = 600
         slurm_time = running_max_sec + 1
-        slurm_array_task_max = 10
+        num_processes = 10
 
         for num_entries in [1, 5, 10, 50, 100, 500, 1000]:
 
-            write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{filename.name} {num_entries}")
+            write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{filename.name} {num_entries}")
             print(f"Submitting test batch 2 (num_entries = {num_entries})...")
             self.submit_batch(test_filename)
             self.wait_till_running(allocation_max_sec, allocation_query_sec)
