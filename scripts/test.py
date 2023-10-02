@@ -1,13 +1,15 @@
 from multiprocessing import get_context
-from os import getpid,  sched_getaffinity
+from os import getpid
 
 
-def double(i):
+def f():
     print("I'm process", getpid(), flush = True)
-    print("CPU affinity", sched_getaffinity(getpid()), flush = True)
-    return i * 2
 
 if __name__ == '__main__':
-    with get_context("spawn").Pool(processes = 4) as pool:
-        result = pool.map(double, [1, 2, 3, 4, 5])
-        print(result, flush = True)
+
+    ctx = get_context("spawn")
+
+    for _ in range(4):
+        p = ctx.Process(target = f)
+        p.start()
+
