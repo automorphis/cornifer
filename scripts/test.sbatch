@@ -3,4 +3,4 @@
 #SBATCH --ntasks=4
 #SBATCH --ntasks-per-core=1
 
-srun sage -python ~/cornifer/scripts/test.py
+sage -python ~/cornifer/scripts/test.py
