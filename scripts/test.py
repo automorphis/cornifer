@@ -8,6 +8,6 @@ def double(i):
     return i * 2
 
 if __name__ == '__main__':
-    with get_context("spawn").Pool(processes=4) as pool:
+    with get_context("spawn").Pool(processes = 4) as pool:
         result = pool.map(double, [1, 2, 3, 4, 5])
         print(result, flush = True)

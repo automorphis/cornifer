@@ -3,4 +3,4 @@
 #SBATCH -n 4
 #SBATCH -c 1
 
-sage -python ~/cornifer/scripts/test.py
+srun sage -python ~/cornifer/scripts/test.py
