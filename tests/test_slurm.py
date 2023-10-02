@@ -152,7 +152,7 @@ class TestSlurm(unittest.TestCase):
         print("Submitting test batch #1...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print("Running test #1...")
+        print(f"Running test #1 (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #1...")
         self.check_empty_error_file()
@@ -184,40 +184,42 @@ class TestSlurm(unittest.TestCase):
         db = open_lmdb(filename, 2 ** 40, False)
         db.close()
         slurm_test_main_filename = slurm_tests_filename / 'test2.py'
-        num_entries = 1000
         running_max_sec = 600
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 10
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{filename.name} {num_entries}")
-        print("Submitting test batch 2...")
-        self.submit_batch(test_filename)
-        self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print("Running test #2...")
-        self.wait_till_not_running(running_max_sec, running_query_sec)
-        print("Checking test #2...")
-        self.check_empty_error_file()
 
-        db = open_lmdb(filename, 2 ** 40, True)
+        for num_entries in [1, 10, 50, 100, 500, 1000]:
 
-        for i in range(num_entries):
+            write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{filename.name} {num_entries}")
+            print(f"Submitting test batch 2 (num_entries = {num_entries})...")
+            self.submit_batch(test_filename)
+            self.wait_till_running(allocation_max_sec, allocation_query_sec)
+            print(f"Running test #2 (num_entries = {num_entries}) (running_max_sec = {running_max_sec})...")
+            self.wait_till_not_running(running_max_sec, running_query_sec)
+            print(f"Checking test #2 (num_entries = {num_entries})...")
+            self.check_empty_error_file()
+
+            db = open_lmdb(filename, 2 ** 40, True)
+
+            for i in range(num_entries):
+
+                with db.begin() as ro_txn:
+
+                    i = str(i).encode("ASCII")
+                    self.assertEqual(
+                        ro_txn.get(i),
+                        i
+                    )
 
             with db.begin() as ro_txn:
 
-                i = str(i).encode("ASCII")
-                self.assertEqual(
-                    ro_txn.get(i),
-                    i
-                )
+                with r_txn_prefix_iter(b"", ro_txn) as it:
+                    total = sum(1 for _ in it)
 
-        with db.begin() as ro_txn:
-
-            with r_txn_prefix_iter(b"", ro_txn) as it:
-                total = sum(1 for _ in it)
-
-        self.assertEqual(
-            total,
-            num_entries
-        )
+            self.assertEqual(
+                total,
+                num_entries
+            )
 
     def test_slurm_3(self):
 
@@ -232,7 +234,7 @@ class TestSlurm(unittest.TestCase):
         print("Submitting test batch #3...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print("Running test #3...")
+        print(f"Running test #3 (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #3...")
         self.check_empty_error_file()
@@ -267,7 +269,7 @@ class TestSlurm(unittest.TestCase):
         print("Submitting test batch #4...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print("Running test #4...")
+        print(f"Running test #4 (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #4...")
         self.check_empty_error_file()
@@ -329,7 +331,7 @@ class TestSlurm(unittest.TestCase):
         print("Submitting test batch #5...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print("Running test #5...")
+        print(f"Running test #5 (running_max_sec = {running_max_sec})...")
         time.sleep(slurm_time + timeout_extra_wait_sec)
         print("Checking test #5...")
         self.check_timeout_error_file(1)
@@ -389,7 +391,7 @@ class TestSlurm(unittest.TestCase):
         print("Submitting test batch #6...")
         self.submit_batch(test_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print("Running test #6...")
+        print(f"Running test #6 (running_max_sec = {running_max_sec})...")
         time.sleep(slurm_time + timeout_extra_wait_sec)
         print("Checking test #6...")
         self.check_timeout_error_file(1)
