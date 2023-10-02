@@ -222,6 +222,7 @@ class TestSlurm(unittest.TestCase):
                 num_entries
             )
             db.close()
+            del db
 
     def test_slurm_3(self):
 
