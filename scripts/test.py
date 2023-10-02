@@ -1,7 +1,7 @@
 from multiprocessing import Pool
 from os import getpid
 
-print("hi", flush = True)
+print("hi")
 
 # def double(i):
 #     print("I'm process", getpid())
