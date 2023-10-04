@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 import multiprocessing
@@ -19,10 +20,10 @@ def f(db_filename, num_entries, num_processes, proc_id):
 
 if __name__ == "__main__":
 
-    saves_dir = Path(sys.argv[1])
-    num_processes = int(sys.argv[2])
-    db_filename = saves_dir / sys.argv[3]
-    num_entries = int(sys.argv[4])
+    saves_dir = Path(os.environ['TMPDIR'])
+    num_processes = int(sys.argv[1])
+    db_filename = saves_dir / sys.argv[2]
+    num_entries = int(sys.argv[3])
     ctx = multiprocessing.get_context("spawn")
 
     for proc_id in range(num_processes):

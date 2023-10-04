@@ -40,7 +40,8 @@ f"""#!/usr/bin/env bash
 #SBATCH --error={error_filename}
 #SBATCH --output=/dev/null
 
-{python_command} {slurm_test_main_filename} {saves_dir} {num_processes} {args}
+mkdir /tmp/slurmtmp.$SLURM_ARRAY_JOB_ID/cornifer_slurm_testcases
+{python_command} {slurm_test_main_filename} {num_processes} {args}
 """)
 
 class TestSlurm(unittest.TestCase):
