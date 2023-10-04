@@ -175,29 +175,27 @@ class TestSlurm(unittest.TestCase):
                 num_entries
             )
 
+        db.close()
+
     def test_slurm_2(self):
 
-        filename = random_unique_filename(test_home_dir)
-        filename.mkdir(exist_ok = False, parents = False)
-        db = open_lmdb(filename, 2 ** 40, False)
-        db.close()
-        slurm_test_main_filename = slurm_tests_filename / 'test2.py'
-        running_max_sec = 600
+        slurm_test_main_filename = slurm_tests_filename / 'test1.py'
+        running_max_sec = 100
         slurm_time = running_max_sec + 1
-        num_processes = 10
+        num_processes = 2
+        db_filename = "lmdb"
 
         for num_entries in [1, 5, 10, 50, 100, 500, 1000]:
 
-            write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{filename.name} {num_entries}")
-            print(f"Submitting test batch 2 (num_entries = {num_entries})...")
+            write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{db_filename} {num_entries}")
+            print("Submitting test batch #1...")
             self.submit_batch(sbatch_filename)
             self.wait_till_running(allocation_max_sec, allocation_query_sec)
-            print(f"Running test #2 (num_entries = {num_entries}) (running_max_sec = {running_max_sec})...")
+            print(f"Running test #1 (running_max_sec = {running_max_sec})...")
             self.wait_till_not_running(running_max_sec, running_query_sec)
-            print(f"Checking test #2 (num_entries = {num_entries})...")
+            print("Checking test #1...")
             self.check_empty_error_file()
-
-            db = open_lmdb(filename, 2 ** 40, True)
+            db = lmdb.open(str(test_home_dir / db_filename))
 
             for i in range(num_entries):
 
@@ -219,7 +217,6 @@ class TestSlurm(unittest.TestCase):
                 num_entries
             )
             db.close()
-            del db
 
     def test_slurm_3(self):
 

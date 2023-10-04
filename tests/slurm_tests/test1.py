@@ -34,11 +34,11 @@ if __name__ == "__main__":
     db_filename.mkdir(parents = False, exist_ok = False)
     db = lmdb.open(str(db_filename), map_size = 2 ** 40, subdir = True, readonly = False, create = False)
     db.close()
-    ctx = multiprocessing.get_context("spawn")
+    mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
     for i in range(num_processes):
-        procs.append(ctx.Process(target = f, args = (db_filename, num_entries, num_processes, i)))
+        procs.append(mp_ctx.Process(target = f, args = (db_filename, num_entries, num_processes, i)))
 
     for proc in procs:
         proc.start()
