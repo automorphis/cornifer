@@ -55,11 +55,11 @@ class TestSlurm(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        pass
-        # if test_home_dir.exists():
-        #     shutil.rmtree(test_home_dir)
-        #
-        # test_home_dir.mkdir(parents = True, exist_ok = False)
+
+        if test_home_dir.exists():
+            shutil.rmtree(test_home_dir)
+
+        test_home_dir.mkdir(parents = True, exist_ok = False)
         # cls.reg = NumpyRegister(test_home_dir, "reg", "msg", 2 ** 40)
         #
         # with cls.reg.open(): pass
