@@ -13,10 +13,10 @@ from cornifer import NumpyRegister, ApriInfo, AposInfo
 from cornifer._utilities import random_unique_filename
 from cornifer._utilities.lmdb import open_lmdb, r_txn_prefix_iter
 
-saves_dir = Path(os.environ['TMPDIR']) / "cornifer_slurm_testcases"
+test_home_dir = Path.home() / "cornifer_slurm_testcases"
 python_command = "sage -python"
-error_filename = saves_dir / 'test_slurm_error.txt'
-test_filename = saves_dir / 'test.sbatch'
+error_filename = test_home_dir / 'test_slurm_error.txt'
+sbatch_filename = test_home_dir / 'test.sbatch'
 slurm_tests_filename = Path(__file__).parent / "slurm_tests"
 allocation_query_sec = 0.5
 running_query_sec = 0.5
@@ -29,7 +29,7 @@ subprocess._USE_POSIX_SPAWN = True
 
 def write_batch_file(time_sec, slurm_test_main_filename, num_processes, args):
 
-    with test_filename.open("w") as fh:
+    with sbatch_filename.open("w") as fh:
         fh.write(
 f"""#!/usr/bin/env bash
 
@@ -40,8 +40,7 @@ f"""#!/usr/bin/env bash
 #SBATCH --error={error_filename}
 #SBATCH --output=/dev/null
 
-mkdir /tmp/slurmtmp.$SLURM_ARRAY_JOB_ID/cornifer_slurm_testcases
-{python_command} {slurm_test_main_filename} {num_processes} {args}
+{python_command} {slurm_test_main_filename} {num_processes} {test_home_dir} {args}
 """)
 
 class TestSlurm(unittest.TestCase):
@@ -56,20 +55,20 @@ class TestSlurm(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-
-        if saves_dir.exists():
-            shutil.rmtree(saves_dir)
-
-        saves_dir.mkdir(parents = True, exist_ok = False)
-        cls.reg = NumpyRegister(saves_dir, "reg", "msg", 2 ** 40)
-
-        with cls.reg.open(): pass
+        pass
+        # if test_home_dir.exists():
+        #     shutil.rmtree(test_home_dir)
+        #
+        # test_home_dir.mkdir(parents = True, exist_ok = False)
+        # cls.reg = NumpyRegister(test_home_dir, "reg", "msg", 2 ** 40)
+        #
+        # with cls.reg.open(): pass
 
     @classmethod
     def tearDownClass(cls):
 
-        if saves_dir.exists():
-            shutil.rmtree(saves_dir)
+        if test_home_dir.exists():
+            shutil.rmtree(test_home_dir)
 
     def check_empty_error_file(self):
 
@@ -142,25 +141,21 @@ class TestSlurm(unittest.TestCase):
 
     def test_slurm_1(self):
 
-        filename = random_unique_filename(saves_dir)
-        filename.mkdir(exist_ok = False, parents = False)
-        db = open_lmdb(filename, 2 ** 40, False)
-        db.close()
         slurm_test_main_filename = slurm_tests_filename / 'test1.py'
         num_entries = 10000
         running_max_sec = 100
         slurm_time = running_max_sec + 1
         num_processes = 2
-        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{filename.name} {num_entries}")
+        db_filename = "lmdb"
+        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{db_filename} {num_entries}")
         print("Submitting test batch #1...")
-        self.submit_batch(test_filename)
+        self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #1 (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #1...")
         self.check_empty_error_file()
-
-        db = open_lmdb(filename, 2 ** 40, True)
+        db = lmdb.open(db_filename)
 
         with db.begin() as ro_txn:
 
@@ -182,7 +177,7 @@ class TestSlurm(unittest.TestCase):
 
     def test_slurm_2(self):
 
-        filename = random_unique_filename(saves_dir)
+        filename = random_unique_filename(test_home_dir)
         filename.mkdir(exist_ok = False, parents = False)
         db = open_lmdb(filename, 2 ** 40, False)
         db.close()
@@ -195,7 +190,7 @@ class TestSlurm(unittest.TestCase):
 
             write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{filename.name} {num_entries}")
             print(f"Submitting test batch 2 (num_entries = {num_entries})...")
-            self.submit_batch(test_filename)
+            self.submit_batch(sbatch_filename)
             self.wait_till_running(allocation_max_sec, allocation_query_sec)
             print(f"Running test #2 (num_entries = {num_entries}) (running_max_sec = {running_max_sec})...")
             self.wait_till_not_running(running_max_sec, running_query_sec)
@@ -237,7 +232,7 @@ class TestSlurm(unittest.TestCase):
         slurm_array_task_max = 10
         write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{blk_size} {total_indices}")
         print("Submitting test batch #3...")
-        self.submit_batch(test_filename)
+        self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #3 (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
@@ -272,7 +267,7 @@ class TestSlurm(unittest.TestCase):
         slurm_array_task_max = 2
         write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
         print("Submitting test batch #4...")
-        self.submit_batch(test_filename)
+        self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #4 (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
@@ -334,7 +329,7 @@ class TestSlurm(unittest.TestCase):
         slurm_array_task_max = 7
         write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
         print("Submitting test batch #5...")
-        self.submit_batch(test_filename)
+        self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #5 (running_max_sec = {running_max_sec})...")
         time.sleep(slurm_time + timeout_extra_wait_sec)
@@ -394,7 +389,7 @@ class TestSlurm(unittest.TestCase):
         slurm_array_task_max = 5
         write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
         print("Submitting test batch #6...")
-        self.submit_batch(test_filename)
+        self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #6 (running_max_sec = {running_max_sec})...")
         time.sleep(slurm_time + timeout_extra_wait_sec)
