@@ -272,16 +272,20 @@ class Register(ABC):
     #################################
     #     PUBLIC INITIALIZATION     #
 
-    def __init__(self, saves_dir, shorthand, msg, initial_reg_size = None):
+    def __init__(self, saves_dir, shorthand, msg, initial_reg_size = None, remote_file_system = False):
         """
         :param saves_dir: (type `str`) Directory where this `Register` is saved.
         :param shorthand: (type `str`) A word or short phrase describing this `Register`.
         :param msg: (type `str`) A more detailed message describing this `Register`.
-        :param initial_reg_size: (type `int`, default 5) Size in bytes. You may wish to set this lower
+        :param initial_reg_size: (type `int`, default 5242880 (5 MB)) Size in bytes. You may wish to set this lower
         than 5 MB if you do not expect to add many disk `Block`s to your register and you are concerned about disk
         memory. If your `Register` exceeds `initial_register_size`, then you can adjust the database size later via the
         method `increase_size`. If you are on a non-Windows system, there is no harm in setting this value
         to be very large (e.g. 1 TB).
+        :param remote_file_system: (type `bool`, default `False`) The `True` value for this parameter is experimental,
+        there is a chance your database may be corrupted if you use `True`. Set to `True` if you are running on a
+        remote file system (e.g. NFS). The database technology that Cornifer uses (LMDB) doesn't work very well on NFS,
+        so if `remote_file_system is False` and you are running on an NFS, you will probably experience bugs.
         """
 
         check_Path(saves_dir, "saves_dir")
@@ -309,6 +313,7 @@ class Register(ABC):
         self._db_map_size = initial_reg_size
         self._db_map_size_filepath = None
         self._cls_filepath = None
+        self._remote_file_system = remote_file_system
         # ATTRIBUTES
         self._shorthand = shorthand
         self._readonly = None

@@ -1,4 +1,5 @@
 import datetime
+import os
 import re
 import shutil
 import unittest
@@ -12,7 +13,7 @@ from cornifer import NumpyRegister, ApriInfo, AposInfo
 from cornifer._utilities import random_unique_filename
 from cornifer._utilities.lmdb import open_lmdb, r_txn_prefix_iter
 
-saves_dir = Path.home() / "cornifer_slurm_testcases"
+saves_dir = Path(os.environ['TMPDIR']) / "cornifer_slurm_testcases"
 python_command = "sage -python"
 error_filename = saves_dir / 'test_slurm_error.txt'
 test_filename = saves_dir / 'test.sbatch'
