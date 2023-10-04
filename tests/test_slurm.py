@@ -155,7 +155,7 @@ class TestSlurm(unittest.TestCase):
         self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #1...")
         self.check_empty_error_file()
-        db = lmdb.open(test_home_dir / db_filename)
+        db = lmdb.open(str(test_home_dir / db_filename))
 
         with db.begin() as ro_txn:
 
