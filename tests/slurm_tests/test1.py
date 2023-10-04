@@ -46,4 +46,4 @@ if __name__ == "__main__":
     for proc in procs:
         proc.join()
 
-    db_filename.rename(test_home_dir / db_filename.name)
+    shutil.move(db_filename, test_home_dir / db_filename.name)
