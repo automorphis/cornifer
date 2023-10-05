@@ -60,9 +60,6 @@ class TestSlurm(unittest.TestCase):
             shutil.rmtree(test_home_dir)
 
         test_home_dir.mkdir(parents = True, exist_ok = False)
-        # cls.reg = NumpyRegister(test_home_dir, "reg", "msg", 2 ** 40)
-        #
-        # with cls.reg.open(): pass
 
     @classmethod
     def tearDownClass(cls):
@@ -193,7 +190,7 @@ class TestSlurm(unittest.TestCase):
             self.wait_till_running(allocation_max_sec, allocation_query_sec)
             print(f"Running test #2 (running_max_sec = {running_max_sec}) (num_entries = {num_entries})...")
             self.wait_till_not_running(running_max_sec, running_query_sec)
-            print("Checking test #2 (num_entries = {num_entries})...")
+            print(f"Checking test #2 (num_entries = {num_entries})...")
             self.check_empty_error_file()
             db = lmdb.open(str(test_home_dir / db_filename))
 

@@ -15,14 +15,8 @@ if __name__ == "__main__":
     total_indices = int(sys.argv[4])
     test_home_reg = load_shorthand("reg", test_home_dir)
     tmp_filename = Path(os.environ['TMPDIR'])
-    tmp_reg_filename = tmp_filename / test_home_reg._local_dir.name
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")
-
-    if tmp_reg_filename.exists():
-        shutil.rmtree(tmp_reg_filename)
-
-    shutil.copytree(test_home_reg._local_dir, tmp_reg_filename)
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
