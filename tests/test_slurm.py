@@ -218,14 +218,13 @@ class TestSlurm(unittest.TestCase):
 
     def test_slurm_3(self):
 
-        reg = type(self).reg
         slurm_test_main_filename = slurm_tests_filename / 'test3a.py'
         running_max_sec = 40
         blk_size = 100
         slurm_time = running_max_sec + 1
         apri = ApriInfo(hi = "hello")
-        slurm_array_task_max = 10
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{blk_size} {total_indices}")
+        num_processes = 10
+        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{blk_size} {total_indices}")
         print("Submitting test batch #3...")
         self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)

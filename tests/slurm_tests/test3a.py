@@ -7,6 +7,21 @@ from pathlib import Path
 
 from cornifer import ApriInfo, load_shorthand, Block
 
+def f(test_home_dir, i, total_blks, num_processes):
+
+    reg = load_shorthand("reg", test_home_dir)
+
+    with reg.open() as reg:
+
+        for blk_index in range(i, total_blks, num_processes):
+
+            start_index = blk_index * blk_size
+            stop_index = min((blk_index + 1) * blk_size, total_indices)
+            seg = list(n ** 2 for n in range(start_index, stop_index))
+
+            with Block(seg, apri, start_index) as blk:
+                reg.add_disk_blk(blk)
+
 if __name__ == "__main__":
 
     num_processes = int(sys.argv[1])
@@ -17,19 +32,22 @@ if __name__ == "__main__":
     tmp_filename = Path(os.environ['TMPDIR'])
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")
+    reg = load_shorthand("reg", test_home_dir)
+    reg.set_tmp_dir(tmp_filename)
+    reg.make_tmp_dir()
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
-    with reg.open() as reg:
+    for i in range(num_processes):
+        procs.append(mp_ctx.Process(target = f, args = (test_home_dir, i, total_blks, num_processes)))
 
-        for blk_index in range(slurm_array_task_id - 1, total_blks, slurm_array_task_max):
+    for proc in procs:
+        proc.start()
 
-            start_index = blk_index * blk_size
-            stop_index = min((blk_index + 1) * blk_size, total_indices)
-            seg = list(n ** 2 for n in range(start_index, stop_index))
+    for proc in procs:
+        proc.join()
 
-            with Block(seg, apri, start_index) as blk:
-                reg.add_disk_blk(blk)
+    reg.update_perm_db()
 
 
 
