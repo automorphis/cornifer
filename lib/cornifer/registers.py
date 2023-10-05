@@ -39,7 +39,7 @@ from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleTransaction, is
     num_open_readers_accurate, r_txn_prefix_iter, r_txn_count_keys
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
-    REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, TMP_DIR_FILEPATH
+    REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, TMP_DIR_FILEPATH, WRITE_DB_FILEPATH, WRITE_DB_FILEPATH
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _NO_DEBUG = 0
@@ -324,9 +324,9 @@ class Register(ABC):
         self._local_dir_bytes = None # ditto
         self._subreg_bytes = None # ditto
         self._perm_db_filepath = None # ditto
-        self._write_db_filepath = None
+        self._write_db_filepath = None # set by `Register._create` and `Register.make_tmp_db`
         self._db_map_size = initial_reg_size
-        self._db_map_size_filepath = None # ditto
+        self._db_map_size_filepath = None # set by `Register._set_local_dir`
         self._cls_filepath = None # ditto
         self._use_custom_lock = use_custom_lock
         # ATTRIBUTES
@@ -395,8 +395,15 @@ class Register(ABC):
             write_txt_file(str(type(self).__name__), local_dir / CLS_FILEPATH)
             write_txt_file(str(self._db_map_size), local_dir / MAP_SIZE_FILEPATH)
             write_txt_file(str(self._tmp_dir), local_dir / TMP_DIR_FILEPATH)
+
+            if self._tmp_dir != self.dir:
+                self._write_db_filepath = random_unique_filename(self._tmp_dir)
+
+            else:
+                self._write_db_filepath = local_dir / DATABASE_FILEPATH
+
+            write_txt_file(str(self._write_db_filepath), local_dir / WRITE_DB_FILEPATH)
             self._set_local_dir(local_dir)
-            self._write_db_filepath = self._perm_db_filepath
             self._db = open_lmdb(self._write_db_filepath, self._db_map_size, False)
 
             with self._db.begin(write = True) as rw_txn:
@@ -662,8 +669,10 @@ class Register(ABC):
     def make_tmp_db(self):
 
         self._check_not_open_raise("make_tmp_db")
-        self._write_db_filepath = random_unique_filename(self._tmp_dir)
+        new_write_db_filepath = random_unique_filename(self._tmp_dir)
+        write_txt_file(str(new_write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
         shutil.copytree(self._perm_db_filepath, self._write_db_filepath)
+        self._write_db_filepath = new_write_db_filepath
 
     def update_perm_db(self):
 
