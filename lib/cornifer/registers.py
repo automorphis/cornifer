@@ -670,7 +670,6 @@ class Register(ABC):
         if tmp_filename.exists():
             shutil.rmtree(tmp_filename)
 
-        tmp_filename.mkdir(exist_ok = False, parents = False)
         shutil.copytree(self._write_db_filepath, tmp_filename)
         shutil.rmtree(self._perm_db_filepath)
         tmp_filename.rename(self._perm_db_filepath)
