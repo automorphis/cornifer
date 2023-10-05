@@ -652,7 +652,7 @@ class Register(ABC):
         if not self._tmp_dir.is_dir():
             raise NotADirectoryError(f"The path `{tmp_dir}` exists but is not a directory.")
 
-        write_txt_file(str(tmp_dir), TMP_DIR_FILEPATH, True)
+        write_txt_file(str(tmp_dir), self._local_dir / TMP_DIR_FILEPATH, True)
         self._tmp_dir = tmp_dir
         self._tmp_dir_differs = self._tmp_dir != self.dir
 
