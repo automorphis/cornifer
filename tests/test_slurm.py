@@ -310,7 +310,6 @@ class TestSlurm(unittest.TestCase):
         self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #3c (running_max_sec = {running_max_sec})...")
-        time.sleep(slurm_time + timeout_extra_wait_sec + 60)
         for _ in range(3 + (slurm_time + timeout_extra_wait_sec + 60) // 2):
             time.sleep(2)
             squeue_process = subprocess.run(
