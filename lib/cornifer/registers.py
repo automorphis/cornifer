@@ -329,7 +329,6 @@ class Register(ABC):
         self._db_map_size_filepath = None # ditto
         self._cls_filepath = None # ditto
         self._use_custom_lock = use_custom_lock
-        self._tmp_dir_differs = self._tmp_dir != self.dir
         # ATTRIBUTES
         self._shorthand = shorthand
         self._readonly = None
@@ -654,7 +653,6 @@ class Register(ABC):
 
         write_txt_file(str(tmp_dir), self._local_dir / TMP_DIR_FILEPATH, True)
         self._tmp_dir = tmp_dir
-        self._tmp_dir_differs = self._tmp_dir != self.dir
 
     def make_tmp_db(self):
 

@@ -226,12 +226,17 @@ class TestSlurm(unittest.TestCase):
         num_processes = 10
         reg = NumpyRegister(test_home_dir, "reg", "hi")
         write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{blk_size} {total_indices}")
+        print(1, list(test_home_dir.iterdir()))
         print("Submitting test batch #3a...")
         self.submit_batch(sbatch_filename)
+        print(2, list(test_home_dir.iterdir()))
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
+        print(3, list(test_home_dir.iterdir()))
         print(f"Running test #3a (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
+        print(4, list(test_home_dir.iterdir()))
         print("Checking test #3a...")
+        print(5, list(test_home_dir.iterdir()))
         self.check_empty_error_file()
 
         with reg.open(readonly = True):
