@@ -660,7 +660,6 @@ class Register(ABC):
 
         self._check_not_open_raise("make_tmp_db")
         self._write_db_filepath = random_unique_filename(self._tmp_dir)
-        self._write_db_filepath.mkdir(exist_ok = False, parents = False)
         shutil.copytree(self._perm_db_filepath, self._write_db_filepath)
 
     def update_perm_db(self):
