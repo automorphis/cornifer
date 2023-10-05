@@ -1,52 +1,47 @@
-import math
+import multiprocessing
+import os
 import sys
-import time
 from pathlib import Path
 
-from cornifer import ApriInfo, load_shorthand, AposInfo, DataNotFoundError
+from cornifer import ApriInfo, load_shorthand, AposInfo
 import cornifer
 
-if __name__ == "__main__":
+def f(test_home_dir, j, num_apri, num_processes):
 
-    saves_dir = Path(sys.argv[1])
-    num_apri = int(sys.argv[2])
-    slurm_array_task_max = int(sys.argv[3])
-    slurm_array_task_id = int(sys.argv[4])
-    reg = load_shorthand("reg", saves_dir)
-    query_sec = 0.5
-
-    if slurm_array_task_id == 1:
-
-        querying = True
-
-        with reg.open(readonly = True) as reg:
-
-            while querying:
-
-                time.sleep(query_sec)
-
-                for i in range(num_apri):
-
-                    if i % slurm_array_task_max != 0:
-
-                        try:
-                            reg.apos(ApriInfo(i = i))
-
-                        except DataNotFoundError:
-                            break # i loop
-
-                else:
-                    querying = False
+    reg = load_shorthand("reg", test_home_dir)
 
     with reg.open() as reg:
 
-        for i in range(slurm_array_task_id - 1, num_apri, slurm_array_task_max):
+        for i in range(j, num_apri, num_processes):
 
-            if slurm_array_task_id == 1 and i == 2 * slurm_array_task_max:
+            if j == 1 and i == 2 * num_processes:
                 cornifer.registers._debug = 1
 
             reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 2), exists_ok = True)
 
-            if slurm_array_task_id == 1 and i == 2 * slurm_array_task_max:
+            if j == 1 and i == 2 * num_processes:
                 cornifer.registers._debug = 0
 
+if __name__ == "__main__":
+
+    num_processes = int(sys.argv[1])
+    test_home_dir = Path(sys.argv[2])
+    num_apri = int(sys.argv[3])
+    tmp_filename = Path(os.environ['TMPDIR'])
+    reg = load_shorthand("reg", test_home_dir)
+    reg.set_tmp_dir(tmp_filename)
+    reg.make_tmp_db()
+    mp_ctx = multiprocessing.get_context("spawn")
+    procs = []
+
+    for j in range(num_processes):
+        procs.append(mp_ctx.Process(target = f, args = (test_home_dir, j, num_apri, num_processes)))
+
+    for proc in procs:
+        proc.start()
+
+    for proc in procs:
+        proc.join()
+
+    reg.update_perm_db()
+    reg.set_tmp_dir(reg.dir)

@@ -298,22 +298,19 @@ class TestSlurm(unittest.TestCase):
                 [n ** 2 for n in range(total_indices)],
                 list(reg[ApriInfo(hi = "hello"), :])
             )
-
-    def test_slurm_5(self):
         # this one is forced to crash due to low time limit
         # (The writer of `cornifer.registers.Register.set_apos` will sleep for a long time)
-        reg = type(self).reg
         slurm_test_main_filename = slurm_tests_filename / 'test3c.py'
         running_max_sec = 20
         slurm_time = running_max_sec + 1
-        slurm_array_task_max = 7
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
-        print("Submitting test batch #5...")
+        num_processes = 7
+        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, str(num_apri))
+        print("Submitting test batch #3c...")
         self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print(f"Running test #5 (running_max_sec = {running_max_sec})...")
+        print(f"Running test #3c (running_max_sec = {running_max_sec})...")
         time.sleep(slurm_time + timeout_extra_wait_sec)
-        print("Checking test #5...")
+        print("Checking test #3c...")
         self.check_timeout_error_file(1)
 
         with reg.open(readonly = True):
@@ -330,7 +327,7 @@ class TestSlurm(unittest.TestCase):
                     reg.num_blks(apri)
                 )
 
-                if i % slurm_array_task_max == 0 and i >= 2 * slurm_array_task_max:
+                if i % num_processes == 0 and i >= 2 * num_processes:
                     self.assertEqual(
                         AposInfo(i = i + 1),
                         reg.apos(apri)
