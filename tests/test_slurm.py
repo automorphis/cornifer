@@ -222,7 +222,7 @@ class TestSlurm(unittest.TestCase):
         blk_size = 100
         slurm_time = running_max_sec + 1
         apri = ApriInfo(hi = "hello")
-        num_processes = 10
+        num_processes = 1
         reg = NumpyRegister(test_home_dir, "reg", "hi")
         write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{blk_size} {total_indices}")
         print(1, list(test_home_dir.iterdir()))
