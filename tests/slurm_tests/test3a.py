@@ -7,7 +7,7 @@ from pathlib import Path
 
 from cornifer import ApriInfo, load_shorthand, Block
 
-def f(test_home_dir, i, total_blks, num_processes):
+def f(test_home_dir, i, total_blks, num_processes, blk_size):
 
     reg = load_shorthand("reg", test_home_dir)
 
