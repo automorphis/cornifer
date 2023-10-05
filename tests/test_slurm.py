@@ -21,11 +21,7 @@ slurm_tests_filename = Path(__file__).parent / "slurm_tests"
 allocation_query_sec = 0.5
 running_query_sec = 0.5
 allocation_max_sec = 60
-total_indices = 10050
 timeout_extra_wait_sec = 90
-num_apri = 100
-subprocess._USE_VFORK = False
-subprocess._USE_POSIX_SPAWN = True
 
 def write_batch_file(time_sec, slurm_test_main_filename, num_processes, args):
 
@@ -223,19 +219,15 @@ class TestSlurm(unittest.TestCase):
         slurm_time = running_max_sec + 1
         apri = ApriInfo(hi = "hello")
         num_processes = 1
+        total_indices = 10050
         reg = NumpyRegister(test_home_dir, "reg", "hi")
         write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{blk_size} {total_indices}")
-        print(1, list(test_home_dir.iterdir()))
         print("Submitting test batch #3a...")
         self.submit_batch(sbatch_filename)
-        print(2, list(test_home_dir.iterdir()))
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print(3, list(test_home_dir.iterdir()))
         print(f"Running test #3a (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
-        print(4, list(test_home_dir.iterdir()))
         print("Checking test #3a...")
-        print(5, list(test_home_dir.iterdir()))
         self.check_empty_error_file()
 
         with reg.open(readonly = True):
@@ -257,33 +249,21 @@ class TestSlurm(unittest.TestCase):
                 list(reg[apri, :])
             )
 
-    def test_slurm_4(self):
-
-        reg = type(self).reg
         slurm_test_main_filename = slurm_tests_filename / 'test3b.py'
         running_max_sec = 80
         slurm_time = running_max_sec + 1
-        slurm_array_task_max = 2
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
-        print("Submitting test batch #4...")
+        num_processes = 2
+        num_apri = 100
+        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, str(num_apri))
+        print("Submitting test batch #3b...")
         self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print(f"Running test #4 (running_max_sec = {running_max_sec})...")
+        print(f"Running test #3b (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
-        print("Checking test #4...")
+        print("Checking test #3b...")
         self.check_empty_error_file()
 
         with reg.open(readonly = True):
-
-            ret = []
-
-            for i in range(num_apri):
-
-                if ApriInfo(i = i) not in reg:
-                    ret.append(ApriInfo(i = i))
-
-            print(ret)
-
 
             for i in range(num_apri):
 
