@@ -665,7 +665,7 @@ class Register(ABC):
     def update_perm_db(self):
 
         self._check_not_open_raise("update_perm_db")
-        tmp_filename = self._perm_db_filepath.parent / (DATABASE_FILEPATH.name + "_tmp")
+        tmp_filename = self._perm_db_filepath.parent / (Path(DATABASE_FILEPATH).name + "_tmp")
 
         if tmp_filename.exists():
             shutil.rmtree(tmp_filename)
