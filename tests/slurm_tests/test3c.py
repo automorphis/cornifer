@@ -14,12 +14,12 @@ def f(test_home_dir, j, num_apri, num_processes):
 
         for i in range(j, num_apri, num_processes):
 
-            if j == 1 and i == 2 * num_processes:
+            if j == 1 and i == 2 * num_processes + 1:
                 cornifer.registers._debug = 1
 
             reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 2), exists_ok = True)
 
-            if j == 1 and i == 2 * num_processes:
+            if j == 1 and i == 2 * num_processes + 1:
                 cornifer.registers._debug = 0
 
 if __name__ == "__main__":

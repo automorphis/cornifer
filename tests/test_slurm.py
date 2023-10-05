@@ -34,6 +34,7 @@ f"""#!/usr/bin/env bash
 #SBATCH --ntasks={num_processes}
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
+#SBATCH --output=/dev/null
 
 {python_command} {slurm_test_main_filename} {num_processes} {test_home_dir} {args}
 """)
