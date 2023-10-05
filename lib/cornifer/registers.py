@@ -272,7 +272,7 @@ class Register(ABC):
     #################################
     #     PUBLIC INITIALIZATION     #
 
-    def __init__(self, dir, shorthand, msg, initial_reg_size = None, tmp_dir = None, use_custom_lock = False):
+    def __init__(self, dir, shorthand, msg, initial_reg_size = None, tmp_dir = None, use_custom_lock = False, _create = True):
         """
         :param dir: (type `str`) Directory where this `Register` is saved.
         :param shorthand: (type `str`) A word or short phrase describing this `Register`.
@@ -353,6 +353,34 @@ class Register(ABC):
         self.rmv_elapsed = 0
         self.compress_elapsed = 0
         self.decompress_elapsed = 0
+
+        if _create:
+            self._create()
+
+    def __init_subclass__(cls, **kwargs):
+
+        Register._constructors[cls.__name__] = cls
+        file_suffix = kwargs.pop("file_suffix", None)
+
+        if file_suffix is not None:
+
+            if not isinstance(file_suffix, str):
+                raise TypeError(f"`file_suffix` keyword argument must be of type `str`, not `{type(file_suffix)}`.")
+
+            if len(file_suffix) > 0 and file_suffix[0] != ".":
+                file_suffix = "." + file_suffix
+
+            cls.file_suffix = file_suffix
+
+        super().__init_subclass__(**kwargs)
+
+    #################################
+    #     PROTEC INITIALIZATION     #
+
+    _constructors = {}
+    _instances = {}
+
+    def _create(self):
         # set local directory info and create LMDB database
         local_dir = random_unique_filename(self.dir, length = 4, alphabet = LOCAL_DIR_CHARS)
 
@@ -387,29 +415,6 @@ class Register(ABC):
                 shutil.rmtree(local_dir)
 
             raise e
-
-    def __init_subclass__(cls, **kwargs):
-
-        Register._constructors[cls.__name__] = cls
-        file_suffix = kwargs.pop("file_suffix", None)
-
-        if file_suffix is not None:
-
-            if not isinstance(file_suffix, str):
-                raise TypeError(f"`file_suffix` keyword argument must be of type `str`, not `{type(file_suffix)}`.")
-
-            if len(file_suffix) > 0 and file_suffix[0] != ".":
-                file_suffix = "." + file_suffix
-
-            cls.file_suffix = file_suffix
-
-        super().__init_subclass__(**kwargs)
-
-    #################################
-    #     PROTEC INITIALIZATION     #
-
-    _constructors = {}
-    _instances = {}
 
     @staticmethod
     def _from_local_dir(local_dir):
@@ -455,7 +460,7 @@ class Register(ABC):
             msg = read_txt_file(local_dir / MSG_FILEPATH)
             map_size = int(read_txt_file(local_dir / MAP_SIZE_FILEPATH))
             tmp_dir = read_txt_file(local_dir / TMP_DIR_FILEPATH)
-            reg = con(local_dir.parent, shorthand, msg, map_size, tmp_dir)
+            reg = con(local_dir.parent, shorthand, msg, map_size, tmp_dir, False)
             reg._set_local_dir(local_dir)
             reg._version = read_txt_file(local_dir / VERSION_FILEPATH)
             return reg
