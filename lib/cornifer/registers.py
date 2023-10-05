@@ -470,6 +470,7 @@ class Register(ABC):
             reg = con(local_dir.parent, shorthand, msg, map_size, tmp_dir, False, _create = False)
             reg._set_local_dir(local_dir)
             reg._version = read_txt_file(local_dir / VERSION_FILEPATH)
+            reg._write_db_filepath = Path(read_txt_file(local_dir / WRITE_DB_FILEPATH))
             return reg
 
     @staticmethod
