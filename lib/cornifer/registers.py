@@ -460,7 +460,7 @@ class Register(ABC):
             msg = read_txt_file(local_dir / MSG_FILEPATH)
             map_size = int(read_txt_file(local_dir / MAP_SIZE_FILEPATH))
             tmp_dir = read_txt_file(local_dir / TMP_DIR_FILEPATH)
-            reg = con(local_dir.parent, shorthand, msg, map_size, tmp_dir, False)
+            reg = con(local_dir.parent, shorthand, msg, map_size, tmp_dir, False, _create = False)
             reg._set_local_dir(local_dir)
             reg._version = read_txt_file(local_dir / VERSION_FILEPATH)
             return reg
