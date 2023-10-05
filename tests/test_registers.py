@@ -15,7 +15,7 @@ from cornifer._utilities import random_unique_filename, intervals_overlap
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
     DecompressionError, RegisterRecoveryError, DataExistsError
 from cornifer.regfilestructure import REG_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
-    DATABASE_FILEPATH, MAP_SIZE_FILEPATH
+    DATABASE_FILEPATH, MAP_SIZE_FILEPATH, TMP_DIR_FILEPATH
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
     _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG, \
@@ -86,7 +86,7 @@ PROTECTED READ-WRITE METHODS FOR LMDB:
     
 - LEVEL 5
     - _from_name (same register)
-    - _open_created
+    - _open
     - _get_apri_id
     - _convert_disk_block_key (no head)
     - set_startn_info
@@ -133,11 +133,7 @@ class Testy_Register(Register):
     def clean_disk_data(cls, filename, **kwargs):
 
         filename = Path(filename)
-
-        try:
-            filename.unlink(missing_ok = False)
-
-        except RegisterError:pass
+        filename.unlink(missing_ok = False)
 
 class Testy_Register2(Register):
 
@@ -192,8 +188,6 @@ class Test_Register(TestCase):
 
         with self.assertRaises(TypeError):
             Testy_Register(SAVES_DIR, 0, "sup")
-
-        self.assertFalse(Testy_Register(SAVES_DIR, "sh", "sup")._created)
 
         self.assertEqual(Testy_Register(SAVES_DIR, "sh", "sup")._version, CURRENT_VERSION)
 
@@ -274,11 +268,6 @@ class Test_Register(TestCase):
         reg = Testy_Register(SAVES_DIR, "sh", "hello")
         self.assertEqual(
             str(reg),
-            f"sh: hello"
-        )
-        with reg.open() as reg:pass
-        self.assertEqual(
-            str(reg),
             f"sh ({reg._local_dir}): hello"
         )
 
@@ -288,13 +277,6 @@ class Test_Register(TestCase):
             repr(Testy_Register(SAVES_DIR, "sh", "hello")),
             f"Testy_Register(\"{str(SAVES_DIR)}\", \"sh\", \"hello\", {_INITIAL_REGISTER_SIZE_DEFAULT})"
         )
-
-    def test__check_open_raise_uncreated(self):
-
-        reg = Testy_Register(SAVES_DIR, "sh", "hey")
-
-        with self.assertRaisesRegex(RegisterError, "tests"):
-            reg._check_open_raise("tests")
 
     def test__set_local_dir(self):
 
@@ -321,13 +303,12 @@ class Test_Register(TestCase):
         (local_dir / CLS_FILEPATH).touch(exist_ok = False)
         (local_dir / DATABASE_FILEPATH).mkdir(exist_ok = False)
         (local_dir / MAP_SIZE_FILEPATH).touch(exist_ok = False)
+        (local_dir / TMP_DIR_FILEPATH).touch(exist_ok = False)
 
         try:
             reg._db = open_lmdb(local_dir / REG_FILENAME, 1, False)
 
             reg._set_local_dir(local_dir)
-
-            self.assertTrue(reg._created)
 
             self.assertEqual(
                 local_dir,
@@ -345,20 +326,12 @@ class Test_Register(TestCase):
             )
 
             self.assertEqual(
-                reg._db_filepath,
+                reg._perm_db_filepath,
                 local_dir / DATABASE_FILEPATH
             )
 
         finally:
             reg._db.close()
-
-    def test___hash___uncreated(self):
-        with self.assertRaisesRegex(RegisterError, "__hash__"):
-            hash(Testy_Register(SAVES_DIR, "sh", "hey"))
-
-    def test___eq___uncreated(self):
-        with self.assertRaises(RegisterError):
-            Testy_Register(SAVES_DIR, "sh", "hey") == Testy_Register(SAVES_DIR, "sh", "sup")
 
     def test_add_ram_block(self):
 
@@ -443,7 +416,6 @@ class Test_Register(TestCase):
         with reg.open() as reg:
             self.assertTrue(reg._opened)
 
-        self.assertTrue(reg._created)
         keyvals = {
             _START_N_HEAD_KEY : b"0",
             _START_N_TAIL_LENGTH_KEY : str(_START_N_TAIL_LENGTH_DEFAULT).encode("ASCII"),
@@ -455,7 +427,7 @@ class Test_Register(TestCase):
 
         try:
 
-            db = open_lmdb(reg._db_filepath, 1, False)
+            db = open_lmdb(reg._perm_db_filepath, 1, False)
 
             with db.begin() as txn:
 
@@ -539,8 +511,6 @@ class Test_Register(TestCase):
         # create two `Register`s
         reg1 = Testy_Register(SAVES_DIR, "sh", "msg")
         reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
-        with reg1.open() as reg1:pass
-        with reg2.open() as reg2:pass
 
         self.assertEqual(
             hash(reg1),
@@ -586,8 +556,6 @@ class Test_Register(TestCase):
         # open two `Register`s
         reg1 = Testy_Register(SAVES_DIR, "sh", "msg")
         reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
-        with reg1.open() as reg1:pass
-        with reg2.open() as reg2:pass
 
         self.assertEqual(
             reg1,
@@ -646,8 +614,6 @@ class Test_Register(TestCase):
                 self.fail("the register is open")
 
         reg = Testy_Register(SAVES_DIR, "sh", "hi")
-
-        with reg.open() as reg:pass
 
         with self.assertRaisesRegex(RegisterError, "xyz"):
             reg._check_open_raise("xyz")
@@ -720,8 +686,6 @@ class Test_Register(TestCase):
 
         reg1 = Testy_Register(SAVES_DIR, "sh", "msg")
 
-        with reg1.open() as reg1: pass
-
         reg2 = Testy_Register(SAVES_DIR, "sh", "msg")
         reg2._set_local_dir(reg1._local_dir)
         self.assertIs(
@@ -748,13 +712,7 @@ class Test_Register(TestCase):
             else:
                 raise e
 
-        self.assertEqual(
-            "sh: yes",
-            str(reg)
-        )
-        with reg.open() as reg:pass
         reg.set_msg("no")
-
         self.assertEqual(
             f"sh ({reg._local_dir}): no",
             str(reg)
@@ -1042,17 +1000,13 @@ class Test_Register(TestCase):
     def test__open_created(self):
 
         reg = Testy_Register(SAVES_DIR, "sh", "testy")
-        with reg.open() as reg: pass
         with reg.open() as reg:
             self.assertTrue(reg._opened)
             with self.assertRaises(RegisterAlreadyOpenError):
                 with reg.open() as reg: pass
 
         reg1 = Testy_Register(SAVES_DIR, "sh", "testy")
-        with reg1.open() as reg1: pass
-
         reg2 = Testy_Register(SAVES_DIR, "sh", "testy")
-
         reg2._set_local_dir(reg1._local_dir)
 
         self.assertEqual(
@@ -1489,16 +1443,7 @@ class Test_Register(TestCase):
             reg2
         )
 
-        try:
-            with reg1.open() as reg1:pass
-
-        except RegisterError:
-            self.fail()
-
         reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
-
-        with reg2.open() as reg2:pass
-
         reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg3._set_local_dir(reg2._local_dir)
 
@@ -1508,10 +1453,6 @@ class Test_Register(TestCase):
             reg4,
             reg2
         )
-
-        reg4 = Testy_Register(SAVES_DIR, "sh",  "sup")
-        with self.assertRaisesRegex(ValueError, "read-only"):
-            with reg4.open(readonly= True) as reg:pass
 
     def test__recursive_open(self):
 
@@ -1523,8 +1464,6 @@ class Test_Register(TestCase):
 
         # must be created
         reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
-
-        with reg2.open() as reg2:pass
 
         with reg2._recursive_open(False) as reg3:
             self._assert_num_open_readers(reg3._db, 0)
@@ -1565,8 +1504,6 @@ class Test_Register(TestCase):
         )
 
         reg6 = Testy_Register(SAVES_DIR, "sh",  "supp")
-
-        with reg6.open() as reg6: pass
 
         with reg6.open(readonly= True) as reg6:
 
@@ -2065,10 +2002,6 @@ class Test_Register(TestCase):
         reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
 
-        with reg2.open():pass
-
-        with reg3.open():pass
-
         with reg1.open() as reg:
 
             with reg1._db.begin(write=True) as rw_txn:
@@ -2108,8 +2041,6 @@ class Test_Register(TestCase):
         reg1 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
-
-        with reg3.open():pass
 
         with reg2.open():
 
@@ -2240,9 +2171,6 @@ class Test_Register(TestCase):
 
         reg = Testy_Register(SAVES_DIR, "sh",  "whatever")
         apri = ApriInfo(name ="whatev")
-
-        with reg.open() as reg:
-            pass
 
         with self.assertRaisesRegex(RegisterError, "open.*blk_by_n"):
 
@@ -2630,13 +2558,6 @@ class Test_Register(TestCase):
         reg5 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg6 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg7 = Testy_Register(SAVES_DIR, "sh",  "hello")
-        with reg1.open(): pass
-        with reg2.open(): pass
-        with reg3.open(): pass
-        with reg4.open(): pass
-        with reg5.open(): pass
-        with reg6.open(): pass
-        with reg7.open(): pass
 
         # disjoint
         with reg2.open() as reg2:
@@ -2964,9 +2885,6 @@ class Test_Register(TestCase):
 
         regs = [NumpyRegister(SAVES_DIR, "sh", f"{i}") for i in range(N + 2)]
 
-        for reg in regs:
-            with reg.open():pass
-
         for i in range(N):
             with regs[i].open() as reg:
                 with reg._db.begin(write=True) as txn:
@@ -3021,10 +2939,6 @@ class Test_Register(TestCase):
         reg1 = Testy_Register(SAVES_DIR, "sh", "hello")
         reg2 = Testy_Register(SAVES_DIR, "sh", "hello")
         reg3 = Testy_Register(SAVES_DIR, "sh", "hello")
-
-        with reg1.open(): pass
-        with reg2.open(): pass
-        with reg3.open(): pass
 
         with self.assertRaisesRegex(RegisterError, "open.*add_subreg"):
             reg1.add_subreg(reg2)
@@ -3196,14 +3110,8 @@ class Test_Register(TestCase):
         reg2 = Testy_Register(SAVES_DIR, "sh",  "hello")
         reg3 = Testy_Register(SAVES_DIR, "sh",  "hello")
 
-        with reg1.open():pass
-
-        with reg2.open():pass
-
         with self.assertRaisesRegex(RegisterError, "open.*rmv_subreg"):
             reg1.rmv_subreg(reg2)
-
-        with reg3.open():pass
 
         with openregs(reg1, reg2, reg3):
 
@@ -3306,9 +3214,6 @@ class Test_Register(TestCase):
                     2,
                     total
                 )
-
-            with reg2.open():
-                pass
 
             with openregs(reg1, reg2, readonlys = (False, True)):
 

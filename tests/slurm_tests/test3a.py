@@ -1,4 +1,7 @@
 import math
+import multiprocessing
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -6,14 +9,22 @@ from cornifer import ApriInfo, load_shorthand, Block
 
 if __name__ == "__main__":
 
-    saves_dir = Path(sys.argv[1])
-    blk_size = int(sys.argv[2])
-    total_indices = int(sys.argv[3])
-    slurm_array_task_max = int(sys.argv[4])
-    slurm_array_task_id = int(sys.argv[5])
-    reg = load_shorthand("reg", saves_dir)
+    num_processes = int(sys.argv[1])
+    test_home_dir = Path(sys.argv[2])
+    blk_size = int(sys.argv[3])
+    total_indices = int(sys.argv[4])
+    test_home_reg = load_shorthand("reg", test_home_dir)
+    tmp_filename = Path(os.environ['TMPDIR'])
+    tmp_reg_filename = tmp_filename / test_home_reg._local_dir.name
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")
+
+    if tmp_reg_filename.exists():
+        shutil.rmtree(tmp_reg_filename)
+
+    shutil.copytree(test_home_reg._local_dir, tmp_reg_filename)
+    mp_ctx = multiprocessing.get_context("spawn")
+    procs = []
 
     with reg.open() as reg:
 

@@ -222,7 +222,7 @@ class TestSlurm(unittest.TestCase):
     def test_slurm_3(self):
 
         reg = type(self).reg
-        slurm_test_main_filename = slurm_tests_filename / 'test3.py'
+        slurm_test_main_filename = slurm_tests_filename / 'test3a.py'
         running_max_sec = 40
         blk_size = 100
         slurm_time = running_max_sec + 1
@@ -259,7 +259,7 @@ class TestSlurm(unittest.TestCase):
     def test_slurm_4(self):
 
         reg = type(self).reg
-        slurm_test_main_filename = slurm_tests_filename / 'test4.py'
+        slurm_test_main_filename = slurm_tests_filename / 'test3b.py'
         running_max_sec = 80
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 2
@@ -321,7 +321,7 @@ class TestSlurm(unittest.TestCase):
         # this one is forced to crash due to low time limit
         # (The writer of `cornifer.registers.Register.set_apos` will sleep for a long time)
         reg = type(self).reg
-        slurm_test_main_filename = slurm_tests_filename / 'test5.py'
+        slurm_test_main_filename = slurm_tests_filename / 'test3c.py'
         running_max_sec = 20
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 7
@@ -381,7 +381,7 @@ class TestSlurm(unittest.TestCase):
         # this one is forced to crash due to low time limit
         # (The reader of `cornifer.registers.Register.set_apos` will sleep for a long time)
         reg = type(self).reg
-        slurm_test_main_filename = slurm_tests_filename / 'test6.py'
+        slurm_test_main_filename = slurm_tests_filename / 'test3d.py'
         running_max_sec = 60
         slurm_time = running_max_sec + 1
         slurm_array_task_max = 5
