@@ -7,7 +7,7 @@ from pathlib import Path
 
 from cornifer import ApriInfo, load_shorthand, Block
 
-def f(test_home_dir, i, total_blks, num_processes, blk_size, total_indices):
+def f(test_home_dir, i, total_blks, num_processes, blk_size, total_indices, apri):
 
     reg = load_shorthand("reg", test_home_dir)
 
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     procs = []
 
     for i in range(num_processes):
-        procs.append(mp_ctx.Process(target = f, args = (test_home_dir, i, total_blks, num_processes, blk_size, total_indices)))
+        procs.append(mp_ctx.Process(target = f, args = (test_home_dir, i, total_blks, num_processes, blk_size, total_indices, apri)))
 
     for proc in procs:
         proc.start()
