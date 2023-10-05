@@ -106,6 +106,8 @@ def load_shorthand(shorthand, saves_dir = None):
 
     for d in saves_dir.iterdir():
 
+        print(d)
+
         if d.is_dir():
 
             try:
