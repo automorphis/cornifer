@@ -33,6 +33,8 @@ f"""#!/usr/bin/env bash
 #SBATCH --time={datetime.timedelta(seconds = time_sec)}
 #SBATCH --ntasks={num_processes}
 #SBATCH --ntasks-per-core=1
+#SBATCH --mail-user=lane.662@osu.edu
+#SBATCH --mail-type=all
 #SBATCH --error={error_filename}
 #SBATCH --output=/dev/null
 
@@ -302,7 +304,7 @@ class TestSlurm(unittest.TestCase):
         # this one is forced to crash due to low time limit
         # (The writer of `cornifer.registers.Register.set_apos` will sleep for a long time)
         slurm_test_main_filename = slurm_tests_filename / 'test3c.py'
-        running_max_sec = 20
+        running_max_sec = 5
         slurm_time = running_max_sec + 1
         num_processes = 7
         write_batch_file(slurm_time, slurm_test_main_filename, num_processes, str(num_apri))
