@@ -34,7 +34,7 @@ if __name__ == "__main__":
     apri = ApriInfo(hi = "hello")
     reg = load_shorthand("reg", test_home_dir)
     reg.set_tmp_dir(tmp_filename)
-    reg.make_tmp_dir()
+    reg.make_tmp_db()
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
