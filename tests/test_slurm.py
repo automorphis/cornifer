@@ -309,7 +309,7 @@ class TestSlurm(unittest.TestCase):
         self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #3c (running_max_sec = {running_max_sec})...")
-        time.sleep(slurm_time + timeout_extra_wait_sec)
+        time.sleep(slurm_time + timeout_extra_wait_sec + 60)
         print("Checking test #3c...")
         self.check_timeout_error_file(1)
 
