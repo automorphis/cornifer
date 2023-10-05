@@ -46,6 +46,10 @@ if __name__ == "__main__":
     for proc in procs:
         proc.join()
 
+    raise ValueError(
+        f"reg._perm_db_filepath = {reg._perm_db_filepath}\n"
+        f"reg._write_db_filepath = {reg._write_db_filepath}"
+    )
     reg.update_perm_db()
 
 
