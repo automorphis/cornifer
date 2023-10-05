@@ -103,10 +103,11 @@ def load_shorthand(shorthand, saves_dir = None):
 
 
     ret = None
+    dirs = []
 
     for d in saves_dir.iterdir():
 
-        print(d)
+        dirs.append(d)
 
         if d.is_dir():
 
@@ -125,7 +126,7 @@ def load_shorthand(shorthand, saves_dir = None):
                     if ret is not None:
                         raise DataExistsError(
                             f"More than one `Register` found with shorthand `{shorthand}` (you can also use the "
-                            f"function `load_ident` to load a `Register`) :\n{str(reg)}\n{str(ret)}")
+                            f"function `load_ident` to load a `Register`) :\n{str(reg)}\n{str(ret)}\n{dirs}")
 
                     else:
                         ret = reg
