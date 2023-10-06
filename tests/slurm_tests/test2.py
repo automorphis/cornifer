@@ -66,4 +66,5 @@ if __name__ == "__main__":
         assert total == num_entries
 
     db.close()
-    shutil.move(db_filename, test_home_dir / db_filename.name)
+    db.copy(str(test_home_dir / db_filename.name))
+    shutil.rmtree(db_filename)
