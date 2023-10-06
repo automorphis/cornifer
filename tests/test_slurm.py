@@ -32,6 +32,7 @@ f"""#!/usr/bin/env bash
 #SBATCH --job-name=corniferslurmtests
 #SBATCH --time={datetime.timedelta(seconds = time_sec)}
 #SBATCH --ntasks={num_processes}
+#SBATCH --nodes=1
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
 #SBATCH --output=/dev/null
@@ -151,6 +152,7 @@ class TestSlurm(unittest.TestCase):
         self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #1...")
         self.check_empty_error_file()
+        self.assertTrue((test_home_dir / db_filename).exists())
         db = lmdb.open(str(test_home_dir / db_filename))
 
         try:
@@ -196,6 +198,7 @@ class TestSlurm(unittest.TestCase):
             self.wait_till_not_running(running_max_sec, running_query_sec)
             print(f"Checking test #2 (num_entries = {num_entries})...")
             self.check_empty_error_file()
+            self.assertTrue((test_home_dir / db_filename).exists())
             db = lmdb.open(str(test_home_dir / db_filename))
 
             try:
