@@ -201,6 +201,11 @@ class TestSlurm(unittest.TestCase):
             self.assertTrue((test_home_dir / db_filename).exists())
             db = lmdb.open(str(test_home_dir / db_filename))
 
+            with db.begin() as ro_txn:
+
+                for key, val in r_txn_prefix_iter(b'', ro_txn):
+                    print(key, val)
+
             try:
 
 
