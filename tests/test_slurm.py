@@ -203,8 +203,10 @@ class TestSlurm(unittest.TestCase):
 
             with db.begin() as ro_txn:
 
-                for key, val in r_txn_prefix_iter(b'', ro_txn):
-                    print(key, val)
+                with r_txn_prefix_iter(b'', ro_txn) as it:
+
+                    for key, val in it:
+                        print(key, val)
 
             try:
 
