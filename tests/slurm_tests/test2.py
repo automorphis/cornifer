@@ -27,20 +27,20 @@ if __name__ == "__main__":
 
     num_processes = int(sys.argv[1])
     test_home_dir = Path(sys.argv[2])
-    db_filename = Path(os.environ['TMPDIR']) / sys.argv[3]
+    db_filepath = Path(os.environ['TMPDIR']) / sys.argv[3]
     num_entries = int(sys.argv[4])
 
-    if db_filename.exists():
-        shutil.rmtree(db_filename)
+    if db_filepath.exists():
+        shutil.rmtree(db_filepath)
 
-    db_filename.mkdir(parents = False, exist_ok = False)
-    db = lmdb.open(str(db_filename), map_size = 2 ** 40, subdir = True, readonly = False, create = False)
+    db_filepath.mkdir(parents = False, exist_ok = False)
+    db = lmdb.open(str(db_filepath), map_size = 2 ** 40, subdir = True, readonly = False, create = False)
     db.close()
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
     for i in range(num_processes):
-        procs.append(mp_ctx.Process(target = f, args = (db_filename, num_entries, num_processes, i)))
+        procs.append(mp_ctx.Process(target = f, args = (db_filepath, num_entries, num_processes, i)))
 
     for proc in procs:
         proc.start()
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     df_process = subprocess.run(['df' , '-T', os.environ['TMPDIR']], capture_output = True, text = True)
     print(df_process.stdout)
-    db = lmdb.open(str(db_filename))
+    db = lmdb.open(str(db_filepath))
 
     with db.begin() as ro_txn:
 
@@ -65,7 +65,8 @@ if __name__ == "__main__":
 
         assert total == num_entries
 
-    (test_home_dir / db_filename.name).mkdir(exist_ok = False)
-    db.copy(str(test_home_dir / db_filename.name), compact = True)
+    (test_home_dir / db_filepath.name).mkdir(exist_ok = False)
+    db.copy(str(test_home_dir / db_filepath.name), compact = True)
+    print(test_home_dir / db_filepath.name)
     db.close()
-    shutil.rmtree(db_filename)
+    shutil.rmtree(db_filepath)
