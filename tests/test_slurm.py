@@ -127,10 +127,10 @@ class TestSlurm(unittest.TestCase):
 
         time.sleep(query_sec)
 
-    def submit_batch(self, batch_filename):
+    def submit_batch(self):
 
         sbatch_process = subprocess.run(
-            ["sbatch", str(batch_filename)], capture_output = True, text = True
+            ["sbatch", str(sbatch_filename)], capture_output = True, text = True
         )
         self.job_id = sbatch_process.stdout[20:-1]
         print(self.job_id)
@@ -145,7 +145,7 @@ class TestSlurm(unittest.TestCase):
         db_filename = "lmdb"
         write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{db_filename} {num_entries}")
         print("Submitting test batch #1...")
-        self.submit_batch(sbatch_filename)
+        self.submit_batch()
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #1 (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
@@ -153,25 +153,30 @@ class TestSlurm(unittest.TestCase):
         self.check_empty_error_file()
         db = lmdb.open(str(test_home_dir / db_filename))
 
-        with db.begin() as ro_txn:
+        try:
 
-            for i in range(num_entries):
+            with db.begin() as ro_txn:
 
-                i = str(i).encode("ASCII")
+                for i in range(num_entries):
+
+                    i = str(i).encode("ASCII")
+                    self.assertEqual(
+                        ro_txn.get(i),
+                        i
+                    )
+
+                with r_txn_prefix_iter(b"", ro_txn) as it:
+                    total = sum(1 for _ in it)
+
                 self.assertEqual(
-                    ro_txn.get(i),
-                    i
+                    total,
+                    num_entries
                 )
 
-            with r_txn_prefix_iter(b"", ro_txn) as it:
-                total = sum(1 for _ in it)
+        finally:
 
-            self.assertEqual(
-                total,
-                num_entries
-            )
-
-        db.close()
+            db.close()
+            shutil.rmtree(test_home_dir / db_filename)
 
     def test_slurm_2(self):
 
@@ -185,7 +190,7 @@ class TestSlurm(unittest.TestCase):
 
             write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{db_filename} {num_entries}")
             print(f"Submitting test batch #2 (num_entries = {num_entries})...")
-            self.submit_batch(sbatch_filename)
+            self.submit_batch()
             self.wait_till_running(allocation_max_sec, allocation_query_sec)
             print(f"Running test #2 (running_max_sec = {running_max_sec}) (num_entries = {num_entries})...")
             self.wait_till_not_running(running_max_sec, running_query_sec)
@@ -193,27 +198,33 @@ class TestSlurm(unittest.TestCase):
             self.check_empty_error_file()
             db = lmdb.open(str(test_home_dir / db_filename))
 
-            for i in range(num_entries):
+            try:
+
+
+                for i in range(num_entries):
+
+                    with db.begin() as ro_txn:
+
+                        i = str(i).encode("ASCII")
+                        self.assertEqual(
+                            ro_txn.get(i),
+                            i
+                        )
 
                 with db.begin() as ro_txn:
 
-                    i = str(i).encode("ASCII")
-                    self.assertEqual(
-                        ro_txn.get(i),
-                        i
-                    )
+                    with r_txn_prefix_iter(b"", ro_txn) as it:
+                        total = sum(1 for _ in it)
 
-            with db.begin() as ro_txn:
+                self.assertEqual(
+                    total,
+                    num_entries
+                )
 
-                with r_txn_prefix_iter(b"", ro_txn) as it:
-                    total = sum(1 for _ in it)
+            finally:
 
-            self.assertEqual(
-                total,
-                num_entries
-            )
-            db.close()
-            shutil.rmtree(test_home_dir / db_filename)
+                db.close()
+                shutil.rmtree(test_home_dir / db_filename)
 
     def test_slurm_3(self):
 
@@ -227,7 +238,7 @@ class TestSlurm(unittest.TestCase):
         reg = NumpyRegister(test_home_dir, "reg", "hi")
         write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{blk_size} {total_indices}")
         print("Submitting test batch #3a...")
-        self.submit_batch(sbatch_filename)
+        self.submit_batch()
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #3a (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
@@ -260,7 +271,7 @@ class TestSlurm(unittest.TestCase):
         num_apri = 100
         write_batch_file(slurm_time, slurm_test_main_filename, num_processes, str(num_apri))
         print("Submitting test batch #3b...")
-        self.submit_batch(sbatch_filename)
+        self.submit_batch()
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #3b (running_max_sec = {running_max_sec})...")
         self.wait_till_not_running(running_max_sec, running_query_sec)
@@ -309,7 +320,7 @@ class TestSlurm(unittest.TestCase):
         num_processes = 7
         write_batch_file(slurm_time, slurm_test_main_filename, num_processes, str(num_apri))
         print("Submitting test batch #3c...")
-        self.submit_batch(sbatch_filename)
+        self.submit_batch()
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #3c (running_max_sec = {running_max_sec})...")
         time.sleep(slurm_time + timeout_extra_wait_sec + 10)
