@@ -79,7 +79,7 @@ class TestSlurm(unittest.TestCase):
         if len(contents) > 0:
             self.fail(f"Must be empty error file! Contents: {contents}")
 
-    def check_timeout_error_file(self, num_timouts):
+    def check_timeout_error_file(self):
 
         error_filename.exists()
 
@@ -90,7 +90,7 @@ class TestSlurm(unittest.TestCase):
             for line in fh:
                 contents += line
 
-        if len(re.findall(r"JOB.*CANCELLED ON.*DUE TO TIME LIMIT.*", contents)) != num_timouts:
+        if re.match(r"^slurmstepd: error: \*\*\* JOB.*ON.*CANCELLED AT.*DUE TO TIME LIMIT \*\*\*$", contents) is None:
             self.fail(f"Invalid error file. Contents: {contents}")
 
     def wait_till_running(self, max_sec, query_sec):
@@ -312,14 +312,9 @@ class TestSlurm(unittest.TestCase):
         self.submit_batch(sbatch_filename)
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #3c (running_max_sec = {running_max_sec})...")
-        for _ in range(3 + (slurm_time + timeout_extra_wait_sec + 60) // 2):
-            time.sleep(2)
-            squeue_process = subprocess.run(
-                ["squeue", "-j", self.job_id, "-o", "%.2t"], capture_output = True, text = True
-            )
-            print(squeue_process.stdout)
+        time.sleep(slurm_time + timeout_extra_wait_sec + 10)
         print("Checking test #3c...")
-        self.check_timeout_error_file(1)
+        self.check_timeout_error_file()
 
         with reg.open(readonly = True):
 
