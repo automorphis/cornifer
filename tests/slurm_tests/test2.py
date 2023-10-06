@@ -58,6 +58,7 @@ if __name__ == "__main__":
 
             i = str(i).encode("ASCII")
             assert ro_txn.get(i) == i
+            print(ro_txn.get(i))
 
         with r_txn_prefix_iter(b"", ro_txn) as it:
             total = sum(1 for _ in it)
