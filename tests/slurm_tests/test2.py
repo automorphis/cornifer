@@ -48,7 +48,7 @@ if __name__ == "__main__":
     for proc in procs:
         proc.join()
 
-    df_process = subprocess.run(['df' , '-T', '.'], capture_output = True, text = True)
+    df_process = subprocess.run(['df' , '-T', os.environ['TMPDIR']], capture_output = True, text = True)
     print(df_process.stdout)
     db = lmdb.open(str(db_filename))
 
