@@ -142,7 +142,7 @@ class TestSlurm(unittest.TestCase):
         num_entries = 10000
         running_max_sec = 100
         slurm_time = running_max_sec + 1
-        num_processes = 2
+        num_processes = 10
         db_filename = "lmdb"
         write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{db_filename} {num_entries}")
         print("Submitting test batch #1...")

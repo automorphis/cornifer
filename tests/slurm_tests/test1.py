@@ -6,7 +6,8 @@ import multiprocessing
 
 import lmdb
 
-from cornifer._utilities.lmdb import open_lmdb
+from cornifer._utilities.lmdb import  r_txn_prefix_iter
+
 
 def f(db_filename, num_entries, num_processes, proc_id):
 
@@ -45,5 +46,20 @@ if __name__ == "__main__":
 
     for proc in procs:
         proc.join()
+
+
+    for i in range(num_entries):
+
+        with db.begin() as ro_txn:
+
+            i = str(i).encode("ASCII")
+            assert ro_txn.get(i) == i
+
+    with db.begin() as ro_txn:
+
+        with r_txn_prefix_iter(b"", ro_txn) as it:
+            total = sum(1 for _ in it)
+
+    assert total == num_entries
 
     shutil.move(db_filename, test_home_dir / db_filename.name)
