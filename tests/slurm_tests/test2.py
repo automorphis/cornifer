@@ -72,3 +72,4 @@ if __name__ == "__main__":
     print((test_home_dir / db_filepath.name).exists())
     db.close()
     shutil.rmtree(db_filepath)
+    print((test_home_dir / db_filepath.name).exists())
