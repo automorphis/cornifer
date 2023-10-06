@@ -66,6 +66,6 @@ if __name__ == "__main__":
         assert total == num_entries
 
     (test_home_dir / db_filename.name).mkdir(exist_ok = False)
-    db.copy(str(test_home_dir / db_filename.name), copy = True)
+    db.copy(str(test_home_dir / db_filename.name), compact = True)
     db.close()
     shutil.rmtree(db_filename)
