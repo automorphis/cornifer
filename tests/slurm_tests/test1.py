@@ -47,6 +47,7 @@ if __name__ == "__main__":
     for proc in procs:
         proc.join()
 
+    db = lmdb.open(str(db_filename))
 
     for i in range(num_entries):
 
@@ -62,4 +63,5 @@ if __name__ == "__main__":
 
     assert total == num_entries
 
+    db.close()
     shutil.move(db_filename, test_home_dir / db_filename.name)

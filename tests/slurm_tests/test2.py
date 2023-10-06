@@ -6,6 +6,9 @@ from pathlib import Path
 
 import lmdb
 
+from cornifer._utilities.lmdb import r_txn_prefix_iter
+
+
 def f(db_filename, num_entries, num_processes, proc_id):
 
     db = lmdb.open(str(db_filename))
@@ -44,6 +47,19 @@ if __name__ == "__main__":
     for proc in procs:
         proc.join()
 
+    db = lmdb.open(str(db_filename))
 
+    with db.begin() as ro_txn:
 
+        for i in range(num_entries):
+
+            i = str(i).encode("ASCII")
+            assert ro_txn.get(i) == i
+
+        with r_txn_prefix_iter(b"", ro_txn) as it:
+            total = sum(1 for _ in it)
+
+        assert total == num_entries
+
+    db.close()
     shutil.move(db_filename, test_home_dir / db_filename.name)
