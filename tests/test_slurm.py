@@ -33,13 +33,13 @@ f"""#!/usr/bin/env bash
 #SBATCH --time={datetime.timedelta(seconds = time_sec)}
 #SBATCH --ntasks={num_processes}
 #SBATCH --ntasks-per-core=1
-#SBATCH --mail-user=lane.662@osu.edu
-#SBATCH --mail-type=all
 #SBATCH --error={error_filename}
 #SBATCH --output=/dev/null
 
 {python_command} {slurm_test_main_filename} {num_processes} {test_home_dir} {args}
 """)
+#SBATCH --mail-user=lane.662@osu.edu
+#SBATCH --mail-type=all
 
 class TestSlurm(unittest.TestCase):
 
@@ -90,7 +90,7 @@ class TestSlurm(unittest.TestCase):
             for line in fh:
                 contents += line
 
-        if len(re.findall(r"STEP.*CANCELLED AT.*DUE TO TIME LIMIT.*", contents)) != num_timouts:
+        if len(re.findall(r"JOB.*CANCELLED ON.*DUE TO TIME LIMIT.*", contents)) != num_timouts:
             self.fail(f"Invalid error file. Contents: {contents}")
 
     def wait_till_running(self, max_sec, query_sec):
