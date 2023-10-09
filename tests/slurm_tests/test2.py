@@ -70,6 +70,8 @@ if __name__ == "__main__":
     db.copy(str(test_home_dir / db_filepath.name), compact = True)
     print(test_home_dir / db_filepath.name)
     print((test_home_dir / db_filepath.name).exists())
+    print(list((test_home_dir / db_filepath.name).iterdir()))
     db.close()
     shutil.rmtree(db_filepath)
     print((test_home_dir / db_filepath.name).exists())
+    print(list((test_home_dir / db_filepath.name).iterdir()))
