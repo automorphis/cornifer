@@ -200,6 +200,7 @@ class TestSlurm(unittest.TestCase):
             self.check_empty_error_file()
             print(test_home_dir / db_filename)
             self.assertTrue(test_home_dir.exists())
+            print(list(test_home_dir.iterdir()))
             self.assertTrue((test_home_dir / db_filename).exists())
             db = lmdb.open(str(test_home_dir / db_filename))
 
