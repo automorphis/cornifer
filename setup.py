@@ -27,7 +27,7 @@ setup(
     version = CURRENT_VERSION,
     description = "An easy-to-use data manager for experimental mathematics.",
     long_description = "An easy-to-use data manager for experimental mathematics.",
-    long_description_content_type="text/plain",
+    long_description_content_type = "text/plain",
 
     author = "Michael P. Lane",
     author_email = "mlanetheta@gmail.com",
@@ -45,12 +45,9 @@ setup(
         'lmdb>=1.2.1'
     ],
 
-    classifiers=[
+    classifiers = [
         "Programming Language :: Python",
-        "Programming Language :: Python :: Implementation :: CPython",
-        "Programming Language :: Python :: 3.10",
         "Topic :: Database",
-        "Topic :: Database :: Front-Ends",
         "Topic :: Scientific/Engineering :: Mathematics"
     ],
 

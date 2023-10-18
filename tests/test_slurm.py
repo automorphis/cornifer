@@ -383,7 +383,6 @@ class TestSlurm(unittest.TestCase):
                 list(reg[ApriInfo(hi = "hello"), :])
             )
 
-    def test_slurm_6(self):
         # this one is forced to crash due to low time limit
         # (The reader of `cornifer.registers.Register.set_apos` will sleep for a long time)
         reg = type(self).reg
@@ -393,12 +392,12 @@ class TestSlurm(unittest.TestCase):
         slurm_array_task_max = 5
         write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
         print("Submitting test batch #6...")
-        self.submit_batch(sbatch_filename)
+        self.submit_batch()
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #6 (running_max_sec = {running_max_sec})...")
         time.sleep(slurm_time + timeout_extra_wait_sec)
         print("Checking test #6...")
-        self.check_timeout_error_file(1)
+        self.check_timeout_error_file()
 
         with reg.open(readonly = True):
 

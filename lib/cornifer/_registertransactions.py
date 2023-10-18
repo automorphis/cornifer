@@ -6,12 +6,26 @@ from ._utilities.lmdb import ReversibleTransaction
 
 class RegisterWriteMethod(ABC):
 
+    method_name = None
+
     def __init__(self, reg):
         self._reg = reg
 
+    def __init_subclass__(cls, **kwargs):
+
+        method_name = kwargs.pop("method_name", None)
+
+        if method_name is None:
+            raise ValueError
+
+        cls.method_name = method_name
+        super().__init_subclass__(kwargs)
+
     @abstractmethod
     def type_value(self):
-        pass
+
+        self._reg._check_open_raise(type(self).method_name)
+        self._reg._check_readwrite_raise(type(self).method_name)
 
     @abstractmethod
     def pre(self, r_txn):
@@ -29,7 +43,7 @@ class RegisterWriteMethod(ABC):
     def error(self, rrw_txn, rw_txn, e):
         pass
 
-class AddDiskBlk(RegisterWriteMethod):
+class AddDiskBlk(RegisterWriteMethod, method_name = "add_disk_blk"):
 
     def __init__(self, reg, blk, exists_ok, dups_ok, ret_metadata):
 
@@ -42,10 +56,7 @@ class AddDiskBlk(RegisterWriteMethod):
 
     def type_value(self):
 
-        self._reg._check_open_raise("add_disk_blk")
-        self._reg._check_readwrite_raise("add_disk_blk")
-        self._reg._check_blk_open_raise(self._blk, "add_disk_blk")
-        check_type(self._blk, "blk", Block)
+        super().type_value()
         check_type(self._exists_ok, "exists_ok", bool)
         check_type(self._dups_ok, "dups_ok", bool)
         check_type(self._ret_metadata, "ret_metadata", bool)
@@ -105,7 +116,6 @@ class AddDiskBlk(RegisterWriteMethod):
 
     def error(self, rrw_txn, rw_txn, e):
         pass
-
 
 class AppendDiskBlk(AddDiskBlk):
     pass
