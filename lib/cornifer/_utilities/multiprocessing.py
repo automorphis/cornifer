@@ -2,6 +2,9 @@ import time
 
 def start_with_timeout(procs, timeout, query_wait = 0.1):
 
+    if timeout <= 0:
+        raise ValueError
+
     for proc in procs:
         proc.start()
 
