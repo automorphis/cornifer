@@ -345,6 +345,13 @@ class TestSlurm(unittest.TestCase):
             for i in range(num_apri):
 
                 apri = ApriInfo(i = i)
+                print(apri, reg.apos(apri))
+
+        with reg.open(readonly = True):
+
+            for i in range(num_apri):
+
+                apri = ApriInfo(i = i)
                 self.assertIn(
                     apri,
                     reg
