@@ -21,7 +21,7 @@ slurm_tests_filename = Path(__file__).parent / "slurm_tests"
 allocation_query_sec = 0.5
 running_query_sec = 0.5
 allocation_max_sec = 60
-timeout_extra_wait_sec = 90
+timeout_extra_wait_sec = 30
 
 def write_batch_file(time_sec, slurm_test_main_filename, num_processes, args):
 
