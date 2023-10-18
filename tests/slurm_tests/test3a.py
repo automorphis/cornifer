@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from cornifer import ApriInfo, load_shorthand, Block
+from cornifer._utilities.multiprocessing import start_with_timeout
+
 
 def f(test_home_dir, i, total_blks, num_processes, blk_size, total_indices, apri):
 
@@ -28,6 +30,7 @@ if __name__ == "__main__":
     test_home_dir = Path(sys.argv[2])
     blk_size = int(sys.argv[3])
     total_indices = int(sys.argv[4])
+    timeout = int(sys.argv[5])
     tmp_filename = Path(os.environ['TMPDIR'])
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")
@@ -40,8 +43,7 @@ if __name__ == "__main__":
     for i in range(num_processes):
         procs.append(mp_ctx.Process(target = f, args = (test_home_dir, i, total_blks, num_processes, blk_size, total_indices, apri)))
 
-    for proc in procs:
-        proc.start()
+    start_with_timeout(procs, timeout)
 
     for proc in procs:
         proc.join()

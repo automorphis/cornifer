@@ -331,14 +331,14 @@ class TestSlurm(unittest.TestCase):
         running_max_sec = 5
         slurm_time = running_max_sec + 1
         num_processes = 7
-        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, str(num_apri))
+        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{num_apri} {slurm_time - 10}")
         print("Submitting test batch #3c...")
         self.submit_batch()
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
         print(f"Running test #3c (running_max_sec = {running_max_sec})...")
         time.sleep(slurm_time + timeout_extra_wait_sec + 10)
         print("Checking test #3c...")
-        self.check_timeout_error_file()
+        self.check_empty_error_file()
 
         with reg.open(readonly = True):
 
