@@ -249,7 +249,7 @@ class TestSlurm(unittest.TestCase):
         num_processes = 10
         total_indices = 10050
         reg = NumpyRegister(test_home_dir, "reg", "hi")
-        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{blk_size} {total_indices}")
+        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{blk_size} {total_indices} {slurm_time - 10}")
         print("Submitting test batch #3a...")
         self.submit_batch()
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
@@ -282,7 +282,7 @@ class TestSlurm(unittest.TestCase):
         slurm_time = running_max_sec + 1
         num_processes = 2
         num_apri = 100
-        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, str(num_apri))
+        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{num_apri} {slurm_time - 10}")
         print("Submitting test batch #3b...")
         self.submit_batch()
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
