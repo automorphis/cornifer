@@ -14,7 +14,7 @@ def start_with_timeout(procs, timeout, query_wait = 0.1):
 
         time.sleep(query_wait)
 
-    else:
+    print("terminated")
 
-        for p in procs:
-            p.terminate()
+    for p in procs:
+        p.terminate()

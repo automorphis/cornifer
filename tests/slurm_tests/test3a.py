@@ -30,10 +30,7 @@ if __name__ == "__main__":
     test_home_dir = Path(sys.argv[2])
     blk_size = int(sys.argv[3])
     total_indices = int(sys.argv[4])
-    try:
-        timeout = int(sys.argv[5])
-    except IndexError as e:
-        raise IndexError(str(sys.argv)) from e
+    timeout = int(sys.argv[5])
     tmp_filename = Path(os.environ['TMPDIR'])
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")

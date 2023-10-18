@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import sys
+import time
 from pathlib import Path
 
 from cornifer import ApriInfo, load_shorthand, AposInfo
@@ -25,6 +26,7 @@ def f(test_home_dir, j, num_apri, num_processes):
 
 if __name__ == "__main__":
 
+    start = time.time()
     num_processes = int(sys.argv[1])
     test_home_dir = Path(sys.argv[2])
     num_apri = int(sys.argv[3])
@@ -39,7 +41,7 @@ if __name__ == "__main__":
     for j in range(num_processes):
         procs.append(mp_ctx.Process(target = f, args = (test_home_dir, j, num_apri, num_processes)))
 
-    start_with_timeout(procs, timeout)
+    start_with_timeout(procs, timeout + start - time.time())
 
     for proc in procs:
         proc.join()
