@@ -31,6 +31,7 @@ if __name__ == "__main__":
     blk_size = int(sys.argv[3])
     total_indices = int(sys.argv[4])
     timeout = int(sys.argv[5])
+    raise ValueError(str(sys.argv))
     tmp_filename = Path(os.environ['TMPDIR'])
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")
