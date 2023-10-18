@@ -354,7 +354,7 @@ class TestSlurm(unittest.TestCase):
                     reg.num_blks(apri)
                 )
 
-                if i % num_processes == 0 and i >= 2 * num_processes:
+                if i % num_processes == 1 and i >= 2 * num_processes + 1:
                     self.assertEqual(
                         AposInfo(i = i + 1),
                         reg.apos(apri)
