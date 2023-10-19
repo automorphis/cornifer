@@ -509,6 +509,15 @@ class Register(ABC):
         return Register._instances[local_dir]
 
     #################################
+    #           PICKLING            #
+
+    def __getstate__(self):
+        return {"local_dir" : str(self._local_dir)}
+
+    def __setstate__(self, state):
+        return Register._from_local_dir(Path(state["local_dir"]))
+
+    #################################
     #    PUBLIC REGISTER METHODS    #
 
     def __eq__(self, other):
@@ -675,7 +684,7 @@ class Register(ABC):
 
     def update_perm_db(self):
 
-        self._check_not_open_raise("update_perm_db")
+        self._check_open_raise("update_perm_db")
         tmp_filename = self._perm_db_filepath.parent / (Path(DATABASE_FILEPATH).name + "_tmp")
 
         if tmp_filename.exists():
