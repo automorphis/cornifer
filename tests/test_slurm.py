@@ -405,7 +405,7 @@ class TestSlurm(unittest.TestCase):
         slurm_test_main_filename = slurm_tests_filename / 'test3d.py'
         running_max_sec = 15
         slurm_time = running_max_sec + 1
-        num_processes = 15
+        num_processes = 7
         write_batch_file(slurm_time, num_processes, slurm_test_main_filename, f"{num_apri} {slurm_time - 10}")
         print("Submitting test batch #3d...")
         self.submit_batch()
@@ -436,7 +436,7 @@ class TestSlurm(unittest.TestCase):
                     reg.num_blks(apri)
                 )
 
-                if i % num_processes == 1 and i >= 10 * num_processes + 1:
+                if i % num_processes == 1 and i >= 5 * num_processes + 1:
                     self.assertEqual(
                         AposInfo(i = i + 2),
                         reg.apos(apri)

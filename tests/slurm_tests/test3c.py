@@ -46,6 +46,5 @@ if __name__ == "__main__":
     for proc in procs:
         proc.join()
 
-    print("joined")
     reg.update_perm_db()
     reg.set_tmp_dir(reg.dir)
