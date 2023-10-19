@@ -27,7 +27,8 @@ if __name__ == "__main__":
 
     num_processes = int(sys.argv[1])
     test_home_dir = Path(sys.argv[2])
-    local_db_filepath = Path(os.environ['TMPDIR']) / sys.argv[3]
+    db_name = sys.argv[3]
+    local_db_filepath = Path(os.environ['TMPDIR']) / db_name
     num_entries = int(sys.argv[4])
 
     if local_db_filepath.exists():
@@ -65,15 +66,12 @@ if __name__ == "__main__":
         assert total == num_entries
 
     db.close()
-    perm_db_filepath = test_home_dir / local_db_filepath.name
+    perm_db_filepath = test_home_dir / db_name
 
     if perm_db_filepath.exists():
         shutil.rmtree(perm_db_filepath)
 
     shutil.copytree(local_db_filepath, perm_db_filepath)
-    # print((test_home_dir / db_filepath.name).exists())
-    # print(test_home_dir / db_filepath.name)
-    # print((test_home_dir / db_filepath.name).exists())
-    # print(list((test_home_dir / db_filepath.name).iterdir()))
-    # print((test_home_dir / db_filepath.name).exists())
-    # print(list((test_home_dir / db_filepath.name).iterdir()))
+    print(perm_db_filepath.exists())
+    print(perm_db_filepath)
+    print(list(perm_db_filepath.iterdir()))
