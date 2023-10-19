@@ -11,7 +11,6 @@ from cornifer._utilities.multiprocessing import start_with_timeout
 def f(test_home_dir, j, num_apri, num_processes):
 
     reg = load_shorthand("reg", test_home_dir)
-    print(j, flush=True)
     with reg.open() as reg:
 
         for i in range(j, num_apri, num_processes):
@@ -46,5 +45,8 @@ if __name__ == "__main__":
     for proc in procs:
         proc.join()
 
+    print(1)
     reg.update_perm_db()
+    print(2)
     reg.set_tmp_dir(reg.dir)
+    print(3)
