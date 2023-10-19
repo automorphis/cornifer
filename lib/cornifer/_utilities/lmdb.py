@@ -155,9 +155,6 @@ def num_open_readers_accurate(db):
     else:
         return str_.count("\n") - 1 - str_.count("-")
 
-def is_transaction(txn):
-    return isinstance(txn, (lmdb.Transaction, ReversibleTransaction))
-
 def to_str(db):
 
     ret = ""

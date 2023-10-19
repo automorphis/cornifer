@@ -1,8 +1,11 @@
+import warnings
 from abc import ABC, abstractmethod
 
-from .blocks import Block
-from ._utilities import check_type
-from ._utilities.lmdb import ReversibleTransaction
+from . import DataNotFoundError, Register
+from ._utilities import check_type, random_unique_filename, intervals_overlap
+from ._utilities.lmdb import ReversibleTransaction, r_txn_has_key
+from .errors import DataExistsError
+
 
 class RegisterWriteMethod(ABC):
 
@@ -45,55 +48,78 @@ class RegisterWriteMethod(ABC):
 
 class AddDiskBlk(RegisterWriteMethod, method_name = "add_disk_blk"):
 
-    def __init__(self, reg, blk, exists_ok, dups_ok, ret_metadata):
+    def __init__(self, reg, blk, apri_json, reencode, exists_ok, dups_ok, ret_metadata):
 
         self._blk = blk
+        self._apri_json = apri_json
+        self._reencode = reencode
         self._exists_ok = exists_ok
         self._dups_ok = dups_ok
         self._ret_metadata = ret_metadata
-        self._apri_json = self._blk_key = self._compressed_key = self._filename = self._add_apri = None
+        self._blk_key = self._compressed_key = self._filename = self._add_apri = None
         super().__init__(reg)
 
     def type_value(self):
 
         super().type_value()
+        self._reg._check_blk_open_raise(self._blk, type(self).method_name)
         check_type(self._exists_ok, "exists_ok", bool)
         check_type(self._dups_ok, "dups_ok", bool)
         check_type(self._ret_metadata, "ret_metadata", bool)
+
+        if len(self._blk) > self._reg._max_length:
+            raise ValueError
+
+        startn_head = self._blk.startn() // self._reg._startn_tail_mod
+
+        if startn_head != self._reg.startn_head:
+            raise IndexError(
+                "The `startn` for the passed `Block` does not have the correct head:\n"
+                f"`tail_len`      : {self._reg._startn_tail_length}\n"
+                f"expected `head` : {self._reg._startn_head}\n"
+                f"`startn`        : {self._blk.startn()}\n"
+                f"`startn` head   : {startn_head}\n"
+                "Please see the method `set_startn_info` to troubleshoot this error."
+            )
 
     def pre(self, r_txn):
 
         try:
 
-            if reencode:
-                apri_json = self._relational_encode_info(apri, r_txn)
+            if self._reencode:
+                self._apri_json = self._reg._relational_encode_info(self._blk.apri(), r_txn)
 
         except DataNotFoundError:
-            add_apri = True
+            self._add_apri = True
 
         else:
 
-            apri_id_key = Register._get_apri_id_key(apri_json)
-            add_apri = not Register._disk_apri_key_exists(apri_id_key, r_txn)
+            apri_id_key = Register._get_apri_id_key(self._apri_json)
+            self._add_apri = not Register._disk_apri_key_exists(apri_id_key, r_txn)
 
-        filename = random_unique_filename(self._local_dir, suffix = type(self).file_suffix, length = 6)
+        self._filename = random_unique_filename(self._reg._local_dir, suffix = type(self._reg).file_suffix, length = 6)
+        apri = self._blk.apri()
+        startn = self._blk.startn()
+        length = len(self._blk)
 
-        if not add_apri:
+        if not self._add_apri:
 
-            blk_key, compressed_key = self._get_disk_blk_keys(apri, apri_json, False, startn, length, r_txn)
+            self._blk_key, self._compressed_key = self._reg._get_disk_blk_keys(
+                apri, self._apri_json, False, startn, length, r_txn
+            )
 
-            if not exists_ok and r_txn_has_key(blk_key, r_txn):
+            if not self._exists_ok and r_txn_has_key(self._blk_key, r_txn):
                 raise DataExistsError(
                     f"Duplicate `Block` with the following data already exists in this `Register`: {apri}, startn = "
                     f"{startn}, length = {length}."
                 )
 
-            if not dups_ok:
+            if not self._dups_ok:
 
-                prefix = self._intervals_pre(apri, apri_json, False, r_txn)
+                prefix = self._reg._intervals_pre(apri, self._apri_json, False, r_txn)
                 int1 = (startn, length)
 
-                for int2 in self._intervals_disk(prefix, r_txn):
+                for int2 in self._reg._intervals_disk(prefix, r_txn):
 
                     if intervals_overlap(int1, int2):
                         raise DataExistsError(
@@ -101,15 +127,23 @@ class AddDiskBlk(RegisterWriteMethod, method_name = "add_disk_blk"):
                         )
 
         else:
-            blk_key = compressed_key = None
+            self._blk_key = self._compressed_key = None
 
         if length == 0:
-            warnings.warn(f"Added a length 0 disk `Block` to {self}.\n{apri}, startn = {startn}")
-
-        return blk_key, compressed_key, filename, add_apri
+            warnings.warn(f"Added a length 0 disk `Block`.\n{apri}\nstartn = {startn}\n{self._reg}")
 
     def disk(self, rrw_txn):
-        pass
+
+        apri = self._blk.apri()
+
+        if self._add_apri:
+
+            self._reg._add_apri_disk(apri, [], False, rrw_txn)
+            blk_key, compressed_key = self._reg._get_disk_blk_keys(apri, None, True, startn, length, rw_txn)
+
+        filename_bytes = self._filename.name.encode("ASCII")
+        rw_txn.put(blk_key, filename_bytes)
+        rw_txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
 
     def disk2(self):
         pass
@@ -117,8 +151,49 @@ class AddDiskBlk(RegisterWriteMethod, method_name = "add_disk_blk"):
     def error(self, rrw_txn, rw_txn, e):
         pass
 
-class AppendDiskBlk(AddDiskBlk):
-    pass
+class AppendDiskBlk(AddDiskBlk, method_name = "append_disk_blk"):
+
+    def pre(self, r_txn):
+
+        apri = self._blk.apri()
+        startn = self._blk.startn()
+        length = len(self._blk)
+
+        try:
+
+            if self._reencode:
+                self._apri_json = self._reg._relational_encode_info(apri, r_txn)
+
+        except DataNotFoundError:
+            add_apri = True
+
+        else:
+
+            apri_id_key = Register._get_apri_id_key(self._apri_json)
+            add_apri = not Register._disk_apri_key_exists(apri_id_key, r_txn)
+
+        self._filename = random_unique_filename(self._reg._local_dir, suffix = type(self._reg).file_suffix, length = 6)
+
+        if not add_apri:
+
+            try:
+                prefix = self._reg._maxn_pre(apri, self._apri_json, False, r_txn)
+
+            except DataNotFoundError: # if apri has no disk blks (used passed startn)
+                pass
+
+            else:
+                startn = self._reg._maxn_disk(prefix, r_txn) + 1
+
+            self._blk_key, self._compressed_key = self._reg._get_disk_blk_keys(
+                apri, self._apri_json, False, startn, length, r_txn
+            )
+
+        else:
+            self._blk_key = self._compressed_key = None
+
+        if length == 0:
+            warnings.warn(f"Added a length 0 disk `Block`.\n{apri}\nstartn = {startn}\n{self._reg}")
 
 class RmvDiskBlk(RegisterWriteMethod):
     pass

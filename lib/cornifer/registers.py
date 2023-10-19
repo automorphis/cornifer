@@ -14,6 +14,7 @@
 """
 import itertools
 import json
+import multiprocessing
 import pickle
 import shutil
 import warnings
@@ -35,11 +36,11 @@ from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
     write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int
-from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleTransaction, is_transaction, \
-    num_open_readers_accurate, r_txn_prefix_iter, r_txn_count_keys
+from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleTransaction,  num_open_readers_accurate, \
+    r_txn_prefix_iter, r_txn_count_keys
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
-    REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, TMP_DIR_FILEPATH, WRITE_DB_FILEPATH, WRITE_DB_FILEPATH
+    REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, TMP_DIR_FILEPATH, WRITE_DB_FILEPATH
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _NO_DEBUG = 0
@@ -69,9 +70,7 @@ _APRI_ID_KEY_PREFIX_LEN    = len(_APRI_ID_KEY_PREFIX)
 _ID_APRI_KEY_PREFIX_LEN    = len(_ID_APRI_KEY_PREFIX)
 _COMPRESSED_KEY_PREFIX_LEN = len(_COMPRESSED_KEY_PREFIX)
 _APOS_KEY_PREFIX_LEN       = len(_APOS_KEY_PREFIX)
-
 _IS_NOT_COMPRESSED_VAL     = b""
-
 _SUB_VAL                   = b""
 
 #################################
@@ -653,10 +652,6 @@ class Register(ABC):
         self.compress_elapsed = 0
         self.decompress_elapsed = 0
 
-    @contextmanager
-    def pool(self):
-        pass
-
     def set_tmp_dir(self, tmp_dir):
 
         tmp_dir = resolve_path(Path(tmp_dir))
@@ -876,6 +871,17 @@ class Register(ABC):
 
         finally:
             self.__dict__[elapsed_name] += time() - start_time
+
+    #################################
+    #    PUBLIC PARALLEL METHODS    #
+
+    # @contextmanager
+    # def pool(self, num_procs):
+    #
+    #     self._check_not_open_raise("pool")
+    #
+    #     with multiprocessing.get_context("spawn").Pool(num_procs) as pool:
+    #         yield pool
 
     #################################
     #      PROTEC INFO METHODS      #

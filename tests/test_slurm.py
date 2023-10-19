@@ -347,6 +347,9 @@ class TestSlurm(unittest.TestCase):
                 apri = ApriInfo(i = i)
                 print(apri, reg.apos(apri))
 
+        stall_indices = [None] * num_processes
+        stall_indices[1] = 2 * num_processes + 1
+
         with reg.open(readonly = True):
 
             for i in range(num_apri):
@@ -360,12 +363,22 @@ class TestSlurm(unittest.TestCase):
                     0,
                     reg.num_blks(apri)
                 )
+                stall_index = stall_indices[i % num_processes]
 
-                if i % num_processes == 1 and i >= 2 * num_processes + 1:
+                if stall_index is not None and i >= stall_index:
                     self.assertEqual(
                         AposInfo(i = i + 1),
                         reg.apos(apri)
                     )
+
+                elif stall_index is not None:
+                    self.assertEqual(
+                        AposInfo(i = i + 2),
+                        reg.apos(apri)
+                    )
+
+                elif AposInfo(i = i + 1) == reg.apos(apri):
+                    stall_indices[i % num_processes] = i
 
                 else:
                     self.assertEqual(
@@ -392,12 +405,11 @@ class TestSlurm(unittest.TestCase):
 
         # this one is forced to crash due to low time limit
         # (The reader of `cornifer.registers.Register.set_apos` will sleep for a long time)
-        reg = type(self).reg
         slurm_test_main_filename = slurm_tests_filename / 'test3d.py'
         running_max_sec = 60
         slurm_time = running_max_sec + 1
-        slurm_array_task_max = 5
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, str(num_apri))
+        slurm_array_task_max = 15
+        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{num_apri} {slurm_time - 10}")
         print("Submitting test batch #6...")
         self.submit_batch()
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
