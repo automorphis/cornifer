@@ -458,8 +458,9 @@ class Register(ABC):
 
             if con is None:
                 raise TypeError(
-                    f"`Register` is not aware of a subclass called `{cls_name}`. Please be sure that `{cls_name}` "
-                    f"properly subclasses `Register` and that `{cls_name}` is in the namespace by importing it."
+                    f"Cornifer is not aware of a `Register` subclass called `{cls_name}`. Please be sure that "
+                    f"`{cls_name}` properly subclasses `Register` and that `{cls_name}` is in the namespace by "
+                    f"importing it."
                 )
 
             shorthand = read_txt_file(local_dir / SHORTHAND_FILEPATH)
