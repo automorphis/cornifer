@@ -8,11 +8,10 @@ from cornifer import ApriInfo, load_shorthand, AposInfo
 import cornifer
 from cornifer._utilities.multiprocessing import start_with_timeout
 
-
 def f(test_home_dir, j, num_apri, num_processes):
 
     reg = load_shorthand("reg", test_home_dir)
-
+    print(j, flush=True)
     with reg.open() as reg:
 
         for i in range(j, num_apri, num_processes):
