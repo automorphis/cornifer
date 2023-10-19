@@ -395,13 +395,18 @@ class TestSlurm(unittest.TestCase):
                 list(reg[ApriInfo(hi = "hello"), :])
             )
 
+        with reg.open() as reg:
+
+            for i in range(num_apri):
+                reg.set_apos(ApriInfo(i = i), AposInfo(i = i + 2), exists_ok = True)
+
         # this one is forced to crash due to low time limit
         # (The reader of `cornifer.registers.Register.set_apos` will sleep for a long time)
         slurm_test_main_filename = slurm_tests_filename / 'test3d.py'
-        running_max_sec = 60
+        running_max_sec = 15
         slurm_time = running_max_sec + 1
-        slurm_array_task_max = 15
-        write_batch_file(slurm_time, slurm_array_task_max, slurm_test_main_filename, f"{num_apri} {slurm_time - 10}")
+        num_processes = 15
+        write_batch_file(slurm_time, num_processes, slurm_test_main_filename, f"{num_apri} {slurm_time - 10}")
         print("Submitting test batch #3d...")
         self.submit_batch()
         self.wait_till_running(allocation_max_sec, allocation_query_sec)
@@ -431,7 +436,7 @@ class TestSlurm(unittest.TestCase):
                     reg.num_blks(apri)
                 )
 
-                if i % slurm_array_task_max == 1 and i >= 10 * slurm_array_task_max:
+                if i % num_processes == 1 and i >= 10 * num_processes + 1:
                     self.assertEqual(
                         AposInfo(i = i + 2),
                         reg.apos(apri)
