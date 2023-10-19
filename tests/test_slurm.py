@@ -197,10 +197,26 @@ class TestSlurm(unittest.TestCase):
             print(f"Running test #2 (running_max_sec = {running_max_sec}) (num_entries = {num_entries})...")
             self.wait_till_not_running(running_max_sec, running_query_sec)
             print(f"Checking test #2 (num_entries = {num_entries})...")
-            time.sleep(3)
             self.check_empty_error_file()
             self.assertTrue(test_home_dir.exists())
-            self.assertTrue((test_home_dir / db_filename).exists())
+            start = time.time()
+            max_num_queries = 20
+
+            for _ in range(max_num_queries):
+
+                try:
+                    self.assertTrue((test_home_dir / db_filename).exists())
+
+                except AssertionError:
+                    time.sleep(0.5)
+
+                else:
+                    break
+
+            else:
+                raise AssertionError
+
+            print(time.time() - start)
             db = lmdb.open(str(test_home_dir / db_filename))
 
             try:

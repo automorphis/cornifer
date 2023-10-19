@@ -76,4 +76,3 @@ if __name__ == "__main__":
     print(perm_db_filepath.exists())
     print(perm_db_filepath)
     print(list(perm_db_filepath.iterdir()))
-    time.sleep(3)
