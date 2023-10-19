@@ -36,9 +36,12 @@ if __name__ == "__main__":
     reg.make_tmp_db()
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
+    print(0)
 
     for j in range(num_processes):
         procs.append(mp_ctx.Process(target = f, args = (test_home_dir, j, num_apri, num_processes)))
+
+    print(-1)
 
     start_with_timeout(procs, timeout + start - time.time())
 
