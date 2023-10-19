@@ -339,14 +339,6 @@ class TestSlurm(unittest.TestCase):
         time.sleep(slurm_time + timeout_extra_wait_sec + 10)
         print("Checking test #3c...")
         self.check_empty_error_file()
-
-        with reg.open(readonly = True):
-
-            for i in range(num_apri):
-
-                apri = ApriInfo(i = i)
-                print(apri, reg.apos(apri))
-
         stall_indices = [None] * num_processes
         stall_indices[1] = 2 * num_processes + 1
 
@@ -417,6 +409,13 @@ class TestSlurm(unittest.TestCase):
         time.sleep(slurm_time + timeout_extra_wait_sec)
         print("Checking test #3d...")
         self.check_empty_error_file()
+
+        with reg.open(readonly = True):
+
+            for i in range(num_apri):
+
+                apri = ApriInfo(i = i)
+                print(apri, reg.apos(apri))
 
         with reg.open(readonly = True):
 
