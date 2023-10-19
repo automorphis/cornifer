@@ -12,7 +12,6 @@ import lmdb
 from cornifer import NumpyRegister, ApriInfo, AposInfo
 from cornifer._utilities import random_unique_filename
 from cornifer._utilities.lmdb import open_lmdb, r_txn_prefix_iter
-from intpolynomials import IntPolynomialRegister
 
 test_home_dir = Path.home() / "cornifer_slurm_testcases"
 python_command = "sage -python"
