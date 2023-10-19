@@ -654,6 +654,8 @@ class Register(ABC):
 
     def set_tmp_dir(self, tmp_dir):
 
+        self._check_open_raise("set_tmp_dir")
+        self._check_readwrite_raise("set_tmp_dir")
         tmp_dir = resolve_path(Path(tmp_dir))
 
         if not self._tmp_dir.is_dir():
@@ -664,7 +666,8 @@ class Register(ABC):
 
     def make_tmp_db(self):
 
-        self._check_not_open_raise("make_tmp_db")
+        self._check_open_raise("make_tmp_db")
+        self._check_readwrite_raise("make_tmp_db")
         new_write_db_filepath = random_unique_filename(self._tmp_dir)
         write_txt_file(str(new_write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
         self._write_db_filepath = new_write_db_filepath
