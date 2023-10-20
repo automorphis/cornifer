@@ -12,7 +12,7 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
-
+import hashlib
 import random
 import re
 import string
@@ -85,6 +85,26 @@ def read_txt_file(file):
 
     with file.open("r") as fh:
         return fh.read()[_TXT_FILE_WARNING_MESSAGE_LEN : ]
+
+def hash_file(file, algo = None):
+
+    if algo is None:
+        algo = hashlib.sha256()
+
+    buffer_size = 2 ** 10
+
+    with Path(file).open('rb') as f:
+
+        while True:
+
+            data = f.read(buffer_size)
+
+            if not data:
+                break
+
+            algo.update(data)
+
+    return algo
 
 # def safe_overwrite_file(filename, new_content):
 #     tempfile = random_unique_filename(filename.parent)

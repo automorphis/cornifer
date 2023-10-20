@@ -14,13 +14,14 @@
 """
 
 import re
+import time
 import warnings
 from pathlib import Path
 
 from .errors import RegisterError, DataExistsError, DataNotFoundError
 from .registers import Register
-from .regfilestructure import LOCAL_DIR_CHARS, check_reg_structure
-from ._utilities import resolve_path
+from .regfilestructure import LOCAL_DIR_CHARS, check_reg_structure, DIGEST_FILEPATH
+from ._utilities import resolve_path, read_txt_file
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _ARGS_TYPES = {
@@ -88,7 +89,7 @@ def set_search_args(**kwargs):
 
         _args[key] = val
 
-def load_shorthand(shorthand, saves_dir = None):
+def load_shorthand(shorthand, saves_dir = None, wait_for_latency = False, timeout = 60):
 
     if saves_dir is None:
         saves_dir = Path.cwd()
@@ -101,46 +102,50 @@ def load_shorthand(shorthand, saves_dir = None):
         if not saves_dir.is_absolute():
             saves_dir = Path.cwd() / saves_dir
 
+    start = time.time()
 
-    ret = None
-    dirs = []
+    while True:
 
-    for d in saves_dir.iterdir():
+        ret = None
+        dirs = []
 
-        dirs.append(d)
+        for d in saves_dir.iterdir():
 
-        if d.is_dir():
+            dirs.append(d)
 
-            try:
-                check_reg_structure(d)
+            if d.is_dir():
 
-            except FileNotFoundError:
-                pass
+                try:
+                    check_reg_structure(d)
 
-            else:
+                except FileNotFoundError:
+                    pass
 
-                reg = Register._from_local_dir(d)
+                else:
 
-                if reg.shorthand() == shorthand:
+                    reg = Register._from_local_dir(d)
 
-                    if ret is not None:
-                        raise DataExistsError(
-                            f"More than one `Register` found with shorthand `{shorthand}` (you can also use the "
-                            f"function `load_ident` to load a `Register`) :\n{str(reg)}\n{str(ret)}\n{dirs}")
+                    if reg.shorthand() == shorthand:
 
-                    else:
-                        ret = reg
+                        if ret is not None:
+                            raise DataExistsError(
+                                f"More than one `Register` found with shorthand `{shorthand}` (you can also use the "
+                                f"function `load_ident` to load a `Register`) :\n{str(reg)}\n{str(ret)}\n{dirs}")
 
-    if ret is not None:
-        return ret
+                        else:
+                            ret = reg
 
-    else:
-        raise DataNotFoundError(f"No `Register` found with shorthand `{shorthand}`.")
+        if ret is not None:
 
+            if wait_for_latency:
+                _wait_for_latency(ret.ident(), timeout)
 
+            return ret
 
+        elif not wait_for_latency or time.time() - start >= timeout:
+            raise DataNotFoundError(f"No `Register` found with shorthand `{shorthand}`.")
 
-def load_ident(identifier):
+def load_ident(identifier, wait_for_latency = False, timeout = 60):
 
     if not isinstance(identifier, (str, Path)):
         raise TypeError("`ident` must be a string or a `pathlib.Path`.")
@@ -432,4 +437,25 @@ def _val_match(search_val, apri_val):
             return search_val in apri_val
     else:
         return search_val == apri_val
-        
+
+def _wait_for_latency(ident, timeout):
+
+    digest_file_wait_int = 0.5
+    digest_wait_int = 5
+    digest_filepath = ident / DIGEST_FILEPATH
+    start = time.time()
+
+    while time.time() - start < timeout:
+
+        if digest_filepath.exists():
+            break
+
+        else:
+            time.sleep(digest_file_wait_int)
+
+    else:
+        raise TimeoutError
+
+    while time.time() - start < timeout:
+
+        digest = read_txt_file(digest_filepath)

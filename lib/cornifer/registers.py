@@ -35,12 +35,12 @@ from .blocks import Block, MemmapBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
-    write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int
+    write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int, hash_file
 from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleTransaction,  num_open_readers_accurate, \
     r_txn_prefix_iter, r_txn_count_keys
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
-    REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, TMP_DIR_FILEPATH, WRITE_DB_FILEPATH
+    REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, WRITE_DB_FILEPATH, DATA_FILEPATH, DIGEST_FILEPATH
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _NO_DEBUG = 0
@@ -271,7 +271,7 @@ class Register(ABC):
     #################################
     #     PUBLIC INITIALIZATION     #
 
-    def __init__(self, dir, shorthand, msg, initial_reg_size = None, tmp_dir = None, use_custom_lock = False, _create = True):
+    def __init__(self, dir, shorthand, msg, initial_reg_size = None, use_custom_lock = False, _create = True):
         """
         :param dir: (type `str`) Directory where this `Register` is saved.
         :param shorthand: (type `str`) A word or short phrase describing this `Register`.
@@ -282,12 +282,6 @@ class Register(ABC):
         to this `Register`. If your `Register` exceeds `initial_reg_size`, then you can adjust the database size later
         via the method `increase_size`. If you are on a non-Windows system, there is no harm in setting this value to
         be very large (e.g. 1 TB).
-        :param tmp_dir: (type `str`) The default value is the same as `dir`. `tmp_dir` is where the `Register` database
-        is temporarily saved while it is `open`. LMDB, the database technology that cornifer uses, does not work on
-        remote filesystems (e.g. NFS). If you are running on NFS and have read/write access on a local filesystem, set
-        `tmp_dir` to the local filesystem root. Whenever you `open` this `Register`, the LMDB database will be
-        copied from `dir` to `tmp_dir`; when you close the `Register`, the LMDB database will be moved back from
-        `tmp_dir` to `dir`.
         :param use_custom_lock: (type `bool`, default `False`) Experimental.
         """
 
@@ -306,15 +300,6 @@ class Register(ABC):
         if not self.dir.is_dir():
             raise NotADirectoryError(f"The path `{str(self.dir)}` exists but is not a directory.")
 
-        if tmp_dir is not None:
-
-            self._tmp_dir = resolve_path(Path(tmp_dir))
-
-            if not self._tmp_dir.is_dir():
-                raise NotADirectoryError(f"The path `{str(tmp_dir)}` exists but is not a directory.")
-
-        else:
-            self._tmp_dir = self.dir
         # DATABASE #
         self._db = None
         self._msg_filepath = None # set by `Register._set_local_dir`
@@ -325,8 +310,9 @@ class Register(ABC):
         self._perm_db_filepath = None # ditto
         self._write_db_filepath = None # ditto
         self._db_map_size = initial_reg_size
-        self._db_map_size_filepath = None # set by `Register._set_local_dir`
+        self._db_map_size_filepath = None # ditto
         self._cls_filepath = None # ditto
+        self._digest_filepath = None # ditto
         self._use_custom_lock = use_custom_lock
         # ATTRIBUTES
         self._shorthand = shorthand
@@ -393,7 +379,6 @@ class Register(ABC):
             write_txt_file(self._version, local_dir / VERSION_FILEPATH)
             write_txt_file(str(type(self).__name__), local_dir / CLS_FILEPATH)
             write_txt_file(str(self._db_map_size), local_dir / MAP_SIZE_FILEPATH)
-            write_txt_file(str(self._tmp_dir), local_dir / TMP_DIR_FILEPATH)
             write_txt_file("", local_dir / WRITE_DB_FILEPATH) # this file has to exist prior to `_set_local_dir` call
             self._set_local_dir(local_dir)
             write_txt_file(str(self._write_db_filepath), local_dir / WRITE_DB_FILEPATH, True)
@@ -460,8 +445,7 @@ class Register(ABC):
             shorthand = read_txt_file(local_dir / SHORTHAND_FILEPATH)
             msg = read_txt_file(local_dir / MSG_FILEPATH)
             map_size = int(read_txt_file(local_dir / MAP_SIZE_FILEPATH))
-            tmp_dir = read_txt_file(local_dir / TMP_DIR_FILEPATH)
-            reg = con(local_dir.parent, shorthand, msg, map_size, tmp_dir, False, _create = False)
+            reg = con(local_dir.parent, shorthand, msg, map_size, False, _create = False)
             reg._set_local_dir(local_dir)
             reg._version = read_txt_file(local_dir / VERSION_FILEPATH)
             return reg
@@ -655,24 +639,11 @@ class Register(ABC):
         self.compress_elapsed = 0
         self.decompress_elapsed = 0
 
-    def set_tmp_dir(self, tmp_dir):
-
-        self._check_open_raise("set_tmp_dir")
-        self._check_readwrite_raise("set_tmp_dir")
-        tmp_dir = resolve_path(Path(tmp_dir))
-
-        if not self._tmp_dir.is_dir():
-            raise NotADirectoryError(f"The path `{tmp_dir}` exists but is not a directory.")
-
-        write_txt_file(str(tmp_dir), self._local_dir / TMP_DIR_FILEPATH, True)
-        self._tmp_dir = tmp_dir
-
     @contextmanager
-    def tmp_db(self):
+    def tmp_db(self, tmp_dir):
 
         self._check_not_open_raise("make_tmp_db")
-        self._check_readwrite_raise("make_tmp_db")
-        new_write_db_filepath = random_unique_filename(self._tmp_dir)
+        new_write_db_filepath = random_unique_filename(tmp_dir)
         self._write_db_filepath = new_write_db_filepath
 
         try:
@@ -699,13 +670,13 @@ class Register(ABC):
         finally:
 
             self._write_db_filepath = self._perm_db_filepath
+            write_txt_file(str(self._write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
             self.update_perm_db()
 
-    def update_perm_db(self):
+    def update_perm_db(self, ):
 
         self._check_not_open_raise("update_perm_db")
-        self._check_readwrite_raise("update_perm_db")
-        tmp_filename = self._perm_db_filepath.parent / (Path(DATABASE_FILEPATH).name + "_tmp")
+        tmp_filename = self._perm_db_filepath.parent / (DATABASE_FILEPATH.name + "_tmp")
 
         if tmp_filename.exists():
             shutil.rmtree(tmp_filename)
@@ -713,9 +684,20 @@ class Register(ABC):
         shutil.copytree(self._write_db_filepath, tmp_filename)
         shutil.rmtree(self._perm_db_filepath)
         tmp_filename.rename(self._perm_db_filepath)
+        write_txt_file(self._digest(), self._digest_filepath, True)
 
     #################################
     #    PROTEC REGISTER METHODS    #
+
+    def _digest(self):
+
+        ret = hash_file(self._version_filepath)
+        hash_file(self._shorthand_filepath, ret)
+        hash_file(self._msg_filepath, ret)
+        hash_file(self._cls_filepath, ret)
+        hash_file(self._db_map_size_filepath, ret)
+        hash_file(self._perm_db_filepath / DATA_FILEPATH.name, ret)
+        return ret.hexdigest()
 
     def _approx_memory(self):
         # use only for debugging
@@ -890,6 +872,7 @@ class Register(ABC):
         self._cls_filepath = self._local_dir / CLS_FILEPATH
         self._shorthand_filepath = self._local_dir / SHORTHAND_FILEPATH
         self._db_map_size_filepath = self._local_dir / MAP_SIZE_FILEPATH
+        self._digest_filepath = self._local_dir / DIGEST_FILEPATH
 
     def _has_compatible_version(self):
         return self._version in COMPATIBLE_VERSIONS

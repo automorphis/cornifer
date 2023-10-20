@@ -22,10 +22,12 @@ VERSION_FILEPATH       = REG_FILENAME / "version.txt"
 SHORTHAND_FILEPATH     = REG_FILENAME / "shorthand.txt"
 MSG_FILEPATH           = REG_FILENAME / "message.txt"
 CLS_FILEPATH           = REG_FILENAME / "class.txt"
-DATABASE_FILEPATH      = REG_FILENAME / "database"
 MAP_SIZE_FILEPATH      = REG_FILENAME / "mapsize.txt"
-TMP_DIR_FILEPATH       = REG_FILENAME / "tmpdir.txt"
 WRITE_DB_FILEPATH      = REG_FILENAME / "writedb.txt"
+DIGEST_FILEPATH        = REG_FILENAME / "digest.txt"
+DATABASE_FILEPATH      = REG_FILENAME / "database"
+DATA_FILEPATH          = DATABASE_FILEPATH / "data.mdb"
+LOCK_FILEPATH          = DATABASE_FILEPATH / "lock.mdb"
 
 LOCAL_DIR_CHARS        = BASE52
 COMPRESSED_FILE_SUFFIX = ".zip"
@@ -45,7 +47,7 @@ def check_reg_structure(local_dir):
     if not local_dir.is_dir():
         problems.append(str(local_dir))
 
-    for path in [VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, MAP_SIZE_FILEPATH, TMP_DIR_FILEPATH, WRITE_DB_FILEPATH]:
+    for path in [VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, MAP_SIZE_FILEPATH, WRITE_DB_FILEPATH]:
         if not (local_dir / path).is_file():
             problems.append(str(local_dir / path))
 
