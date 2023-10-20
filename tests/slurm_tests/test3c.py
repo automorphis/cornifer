@@ -33,14 +33,10 @@ if __name__ == "__main__":
     timeout = int(sys.argv[4])
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = load_shorthand("reg", test_home_dir)
-
-    with reg.open() as reg:
-        reg.set_tmp_dir(tmp_filename)
-
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
-    with reg.tmp_db():
+    with reg.tmp_db(tmp_filename):
 
         for j in range(num_processes):
             procs.append(mp_ctx.Process(target = f, args = (test_home_dir, j, num_apri, num_processes)))
@@ -49,6 +45,3 @@ if __name__ == "__main__":
 
         for proc in procs:
             proc.join()
-
-    with reg.open() as reg:
-        reg.set_tmp_dir(reg.dir)
