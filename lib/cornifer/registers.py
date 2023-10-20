@@ -670,7 +670,7 @@ class Register(ABC):
     @contextmanager
     def tmp_db(self):
 
-        self._check_open_raise("make_tmp_db")
+        self._check_not_open_raise("make_tmp_db")
         self._check_readwrite_raise("make_tmp_db")
         new_write_db_filepath = random_unique_filename(self._tmp_dir)
         self._write_db_filepath = new_write_db_filepath
@@ -684,7 +684,7 @@ class Register(ABC):
 
             except:
 
-                shutil.rmtree(new_write_db_filepath) # copytree could partially write
+                shutil.rmtree(new_write_db_filepath, ignore_errors = True) # copytree could partially write
                 write_txt_file(str(self._perm_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
                 raise
 
@@ -699,11 +699,14 @@ class Register(ABC):
         finally:
 
             self._write_db_filepath = self._perm_db_filepath
-            self.update_perm_db()
+
+            with self.open() as reg:
+                reg.update_perm_db()
 
     def update_perm_db(self):
 
         self._check_open_raise("update_perm_db")
+        self._check_readwrite_raise("update_perm_db")
         tmp_filename = self._perm_db_filepath.parent / (Path(DATABASE_FILEPATH).name + "_tmp")
 
         if tmp_filename.exists():

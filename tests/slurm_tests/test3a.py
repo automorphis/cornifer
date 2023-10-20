@@ -36,20 +36,20 @@ if __name__ == "__main__":
     apri = ApriInfo(hi = "hello")
     reg = load_shorthand("reg", test_home_dir)
     reg.set_tmp_dir(tmp_filename)
-    reg.make_tmp_db()
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
-    for i in range(num_processes):
-        procs.append(mp_ctx.Process(target = f, args = (test_home_dir, i, total_blks, num_processes, blk_size, total_indices, apri)))
+    with reg.open() as reg:
 
-    start_with_timeout(procs, timeout)
+        with reg.tmp_db() as reg:
 
-    for proc in procs:
-        proc.join()
+            for i in range(num_processes):
+                procs.append(mp_ctx.Process(target = f, args = (test_home_dir, i, total_blks, num_processes, blk_size, total_indices, apri)))
 
-    reg.update_perm_db()
-    reg.set_tmp_dir(reg.dir)
+            start_with_timeout(procs, timeout)
+
+            for proc in procs:
+                proc.join()
 
 
 
