@@ -138,7 +138,7 @@ def load_shorthand(shorthand, saves_dir = None, wait_for_latency = False, timeou
         if ret is not None:
 
             if wait_for_latency:
-                _wait_for_latency(ret.ident(), timeout)
+                _wait_for_latency(ret.ident(), ret, timeout)
 
             return ret
 
@@ -438,7 +438,7 @@ def _val_match(search_val, apri_val):
     else:
         return search_val == apri_val
 
-def _wait_for_latency(ident, timeout):
+def _wait_for_latency(ident, reg, timeout):
 
     digest_file_wait_int = 0.5
     digest_wait_int = 5
@@ -459,3 +459,11 @@ def _wait_for_latency(ident, timeout):
     while time.time() - start < timeout:
 
         digest = read_txt_file(digest_filepath)
+
+        if reg._digest() == digest:
+            return
+
+        else:
+            time.sleep(digest_wait_int)
+
+    raise TimeoutError
