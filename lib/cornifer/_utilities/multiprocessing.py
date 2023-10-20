@@ -40,7 +40,7 @@ def make_sigterm_raise_KeyboardInterrupt():
 def slurm_timecode_to_timedelta(timecode):
 
     num_colons = timecode.count(':')
-    has_days = '' in timecode
+    has_days = '-' in timecode
 
     if num_colons == 1:
 
