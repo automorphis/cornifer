@@ -32,8 +32,10 @@ if __name__ == "__main__":
     timeout = int(sys.argv[4])
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = load_shorthand("reg", test_home_dir)
-    reg.set_tmp_dir(tmp_filename)
-    reg.make_tmp_db()
+
+    with reg.open() as reg:
+        reg.set_tmp_dir(tmp_filename)
+
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
