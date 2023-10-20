@@ -9,7 +9,7 @@ import time
 
 import lmdb
 
-from cornifer import NumpyRegister, ApriInfo, AposInfo
+from cornifer import NumpyRegister, ApriInfo, AposInfo, load_shorthand
 from cornifer._utilities import random_unique_filename
 from cornifer._utilities.lmdb import open_lmdb, r_txn_prefix_iter
 
@@ -265,6 +265,7 @@ class TestSlurm(unittest.TestCase):
         self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #3a...")
         self.check_empty_error_file()
+        reg = load_shorthand("reg", test_home_dir, True)
 
         with reg.open(readonly = True):
 
