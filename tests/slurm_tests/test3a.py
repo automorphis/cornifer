@@ -35,14 +35,10 @@ if __name__ == "__main__":
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")
     reg = load_shorthand("reg", test_home_dir)
-
-    with reg.open() as reg:
-        reg.set_tmp_dir(tmp_filename)
-
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
-    with reg.tmp_db():
+    with reg.tmp_db(tmp_filename):
 
         for i in range(num_processes):
             procs.append(mp_ctx.Process(target = f, args = (test_home_dir, i, total_blks, num_processes, blk_size, total_indices, apri)))
@@ -51,9 +47,6 @@ if __name__ == "__main__":
 
         for proc in procs:
             proc.join()
-
-    with reg.open() as reg:
-        reg.set_tmp_dir(reg.dir)
 
 
 
