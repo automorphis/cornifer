@@ -299,6 +299,7 @@ class TestSlurm(unittest.TestCase):
         self.wait_till_not_running(running_max_sec, running_query_sec)
         print("Checking test #3b...")
         self.check_empty_error_file()
+        reg = load_shorthand("reg", test_home_dir, True)
 
         with reg.open(readonly = True):
 
@@ -350,6 +351,7 @@ class TestSlurm(unittest.TestCase):
         self.check_empty_error_file()
         stall_indices = [None] * num_processes
         stall_indices[1] = 2 * num_processes + 1
+        reg = load_shorthand("reg", test_home_dir, True)
 
         with reg.open(readonly = True):
 
@@ -423,6 +425,7 @@ class TestSlurm(unittest.TestCase):
         time.sleep(slurm_time + timeout_extra_wait_sec)
         print("Checking test #3d...")
         self.check_empty_error_file()
+        reg = load_shorthand("reg", test_home_dir, True)
 
         with reg.open(readonly = True):
 

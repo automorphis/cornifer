@@ -6,23 +6,25 @@ import sys
 from pathlib import Path
 
 from cornifer import ApriInfo, load_shorthand, Block
-from cornifer._utilities.multiprocessing import start_with_timeout
+from cornifer._utilities.multiprocessing import start_with_timeout, make_sigterm_raise_KeyboardInterrupt
 
 
 def f(test_home_dir, i, total_blks, num_processes, blk_size, total_indices, apri):
 
-    reg = load_shorthand("reg", test_home_dir)
+    with make_sigterm_raise_KeyboardInterrupt():
 
-    with reg.open() as reg:
+        reg = load_shorthand("reg", test_home_dir)
 
-        for blk_index in range(i, total_blks, num_processes):
+        with reg.open() as reg:
 
-            start_index = blk_index * blk_size
-            stop_index = min((blk_index + 1) * blk_size, total_indices)
-            seg = list(n ** 2 for n in range(start_index, stop_index))
+            for blk_index in range(i, total_blks, num_processes):
 
-            with Block(seg, apri, start_index) as blk:
-                reg.add_disk_blk(blk)
+                start_index = blk_index * blk_size
+                stop_index = min((blk_index + 1) * blk_size, total_indices)
+                seg = list(n ** 2 for n in range(start_index, stop_index))
+
+                with Block(seg, apri, start_index) as blk:
+                    reg.add_disk_blk(blk)
 
 if __name__ == "__main__":
 
