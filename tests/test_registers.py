@@ -15,7 +15,7 @@ from cornifer._utilities import random_unique_filename, intervals_overlap
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
     DecompressionError, RegisterRecoveryError, DataExistsError
 from cornifer.regfilestructure import REG_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
-    DATABASE_FILEPATH, MAP_SIZE_FILEPATH, TMP_DIR_FILEPATH
+    DATABASE_FILEPATH, MAP_SIZE_FILEPATH, TMP_DIR_FILEPATH, WRITE_DB_FILEPATH
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
     _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG, \
@@ -304,6 +304,7 @@ class Test_Register(TestCase):
         (local_dir / DATABASE_FILEPATH).mkdir(exist_ok = False)
         (local_dir / MAP_SIZE_FILEPATH).touch(exist_ok = False)
         (local_dir / TMP_DIR_FILEPATH).touch(exist_ok = False)
+        (local_dir / WRITE_DB_FILEPATH).touch(exist_ok=False)
 
         try:
 
