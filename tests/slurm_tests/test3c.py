@@ -33,18 +33,22 @@ if __name__ == "__main__":
     timeout = int(sys.argv[4])
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = load_shorthand("reg", test_home_dir)
-    reg.set_tmp_dir(tmp_filename)
-    reg.make_tmp_db()
+
+    with reg.open() as reg:
+        reg.set_tmp_dir(tmp_filename)
+
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
-    for j in range(num_processes):
-        procs.append(mp_ctx.Process(target = f, args = (test_home_dir, j, num_apri, num_processes)))
+    with reg.tmp_db():
 
-    start_with_timeout(procs, timeout + start - time.time())
+        for j in range(num_processes):
+            procs.append(mp_ctx.Process(target = f, args = (test_home_dir, j, num_apri, num_processes)))
 
-    for proc in procs:
-        proc.join()
+        start_with_timeout(procs, timeout + start - time.time())
 
-    reg.update_perm_db()
-    reg.set_tmp_dir(reg.dir)
+        for proc in procs:
+            proc.join()
+
+    with reg.open() as reg:
+        reg.set_tmp_dir(reg.dir)

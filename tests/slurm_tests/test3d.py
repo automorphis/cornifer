@@ -36,20 +36,15 @@ if __name__ == "__main__":
     reg.make_tmp_db()
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
-    print(0)
 
-    for j in range(num_processes):
-        procs.append(mp_ctx.Process(target = f, args = (test_home_dir, j, num_apri, num_processes)))
+    with reg.tmp_db() as reg:
 
-    print(-1)
+        for j in range(num_processes):
+            procs.append(mp_ctx.Process(target = f, args = (test_home_dir, j, num_apri, num_processes)))
 
-    start_with_timeout(procs, timeout + start - time.time())
+        start_with_timeout(procs, timeout + start - time.time())
 
-    for proc in procs:
-        proc.join()
+        for proc in procs:
+            proc.join()
 
-    print(1)
-    reg.update_perm_db()
-    print(2)
     reg.set_tmp_dir(reg.dir)
-    print(3)
