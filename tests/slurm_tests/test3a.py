@@ -35,7 +35,10 @@ if __name__ == "__main__":
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")
     reg = load_shorthand("reg", test_home_dir)
-    reg.set_tmp_dir(tmp_filename)
+
+    with reg.open() as reg:
+        reg.set_tmp_dir(tmp_filename)
+
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 
