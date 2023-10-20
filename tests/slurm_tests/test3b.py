@@ -41,3 +41,5 @@ if __name__ == "__main__":
         for proc in procs:
             proc.join()
 
+    with reg.open() as reg:
+        reg.set_tmp_dir(reg.dir)
