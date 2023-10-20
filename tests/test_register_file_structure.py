@@ -4,7 +4,7 @@ from unittest import TestCase
 
 from cornifer._utilities import random_unique_filename
 from cornifer.regfilestructure import check_reg_structure, REG_FILENAME, VERSION_FILEPATH, \
-    MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH, MAP_SIZE_FILEPATH, TMP_DIR_FILEPATH
+    MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH, MAP_SIZE_FILEPATH, TMP_DIR_FILEPATH, WRITE_DB_FILEPATH
 
 SAVES_DIR = random_unique_filename(Path.home())
 
@@ -46,7 +46,7 @@ class Test_Register_File_Structure(TestCase):
 
         e = str(cm.exception)
 
-        for filepath in [VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH, MAP_SIZE_FILEPATH]:
+        for filepath in [VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH, MAP_SIZE_FILEPATH, WRITE_DB_FILEPATH]:
 
             filepath = str(local_dir / filepath)
             self.assertIn(filepath, e)
@@ -62,6 +62,7 @@ class Test_Register_File_Structure(TestCase):
         (local_dir / DATABASE_FILEPATH).mkdir(exist_ok = False)
         (local_dir / MAP_SIZE_FILEPATH).touch(exist_ok = False)
         (local_dir / TMP_DIR_FILEPATH).touch(exist_ok=False)
+        (local_dir / WRITE_DB_FILEPATH).touch(exist_ok=False)
 
         try:
             check_reg_structure(local_dir)

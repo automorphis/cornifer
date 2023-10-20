@@ -323,7 +323,7 @@ class Register(ABC):
         self._local_dir_bytes = None # ditto
         self._subreg_bytes = None # ditto
         self._perm_db_filepath = None # ditto
-        self._write_db_filepath = None # set by `Register._create` and `Register.make_tmp_db`
+        self._write_db_filepath = None # ditto
         self._db_map_size = initial_reg_size
         self._db_map_size_filepath = None # set by `Register._set_local_dir`
         self._cls_filepath = None # ditto
@@ -394,15 +394,9 @@ class Register(ABC):
             write_txt_file(str(type(self).__name__), local_dir / CLS_FILEPATH)
             write_txt_file(str(self._db_map_size), local_dir / MAP_SIZE_FILEPATH)
             write_txt_file(str(self._tmp_dir), local_dir / TMP_DIR_FILEPATH)
-
-            if self._tmp_dir != self.dir:
-                self._write_db_filepath = random_unique_filename(self._tmp_dir)
-
-            else:
-                self._write_db_filepath = local_dir / DATABASE_FILEPATH
-
-            write_txt_file(str(self._write_db_filepath), local_dir / WRITE_DB_FILEPATH)
+            write_txt_file("", local_dir / WRITE_DB_FILEPATH) # this file has to exist prior to `_set_local_dir` call
             self._set_local_dir(local_dir)
+            write_txt_file(str(self._write_db_filepath), local_dir / WRITE_DB_FILEPATH, True)
             self._db = open_lmdb(self._write_db_filepath, self._db_map_size, False)
 
             with self._db.begin(write = True) as rw_txn:
@@ -470,7 +464,6 @@ class Register(ABC):
             reg = con(local_dir.parent, shorthand, msg, map_size, tmp_dir, False, _create = False)
             reg._set_local_dir(local_dir)
             reg._version = read_txt_file(local_dir / VERSION_FILEPATH)
-            reg._write_db_filepath = Path(read_txt_file(local_dir / WRITE_DB_FILEPATH))
             return reg
 
     @staticmethod
@@ -674,14 +667,39 @@ class Register(ABC):
         write_txt_file(str(tmp_dir), self._local_dir / TMP_DIR_FILEPATH, True)
         self._tmp_dir = tmp_dir
 
-    def make_tmp_db(self):
+    @contextmanager
+    def tmp_db(self):
 
         self._check_open_raise("make_tmp_db")
         self._check_readwrite_raise("make_tmp_db")
         new_write_db_filepath = random_unique_filename(self._tmp_dir)
-        write_txt_file(str(new_write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
         self._write_db_filepath = new_write_db_filepath
-        shutil.copytree(self._perm_db_filepath, self._write_db_filepath)
+
+        try:
+
+            write_txt_file(str(self._write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
+
+            try:
+                shutil.copytree(self._perm_db_filepath, self._write_db_filepath)
+
+            except:
+
+                shutil.rmtree(new_write_db_filepath) # copytree could partially write
+                write_txt_file(str(self._perm_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
+                raise
+
+        except:
+
+            self._write_db_filepath = self._perm_db_filepath
+            raise
+
+        try:
+            yield self
+
+        finally:
+
+            self._write_db_filepath = self._perm_db_filepath
+            self.update_perm_db()
 
     def update_perm_db(self):
 
@@ -864,6 +882,7 @@ class Register(ABC):
         self._local_dir = local_dir
         self._local_dir_bytes = str(self._local_dir).encode("ASCII")
         self._perm_db_filepath = self._local_dir / DATABASE_FILEPATH
+        self._write_db_filepath = self._perm_db_filepath
         self._subreg_bytes = _SUB_KEY_PREFIX + self._local_dir_bytes
         self._version_filepath = self._local_dir / VERSION_FILEPATH
         self._msg_filepath = self._local_dir / MSG_FILEPATH

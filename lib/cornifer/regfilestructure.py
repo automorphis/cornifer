@@ -25,7 +25,7 @@ CLS_FILEPATH           = REG_FILENAME / "class.txt"
 DATABASE_FILEPATH      = REG_FILENAME / "database"
 MAP_SIZE_FILEPATH      = REG_FILENAME / "mapsize.txt"
 TMP_DIR_FILEPATH       = REG_FILENAME / "tmpdir.txt"
-WRITE_DB_FILEPATH     = REG_FILENAME / "writedb.txt"
+WRITE_DB_FILEPATH      = REG_FILENAME / "writedb.txt"
 
 LOCAL_DIR_CHARS        = BASE52
 COMPRESSED_FILE_SUFFIX = ".zip"
