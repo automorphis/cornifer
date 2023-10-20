@@ -699,13 +699,11 @@ class Register(ABC):
         finally:
 
             self._write_db_filepath = self._perm_db_filepath
-
-            with self.open() as reg:
-                reg.update_perm_db()
+            self.update_perm_db()
 
     def update_perm_db(self):
 
-        self._check_open_raise("update_perm_db")
+        self._check_not_open_raise("update_perm_db")
         self._check_readwrite_raise("update_perm_db")
         tmp_filename = self._perm_db_filepath.parent / (Path(DATABASE_FILEPATH).name + "_tmp")
 
