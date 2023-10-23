@@ -12,8 +12,16 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
+import inspect
+import multiprocessing
+import time
+import warnings
+
 from contextlib import contextmanager, ExitStack, AbstractContextManager
 
+from ._utilities import check_type, check_return_int, check_type_None_default, check_Path_None_default, \
+    check_return_int_None_default, resolve_path
+from ._utilities.multiprocessing import start_with_timeout
 from .info import ApriInfo, AposInfo
 from .blocks import Block
 from .registers import Register, PickleRegister, NumpyRegister
@@ -35,7 +43,8 @@ __all__ = [
     "DecompressionError",
     "RegisterError",
     "openregs",
-    "openblks"
+    "openblks",
+    "parallelize"
 ]
 
 @contextmanager
@@ -138,7 +147,146 @@ def openblks(*blks):
         ):
             raise TypeError(f"parameter {i} must be of type `Block`, not `{type(blk)}`")
 
-    stack = ExitStack()
-
-    with stack:
+    with ExitStack() as stack:
         yield tuple([stack.enter_context(blk) for blk in blks])
+
+def _wrap_target(target, num_procs, proc_index, args, regs, num_active_txns, txn_wait_event):
+
+    for reg in regs:
+        reg._set_txn_shared_data(num_active_txns, txn_wait_event)
+
+    target(num_procs, proc_index, *args)
+
+def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, regs = (), update_period = None, update_timeout = 60):
+
+    start = time.time()
+    num_procs = check_return_int(num_procs, "num_procs")
+
+    if not callable(target):
+        return TypeError("`target` must be a function.")
+
+    check_type(args, "args", tuple)
+    timeout = check_return_int(timeout, "timeout")
+    check_Path_None_default(tmp_dir, "tmp_dir", None)
+    check_type(regs, "regs", tuple)
+    update_period = check_return_int_None_default(update_period, "update_period", None)
+    update_timeout = check_return_int(update_timeout, "update_timeout")
+
+    if num_procs <= 0:
+        raise ValueError("`num_procs` must be positive.")
+
+    num_params = len(inspect.signature(target).parameters)
+
+    if num_params < 2:
+        raise ValueError(
+            "`target` function must have at least two parameters. The first must be `num_procs` (the number of "
+            "processes, a positive int) and the second must be `proc_index` (the process index, and int between 0 and "
+            "`num_procs-1`, inclusive)."
+        )
+
+    has_variable_num_args = any(
+        param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        for param in inspect.signature(target).parameters.values()
+    )
+
+    if not has_variable_num_args and 2 + len(args) > num_params:
+        raise ValueError(
+            f"`target` function takes at most {num_params} parameters, but `args` parameter has length {len(args)} "
+            f"(plus 2 for `num_procs` and `proc_index`)."
+        )
+
+    if timeout <= 0:
+        raise ValueError("`timeout` must be positive.")
+
+    if tmp_dir is not None:
+        tmp_dir = resolve_path(tmp_dir)
+
+    for i, reg in enumerate(regs):
+        check_type(reg, f"regs[{i}]", Register)
+
+    if tmp_dir is not None and len(regs) == 0:
+        warnings.warn(
+            f"You passed `tmp_dir` to `parallelize`, but did not pass `regs`."
+        )
+
+    elif tmp_dir is None and len(regs) > 0:
+        warnings.warn(
+            f"You passed `regs` to `parallelize`, but did not pass `tmp_dir`."
+        )
+
+    if update_period is not None and update_period <= 0:
+        raise ValueError("`update_period` must be positive.")
+
+    if update_timeout <= 0:
+        raise ValueError("`update_timeout` must be positive.")
+
+    mp_ctx = multiprocessing.get_context("spawn")
+    procs = []
+    update = update_period is not None and tmp_dir is not None
+    txn_wait_event = mp_ctx.Event()
+    txn_wait_event.set() # transactions initially do not have to wait
+    num_active_txns = mp_ctx.Value("i", 0)
+    timeout_wait_period = 0.5
+    update_wait_period = 0.1
+
+    with ExitStack() as stack:
+
+        if tmp_dir is not None:
+
+            for reg in regs:
+                stack.enter_context(reg.tmp_db(tmp_dir, update_period))
+
+        for proc_index in range(num_procs):
+            procs.append(mp_ctx.Process(
+                target = _wrap_target,
+                args = (target, num_procs, proc_index, args, txn_wait_event)
+            ))
+
+        for proc in procs:
+            proc.start()
+
+        last_update_end = time.time()
+
+        while True: # timeout loop
+
+            if time.time() - start >= timeout:
+
+                for p in procs:
+                    p.terminate()
+
+                break # timeout loop
+
+            elif all(not proc.is_alive() for proc in procs):
+                break # timeout loop
+
+            elif update and time.time() - last_update_end >= update_period:
+
+                update_start = time.time()
+                txn_wait_event.clear() # block future transactions
+
+                while True: # update loop
+                    # wait for current transactions to complete before updating
+                    if num_active_txns == 0:
+
+                        for reg in regs:
+
+                            with reg._tmp_close():
+                                reg.update_perm_db(update_timeout + update_start - time.time())
+
+                        txn_wait_event.set() # allow transactions
+                        break # update loop
+
+                    else:
+                        time.sleep(update_wait_period)
+
+                    if time.time() - update_start >= update_timeout:
+
+                        warnings.warn("Permanent `Register` periodic update timed out.")
+                        break # update loop
+
+                last_update_end = time.time()
+
+            time.sleep(timeout_wait_period)
+
+        for proc in procs:
+            proc.join()

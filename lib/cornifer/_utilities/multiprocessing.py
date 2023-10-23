@@ -1,8 +1,10 @@
+import multiprocessing
+import shutil
 from datetime import timedelta
 import time
 from contextlib import contextmanager
 
-def start_with_timeout(procs, timeout, query_wait = 0.1):
+def start_with_timeout(procs, timeout, query_wait = 1.0):
 
     if timeout <= 0:
         raise ValueError
@@ -15,12 +17,14 @@ def start_with_timeout(procs, timeout, query_wait = 0.1):
     while time.time() - start <= timeout:
 
         if all(not proc.is_alive() for proc in procs):
-            return
+            return True
 
         time.sleep(query_wait)
 
     for p in procs:
         p.terminate()
+
+    return False
 
 @contextmanager
 def make_sigterm_raise_KeyboardInterrupt():
@@ -62,3 +66,10 @@ def slurm_timecode_to_timedelta(timecode):
 
     else:
         raise ValueError
+
+def copytree_with_timeout(timeout, *args):
+
+    proc = multiprocessing.get_context("spawn").Process(target = shutil.copytree, args = args)
+    complete = start_with_timeout([proc], timeout, 0.2)
+    proc.join()
+    return complete

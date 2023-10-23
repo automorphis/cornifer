@@ -21,7 +21,7 @@ import lmdb
 from .._utilities import check_type, check_return_int
 
 
-class ReversibleTransaction:
+class ReversibleWriter:
 
     def __init__(self, db):
 

@@ -14,7 +14,6 @@
 """
 import itertools
 import json
-import multiprocessing
 import pickle
 import shutil
 import warnings
@@ -22,11 +21,12 @@ import zipfile
 from contextlib import contextmanager, ExitStack
 from pathlib import Path
 from abc import ABC, abstractmethod
-from time import time, sleep
+import time
 
 import lmdb
 import numpy as np
 
+from ._utilities.multiprocessing import copytree_with_timeout
 from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, CompressionError, \
     DecompressionError, NOT_ABSOLUTE_ERROR_MESSAGE, RegisterRecoveryError, BlockNotOpenError, DataExistsError, \
     RegisterNotOpenError, RegisterOpenError
@@ -36,7 +36,7 @@ from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
     write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int, hash_file
-from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleTransaction,  num_open_readers_accurate, \
+from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter,  num_open_readers_accurate, \
     r_txn_prefix_iter, r_txn_count_keys
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
@@ -156,10 +156,12 @@ class Register(ABC):
     #
     # II. `lmdb.Transaction` PATTERNS:
     # 1. A "reader" is a readonly `lmdb.Transaction`. A "writer" is a read/write `lmdb.Transaction` or a
-    #    `ReversibleTransaction`.
-    # 2. A "reader method/cm" is any method/cm that takes a reader as input OR `begin`s a reader and does NOT take
-    #    a writer as input nor `begin` a writer. A "writer method/cm" is any method/cm that takes a writer as input
-    #    OR `begin`s a writer.
+    #    `ReversibleTransaction`. A reader can be created either by `lmdb.Environment.begin` or `Register._reader` and
+    #    a writer can be created by `lmdb.Environment.begin`, `Register._reversible_writer`, or
+    #    `ReversibleWriter.begin`.
+    # 2. A "reader method/cm" is any method/cm that (takes a reader as input OR creates a reader) AND (does NOT take
+    #    a writer as input OR creates a writer). A "writer method/cm" is any method/cm that takes a writer as input
+    #    OR creates a writer.
     # 3. In most cases, any method/cm that accesses the `Register` database (`_db`) may do so with at most one reader
     #    and at most one writer.
     #    a. The only exception is if an occurs somewhere after committing a writer, in which case a second writer may
@@ -338,6 +340,11 @@ class Register(ABC):
         self.rmv_elapsed = 0
         self.compress_elapsed = 0
         self.decompress_elapsed = 0
+        # TRANSACTIONS #
+        self._do_manage_txn = False
+        self._num_active_txns = None
+        self._txn_wait_event = None
+        self._txn_wait_timeout = None
 
         if _create:
             self._create()
@@ -384,7 +391,7 @@ class Register(ABC):
             write_txt_file(str(self._write_db_filepath), local_dir / WRITE_DB_FILEPATH, True)
             self._db = open_lmdb(self._write_db_filepath, self._db_map_size, False)
 
-            with self._db.begin(write = True) as rw_txn:
+            with self._writer() as rw_txn:
 
                 rw_txn.put(_START_N_HEAD_KEY, str(self._startn_head).encode("ASCII"))
                 rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startn_tail_length).encode("ASCII"))
@@ -496,6 +503,59 @@ class Register(ABC):
         return Register._from_local_dir(Path(state["local_dir"]))
 
     #################################
+    #         TRANSACTIONS          #
+
+    @contextmanager
+    def _manage_txn(self):
+
+        if self._do_manage_txn:
+
+            self._txn_wait_event.wait(timeout = self._txn_wait_timeout)
+
+            with self._num_active_txns.get_lock():
+                self._num_active_txns += 1
+
+        try:
+            yield
+
+        finally:
+
+            if self._do_manage_txn:
+
+                with self._num_active_txns.get_lock():
+                    self._num_active_txns -= 1
+
+    @contextmanager
+    def _reversible_writer(self):
+
+        with self._manage_txn():
+
+            with ReversibleWriter(self._db).begin() as rrw_txn:
+                yield rrw_txn
+
+    @contextmanager
+    def _writer(self):
+
+        with self._manage_txn():
+
+            with self._db.begin(write = True) as rw_txn:
+                yield rw_txn
+
+    @contextmanager
+    def _reader(self):
+
+        with self._manage_txn():
+
+            with self._db.begin() as ro_txn:
+                yield ro_txn
+
+    def _set_txn_shared_data(self, num_active_txns, txn_wait_event):
+
+        self._do_manage_txn = True
+        self._num_active_txns = num_active_txns
+        self._txn_wait_event = txn_wait_event
+
+    #################################
     #    PUBLIC REGISTER METHODS    #
 
     def __eq__(self, other):
@@ -519,6 +579,7 @@ class Register(ABC):
     def set_shorthand(self, shorthand):
 
         check_type(shorthand, "shorthand", str)
+        self._check_open_raise("set_shorthand")
         self._check_readwrite_raise("set_shorthand")
         write_txt_file(shorthand, self._shorthand_filepath, True)
         self._shorthand = shorthand
@@ -531,6 +592,9 @@ class Register(ABC):
         """
 
         check_type(message, "message", str)
+        check_type(append, "append", bool)
+        self._check_open_raise("set_msg")
+        self._check_readwrite_raise("set_msg")
 
         if append:
             new_msg = self._msg + message
@@ -538,7 +602,6 @@ class Register(ABC):
         else:
             new_msg = message
 
-        self._check_readwrite_raise("set_msg")
         write_txt_file(new_msg, self._msg_filepath, True)
         self._msg = new_msg
 
@@ -577,10 +640,10 @@ class Register(ABC):
         if head == self._startn_head and tail_len == self._startn_tail_length:
             return
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
             changes = self._set_startn_info_pre(head, tail_len, ro_txn)
 
-        with self._db.begin(write = True) as rw_txn:
+        with self._writer() as rw_txn:
             self._set_startn_info_disk(head, tail_len, changes, rw_txn)
 
         self._startn_head = head
@@ -640,7 +703,7 @@ class Register(ABC):
         self.decompress_elapsed = 0
 
     @contextmanager
-    def tmp_db(self, tmp_dir):
+    def tmp_db(self, tmp_dir, timeout = None):
 
         self._check_not_open_raise("make_tmp_db")
         new_write_db_filepath = random_unique_filename(tmp_dir)
@@ -671,20 +734,33 @@ class Register(ABC):
 
             self._write_db_filepath = self._perm_db_filepath
             write_txt_file(str(self._write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
-            self.update_perm_db()
+            self.update_perm_db(timeout)
 
-    def update_perm_db(self, ):
+    def update_perm_db(self, timeout = None):
 
+        start = time.time()
         self._check_not_open_raise("update_perm_db")
         tmp_filename = self._perm_db_filepath.parent / (DATABASE_FILEPATH.name + "_tmp")
 
         if tmp_filename.exists():
             shutil.rmtree(tmp_filename)
 
-        shutil.copytree(self._write_db_filepath, tmp_filename)
-        shutil.rmtree(self._perm_db_filepath)
-        tmp_filename.rename(self._perm_db_filepath)
-        write_txt_file(self._digest(), self._digest_filepath, True)
+        if timeout is not None:
+            complete = copytree_with_timeout(timeout + start - time.time(), self._write_db_filepath, tmp_filename)
+
+        else:
+
+            shutil.copytree(self._write_db_filepath, tmp_filename)
+            complete = True
+
+        if complete:
+
+            shutil.rmtree(self._perm_db_filepath)
+            tmp_filename.rename(self._perm_db_filepath)
+            write_txt_file(self._digest(), self._digest_filepath, True)
+
+        else:
+            shutil.rmtree(tmp_filename)
 
     #################################
     #    PROTEC REGISTER METHODS    #
@@ -704,7 +780,7 @@ class Register(ABC):
         stat = self._db.stat()
         current_size = stat['psize'] * (stat['leaf_pages'] + stat['branch_pages'] + stat['overflow_pages'] )
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             with r_txn_prefix_iter(b"", ro_txn) as it:
                 entry_size_bytes = sum(len(key) + len(value) for key, value in it) * 1
@@ -782,7 +858,7 @@ class Register(ABC):
         ret._readonly = readonly
         ret._db = open_lmdb(ret._write_db_filepath, ret._db_map_size, readonly)
 
-        with ret._db.begin() as ro_txn:
+        with ret._reader() as ro_txn:
             ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
 
         ret._max_length = 10 ** ret._length_length - 1
@@ -793,6 +869,20 @@ class Register(ABC):
 
         self._opened = False
         self._db.close()
+
+    @contextmanager
+    def _tmp_close(self):
+
+        if self._opened:
+            self._db.close()
+
+        try:
+            yield
+
+        finally:
+
+            if self._opened:
+                self._open(self._readonly)
 
     @contextmanager
     def _recursive_open(self, readonly):
@@ -880,24 +970,13 @@ class Register(ABC):
     @contextmanager
     def _time(self, elapsed_name):
 
-        start_time = time()
+        start_time = time.time()
 
         try:
             yield
 
         finally:
-            self.__dict__[elapsed_name] += time() - start_time
-
-    #################################
-    #    PUBLIC PARALLEL METHODS    #
-
-    # @contextmanager
-    # def pool(self, num_procs):
-    #
-    #     self._check_not_open_raise("pool")
-    #
-    #     with multiprocessing.get_context("spawn").Pool(num_procs) as pool:
-    #         yield pool
+            self.__dict__[elapsed_name] += time.time() - start_time
 
     #################################
     #      PROTEC INFO METHODS      #
@@ -934,7 +1013,7 @@ class Register(ABC):
         else:
             apris_ram_gen = []
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             apris_disk_gen = map(lambda t: t[0], self._apris_disk(ro_txn))
 
@@ -994,10 +1073,10 @@ class Register(ABC):
         if not diskonly:
             self._change_apri_ram(old_apri, new_apri)
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
             old_id, old_apri_id_key, old_id_apri_key = self._change_apri_pre(old_apri, None, True, new_apri, ro_txn)
 
-        with self._db.begin(write = True) as rw_txn:
+        with self._writer() as rw_txn:
             self._change_apri_disk(old_id, old_apri_id_key, old_id_apri_key, new_apri, rw_txn)
 
     def rmv_apri(self, apri, force = False, missing_ok = False, diskonly = False):
@@ -1021,7 +1100,7 @@ class Register(ABC):
             else:
                 missing = False
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             try:
                 keys, blk_filenames, compressed_filenames = self._rmv_apri_pre(apri, None, True, force, ro_txn)
@@ -1039,7 +1118,7 @@ class Register(ABC):
 
         try:
 
-            with ReversibleTransaction(self._db).begin() as rrw_txn:
+            with self._reversible_writer() as rrw_txn:
                 self._rmv_apri_disk(keys, rrw_txn)
 
             if force:
@@ -1049,7 +1128,7 @@ class Register(ABC):
 
             if rrw_txn is not None and force:
 
-                with self._db.begin(write = True) as rw_txn:
+                with self._writer() as rw_txn:
                     ee = self._rmv_apri_error(blk_filenames, compressed_filenames, rw_txn, rrw_txn, e)
 
                 raise ee
@@ -1064,7 +1143,7 @@ class Register(ABC):
         if self.___contains___ram(apri):
             return True
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             try:
                 apri_id_key = self.___contains___pre(apri, None, True, ro_txn)
@@ -1081,7 +1160,7 @@ class Register(ABC):
         ram_apri = set(self._apris_ram())
         ret = len(ram_apri)
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             for apri in self._apris_disk(ro_txn):
 
@@ -1473,21 +1552,21 @@ class Register(ABC):
         check_type(apri, "apri", ApriInfo)
         check_type(apos, "apos", AposInfo)
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             add_apri, add_apos_inner, apos_key, apos_json = self._set_apos_pre(
                 apri, None, True, apos, None, True, exists_ok, ro_txn
             )
 
             if _debug == 2:
-                sleep(10 ** 8)
+                time.sleep(10 ** 8)
 
-        with self._db.begin(write = True) as rw_txn:
+        with self._writer() as rw_txn:
 
             self._set_apos_disk(apri, apos, add_apri, add_apos_inner, apos_key, apos_json, rw_txn)
 
             if _debug == 1:
-                sleep(10 ** 8)
+                time.sleep(10 ** 8)
 
     def apos(self, apri, recursively = False):
         """Get some `AposInfo` associated with a given `ApriInfo`.
@@ -1500,7 +1579,7 @@ class Register(ABC):
         self._check_open_raise("apos")
         check_type(apri, "apri", ApriInfo)
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             try:
                 apos_key = self._apos_pre(apri, None, True, ro_txn)
@@ -1522,13 +1601,13 @@ class Register(ABC):
         check_type(apri, "apri", ApriInfo)
         check_type(missing_ok, "missing_ok", bool)
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
             apos_key, missing = self._rmv_apos_pre(apri, None, True, missing_ok, ro_txn)
 
         if missing:
             return
 
-        with self._db.begin(write = True) as rw_txn:
+        with self._writer() as rw_txn:
             Register._rmv_apos_disk(apos_key, rw_txn)
 
     #################################
@@ -1696,16 +1775,16 @@ class Register(ABC):
         check_type(subreg, "subreg", Register)
         check_type(exists_ok, "exists_ok", bool)
 
-        with self._db.begin() as self_ro_txn:
+        with self._reader() as self_ro_txn:
 
-            with subreg._db.begin() as subreg_ro_txn:
+            with subreg._reader() as subreg_ro_txn:
 
                 subreg_key, exists = self._add_subreg_pre(subreg, exists_ok, self_ro_txn, subreg_ro_txn)
 
         if exists:
             return
 
-        with self._db.begin(write = True) as rw_txn:
+        with self._writer() as rw_txn:
             Register._add_subreg_disk(subreg_key, rw_txn)
 
     def rmv_subreg(self, subreg, missing_ok = False):
@@ -1718,20 +1797,20 @@ class Register(ABC):
         check_type(subreg, "Register", Register)
         check_type(missing_ok, "missing_ok", bool)
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
             subreg_key, missing = self._rmv_subreg_pre(subreg, missing_ok, ro_txn)
 
         if missing:
             return
 
-        with self._db.begin(write = True) as rw_txn:
+        with self._writer() as rw_txn:
             Register._rmv_subreg_disk(subreg_key, rw_txn)
 
     def subregs(self):
 
         self._check_open_raise("subregs")
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
             yield from Register._subregs_disk(ro_txn)
 
     #################################
@@ -1807,7 +1886,7 @@ class Register(ABC):
 
                 with subreg._recursive_open(True) as subreg:
 
-                    with subreg._db.begin() as ro_txn:
+                    with subreg._reader() as ro_txn:
 
                         touched.add(subreg)
 
@@ -1855,7 +1934,7 @@ class Register(ABC):
                     if subreg not in touched:
 
                         touched.add(subreg)
-                        ro_txn = ro_txn_stack.enter_context(subreg._db.begin())
+                        ro_txn = ro_txn_stack.enter_context(subreg._reader())
                         queue.append((subreg, ro_txn))
 
     #################################
@@ -1943,7 +2022,7 @@ class Register(ABC):
                     "Please see the method `set_startn_info` to troubleshoot this error."
                 )
 
-            with self._db.begin() as ro_txn:
+            with self._reader() as ro_txn:
                 blk_key, compressed_key, filename, add_apri = self._add_disk_blk_pre(
                     blk.apri(), None, True, blk.startn(), len(blk), exists_ok, dups_ok, ro_txn
                 )
@@ -1952,7 +2031,7 @@ class Register(ABC):
 
             try:
 
-                with ReversibleTransaction(self._db).begin() as rrw_txn:
+                with self._reversible_writer() as rrw_txn:
                     self._add_disk_blk_disk(
                         blk.apri(), blk.startn(), len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
                     )
@@ -1963,7 +2042,7 @@ class Register(ABC):
 
                 if rrw_txn is not None:
 
-                    with self._db.begin(write = True) as rw_txn:
+                    with self._writer() as rw_txn:
                         ee = self._add_disk_blk_error(filename, rw_txn, rrw_txn, e)
 
                     raise ee
@@ -1984,7 +2063,7 @@ class Register(ABC):
             if len(blk) > self._max_length:
                 raise ValueError
 
-            with self._db.begin() as ro_txn:
+            with self._reader() as ro_txn:
                 blk_key, compressed_key, filename, add_apri, startn = self._append_disk_blk_pre(
                     blk.apri(), None, True, blk.startn(), len(blk), ro_txn
                 )
@@ -1993,7 +2072,7 @@ class Register(ABC):
 
             try:
 
-                with ReversibleTransaction(self._db).begin() as rrw_txn:
+                with self._reversible_writer() as rrw_txn:
                     self._add_disk_blk_disk(
                         blk.apri(), blk.startn(), len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
                     )
@@ -2010,7 +2089,7 @@ class Register(ABC):
 
                 if rrw_txn is not None:
 
-                    with self._db.begin(write = True) as rw_txn:
+                    with self._writer() as rw_txn:
                         ee = self._add_disk_blk_error(filename, rw_txn, rrw_txn, e)
 
                     raise ee
@@ -2037,7 +2116,7 @@ class Register(ABC):
 
             try:
 
-                with self._db.begin() as ro_txn:
+                with self._reader() as ro_txn:
                     ret = self._rmv_disk_blk_pre(apri, None, True, startn, length, ro_txn)
 
             except DataNotFoundError:
@@ -2053,7 +2132,7 @@ class Register(ABC):
 
             try:
 
-                with ReversibleTransaction(self._db).begin() as rrw_txn:
+                with self._reversible_writer() as rrw_txn:
                     Register._rmv_disk_blk_disk(blk_key, compressed_key, rrw_txn)
 
                 self._rmv_disk_blk_disk2(blk_filename, compressed_filename, kwargs)
@@ -2062,7 +2141,7 @@ class Register(ABC):
 
                 if rrw_txn is not None:
 
-                    with self._db.begin(write = True) as rw_txn:
+                    with self._writer() as rw_txn:
                         ee = self._rmv_disk_blk_error(blk_filename, compressed_filename, rrw_txn, rw_txn, e)
 
                     raise ee
@@ -2084,7 +2163,7 @@ class Register(ABC):
         if length is not None and length < 0:
             raise ValueError("`length` must be non-negative.")
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             try:
                 blk_filename, compressed_filename = self._blk_metadata_pre(apri, None, True, startn, length, ro_txn)
@@ -2129,7 +2208,7 @@ class Register(ABC):
             if not (0 <= compression_level <= 9):
                 raise ValueError("`compression_level` must be between 0 and 9, inclusive.")
 
-            with self._db.begin() as ro_txn:
+            with self._reader() as ro_txn:
                 blk_key, compressed_key, blk_filename, compressed_filename = self._compress_pre(
                     apri, None, True, startn, length, ro_txn,
                 )
@@ -2138,7 +2217,7 @@ class Register(ABC):
 
             try:
 
-                with ReversibleTransaction(self._db).begin() as rrw_txn:
+                with self._reversible_writer() as rrw_txn:
                     Register._compress_disk(compressed_key, compressed_filename, rrw_txn)
 
                 return type(self)._compress_disk2(blk_filename, compressed_filename, compression_level, ret_metadata)
@@ -2147,7 +2226,7 @@ class Register(ABC):
 
                 if rrw_txn is not None:
 
-                    with self._db.begin(write = True) as rw_txn:
+                    with self._writer() as rw_txn:
                         ee = self._compress_error(blk_filename, compressed_filename, rrw_txn, rw_txn, e)
 
                     raise ee
@@ -2173,7 +2252,7 @@ class Register(ABC):
             if length is not None and length < 0:
                 raise ValueError("`length` must be non-negative.")
 
-            with self._db.begin() as ro_txn:
+            with self._reader() as ro_txn:
                 ret = self._decompress_pre(apri, None, True, startn, length, ro_txn)
 
             rrw_txn = None
@@ -2181,7 +2260,7 @@ class Register(ABC):
 
             try:
 
-                with ReversibleTransaction(self._db).begin() as rrw_txn:
+                with self._reversible_writer() as rrw_txn:
                     Register._decompress_disk(compressed_key, rrw_txn)
 
                 return Register._decompress_disk2(blk_filename, compressed_filename, temp_blk_filename, ret_metadata)
@@ -2190,7 +2269,7 @@ class Register(ABC):
 
                 if rrw_txn is not None:
 
-                    with self._db.begin(write = True) as rw_txn:
+                    with self._writer() as rw_txn:
                         ee = Register._decompress_error(temp_blk_filename, rrw_txn, rw_txn, e)
 
                     raise ee
@@ -2211,7 +2290,7 @@ class Register(ABC):
         if length is not None and length < 0:
             raise ValueError("`length` must be non-negative.")
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             compressed_key = self._is_compressed_pre(apri, None, True, startn, length, ro_txn)
             return Register._is_compressed_disk(compressed_key, ro_txn)
@@ -3056,7 +3135,7 @@ class Register(ABC):
 
                             raise FinalYield
 
-                    ro_txn = prior_yield.enter_context(self._db.begin())
+                    ro_txn = prior_yield.enter_context(self._reader())
 
                     try:
                         blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
@@ -3129,7 +3208,7 @@ class Register(ABC):
                         else:
                             raise FinalYield
 
-                    ro_txn = pre_yield.enter_context(self._db.begin())
+                    ro_txn = pre_yield.enter_context(self._reader())
 
                     try:
                         blk_filename, startn_ = self._blk_pre(apri, None, True, startn, length, ro_txn)
@@ -3178,7 +3257,7 @@ class Register(ABC):
             with blk:
                 yield blk
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             try:
                 apri_json = self._relational_encode_info(apri, ro_txn)
@@ -3267,7 +3346,7 @@ class Register(ABC):
                     except DataNotFoundError:
                         pass
 
-                with self._db.begin() as ro_txn:
+                with self._reader() as ro_txn:
 
                     try:
                         blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
@@ -3311,7 +3390,7 @@ class Register(ABC):
 
             with ExitStack() as blk_stack:
 
-                with self._db.begin() as ro_txn:
+                with self._reader() as ro_txn:
 
                     try:
                         apri_json = self._relational_encode_info(apri, ro_txn)
@@ -3371,7 +3450,7 @@ class Register(ABC):
         check_type(recursively, "recursively", bool)
         intervals_ram_gen = self._intervals_ram(apri)
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             prefix = self._intervals_pre(apri, None, True, ro_txn)
             intervals_disk_gen = self._intervals_disk(prefix, ro_txn)
@@ -3433,7 +3512,7 @@ class Register(ABC):
             else:
                 to_raise = False
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             try:
                 prefix = self._intervals_pre(apri, None, True, ro_txn)
@@ -3486,7 +3565,7 @@ class Register(ABC):
             else:
                 to_raise = False
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             try:
                 prefix = self._num_blks_pre(apri, None, True, ro_txn)
@@ -3533,7 +3612,7 @@ class Register(ABC):
         except DataNotFoundError:
             pass
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             try:
                 prefix = self._maxn_pre(apri, None, True, ro_txn)
@@ -3573,7 +3652,7 @@ class Register(ABC):
         if index < 0:
             raise ValueError("`index` must be non-negative.")
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             if not diskonly:
 
@@ -3642,7 +3721,7 @@ class Register(ABC):
 
         int_ = (startn, length)
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
 
             if not diskonly:
 
@@ -3702,7 +3781,7 @@ class Register(ABC):
 
         if start is None:
 
-            with self._db.begin() as ro_txn:
+            with self._reader() as ro_txn:
 
                 ram_start, _ = self._resolve_startn_length_ram(apri, start, None)
                 disk_start, _ = self._resolve_startn_length_disk(apri, None, True, None, None, ro_txn)
@@ -3750,7 +3829,7 @@ class Register(ABC):
                         if stop is not None and n >= stop:
                             return
 
-            with self._db.begin() as ro_txn:
+            with self._reader() as ro_txn:
                 # need to refresh reader
                 try:
                     blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
@@ -4466,7 +4545,7 @@ class NumpyRegister(Register, file_suffix = ".npy"):
                     blk[n] = value
                     return
 
-            with self._db.begin() as ro_txn:
+            with self._reader() as ro_txn:
 
                 try:
                     blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
@@ -4538,7 +4617,7 @@ class NumpyRegister(Register, file_suffix = ".npy"):
         if length is not None and length < 0:
             raise ValueError("`length` must be non-negative.")
 
-        with self._db.begin() as ro_txn:
+        with self._reader() as ro_txn:
             ret = self._concat_disk_blks_pre(apri, None, True, startn, length, ro_txn)
 
         combined_already, combined_blk_key, combined_compressed_key, combined_filename, combined_seg, del_keys, del_filenames = ret
@@ -4554,7 +4633,7 @@ class NumpyRegister(Register, file_suffix = ".npy"):
 
         try:
 
-            with ReversibleTransaction(self._db).begin() as rrw_txn:
+            with self._reversible_writer() as rrw_txn:
                 self._concat_disk_blks_disk(
                     combined_blk_key, combined_compressed_key, combined_filename, del_keys, delete, rrw_txn
                 )
@@ -4567,7 +4646,7 @@ class NumpyRegister(Register, file_suffix = ".npy"):
 
             if rrw_txn is not None:
 
-                with self._db.begin(write = True) as rw_txn:
+                with self._writer() as rw_txn:
                     ee = self._concat_disk_blks_error(combined_filename, del_filenames, rrw_txn, rw_txn, e)
 
                 raise ee

@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 from . import DataNotFoundError, Register
 from ._utilities import check_type, random_unique_filename, intervals_overlap
-from ._utilities.lmdb import ReversibleTransaction, r_txn_has_key
+from ._utilities.lmdb import ReversibleWriter, r_txn_has_key
 from .errors import DataExistsError
 
 
@@ -255,7 +255,7 @@ class RegisterTransaction:
 
         try:
 
-            with ReversibleTransaction(self._reg._db).begin() as rrw_txn:
+            with ReversibleWriter(self._reg._db).begin() as rrw_txn:
 
                 for method in self._methods:
                     method.disk(rrw_txn)

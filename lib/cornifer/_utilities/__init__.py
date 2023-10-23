@@ -279,6 +279,14 @@ def check_Path(obj, name):
     if not isinstance(obj, (str, Path)):
         raise TypeError(f"`{name}` must be either of type `str` or `pathlib.Path`, not `{type(obj).__name__}`.")
 
+def check_Path_None_default(obj, name, default):
+
+    if obj is None:
+        return default
+
+    elif not isinstance(obj, (str, Path)):
+        raise TypeError(f"`{name}` must be either of type `str` or `pathlib.Path`, not `{type(obj).__name__}`.")
+
 def resolve_path(path):
     """
     :param path: (type `pathlib.Path`)
