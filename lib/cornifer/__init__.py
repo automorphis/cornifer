@@ -239,7 +239,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
         for proc_index in range(num_procs):
             procs.append(mp_ctx.Process(
                 target = _wrap_target,
-                args = (target, num_procs, proc_index, args, txn_wait_event)
+                args = (target, num_procs, proc_index, args, regs, num_active_txns, txn_wait_event)
             ))
 
         for proc in procs:
