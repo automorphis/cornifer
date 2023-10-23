@@ -72,7 +72,4 @@ if __name__ == "__main__":
     if perm_db_filepath.exists():
         shutil.rmtree(perm_db_filepath)
 
-    shutil.copytree(local_db_filepath, perm_db_filepath)
-    print(perm_db_filepath.exists())
-    print(perm_db_filepath)
-    print(list(perm_db_filepath.iterdir()))
+    subprocess.run(["cp", "-r", str(local_db_filepath), str(perm_db_filepath)])
