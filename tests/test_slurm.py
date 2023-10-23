@@ -201,7 +201,7 @@ class TestSlurm(unittest.TestCase):
             self.check_empty_error_file()
             self.assertTrue(test_home_dir.exists())
             start = time.time()
-            max_num_queries = 20
+            max_num_queries = 50
 
             for _ in range(max_num_queries):
 
