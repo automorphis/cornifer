@@ -9,6 +9,9 @@ from cornifer import parallelize, NumpyRegister, ApriInfo, AposInfo, Block
 
 def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
+    print(type(reg))
+    print(reg.__dict__)
+
     with reg.open() as reg:
 
         for i in range(proc_index, num_apri, num_procs):
