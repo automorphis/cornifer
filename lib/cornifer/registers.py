@@ -775,27 +775,39 @@ class Register(ABC):
             fh.write("9.2\n")
 
         if timeout is not None:
+            with file.open("a") as fh:
+                fh.write("9.3\n")
             complete = copytree_with_timeout(timeout + start - time.time(), self._write_db_filepath, tmp_filename)
 
         else:
 
             shutil.copytree(self._write_db_filepath, tmp_filename)
             with file.open("a") as fh:
-                fh.write("9.3\n")
+                fh.write("9.4\n")
 
             complete = True
 
         if complete:
 
             with file.open("a") as fh:
-                fh.write("9.4\n")
+                fh.write("9.5\n")
 
             shutil.rmtree(self._perm_db_filepath)
+            with file.open("a") as fh:
+                fh.write("9.6\n")
             tmp_filename.rename(self._perm_db_filepath)
+            with file.open("a") as fh:
+                fh.write("9.7\n")
             write_txt_file(self._digest(), self._digest_filepath, True)
+            with file.open("a") as fh:
+                fh.write("9.8\n")
 
         else:
+            with file.open("a") as fh:
+                fh.write("9.9\n")
             shutil.rmtree(tmp_filename)
+            with file.open("a") as fh:
+                fh.write("9.10\n")
 
     #################################
     #    PROTEC REGISTER METHODS    #
