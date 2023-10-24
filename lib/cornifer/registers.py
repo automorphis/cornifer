@@ -776,7 +776,7 @@ class Register(ABC):
             shutil.rmtree(tmp_filename)
 
         with file.open("a") as fh:
-            fh.write("9.2")
+            fh.write("9.2\n")
 
         if timeout is not None:
             with file.open("a") as fh:
@@ -790,6 +790,11 @@ class Register(ABC):
                 fh.write("9.4\n")
 
             complete = True
+
+        with file.open("a") as fh:
+            for f in self._perm_db_filepath.iterdir():
+                fh.write(str(f) + "\n")
+
 
         if complete:
 
