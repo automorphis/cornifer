@@ -245,11 +245,11 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
             for reg in regs:
                 with file.open("a") as fh:
                     for d in reg._perm_db_filepath.iterdir():
-                        fh.write(f"{d} {is_deletable(d)}")
+                        fh.write(f"{d} {is_deletable(d)}\n")
                 stack.enter_context(reg.tmp_db(tmp_dir, update_period))
                 with file.open("a") as fh:
                     for d in reg._perm_db_filepath.iterdir():
-                        fh.write(f"{d} {is_deletable(d)}")
+                        fh.write(f"{d} {is_deletable(d)}\n")
 
         with file.open("a") as fh:
             fh.write("2\n")
@@ -261,14 +261,24 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
             ))
 
         with file.open("a") as fh:
+            for d in regs[0]._perm_db_filepath.iterdir():
+                fh.write(f"{d} {is_deletable(d)}\n")
+
+        with file.open("a") as fh:
             fh.write("3\n")
 
         for proc in procs:
             with file.open("a") as fh:
                 fh.write("4\n")
+            with file.open("a") as fh:
+                for d in regs[0]._perm_db_filepath.iterdir():
+                    fh.write(f"{d} {is_deletable(d)}\n")
             proc.start()
             with file.open("a") as fh:
                 fh.write("5\n")
+            with file.open("a") as fh:
+                for d in regs[0]._perm_db_filepath.iterdir():
+                    fh.write(f"{d} {is_deletable(d)}\n")
 
         last_update_end = time.time()
 
