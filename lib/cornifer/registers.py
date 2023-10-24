@@ -310,14 +310,18 @@ class Register(ABC):
             write_txt_file(str(self._write_db_filepath), local_dir / WRITE_DB_FILEPATH, True)
             self._db = open_lmdb(self._write_db_filepath, self._db_map_size, False)
 
-            with self._writer() as rw_txn:
+            try:
 
-                rw_txn.put(_START_N_HEAD_KEY, str(self._startn_head).encode("ASCII"))
-                rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startn_tail_length).encode("ASCII"))
-                rw_txn.put(_LENGTH_LENGTH_KEY, str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"))
-                rw_txn.put(_CURR_ID_KEY, b"0")
+                with self._writer() as rw_txn:
 
-            self._db.close()
+                    rw_txn.put(_START_N_HEAD_KEY, str(self._startn_head).encode("ASCII"))
+                    rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startn_tail_length).encode("ASCII"))
+                    rw_txn.put(_LENGTH_LENGTH_KEY, str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"))
+                    rw_txn.put(_CURR_ID_KEY, b"0")
+
+            finally:
+                self._db.close()
+
             Register._add_instance(local_dir, self)
 
         except BaseException as e:
@@ -765,8 +769,7 @@ class Register(ABC):
 
         file = Path.home() / "parallelize.txt"
         start = time.time()
-        self._check_not_open_raise("update_perm_db")
-        tmp_filename = self._perm_db_filepath.parent / (DATABASE_FILEPATH.name + "_tmp")
+        tmp_filename = random_unique_filename(self._perm_db_filepath.parent)
         with file.open("a") as fh:
             for line in traceback.format_stack():
                 fh.write(line.strip() + "\n")
@@ -796,7 +799,6 @@ class Register(ABC):
                 fh.write(str(f) + "\n")
             for f in tmp_filename.iterdir():
                 fh.write(str(f) + "\n")
-
 
         if complete:
 
@@ -941,7 +943,6 @@ class Register(ABC):
         with file.open("a") as fh:
             fh.write("9.5.6\n")
 
-
         with ret._reader() as ro_txn:
             with file.open("a") as fh:
                 fh.write("9.5.7\n")
@@ -959,20 +960,6 @@ class Register(ABC):
 
         self._opened = False
         self._db.close()
-
-    @contextmanager
-    def _tmp_close(self):
-
-        if self._opened:
-            self._db.close()
-
-        try:
-            yield
-
-        finally:
-
-            if self._opened:
-                self._open(self._readonly)
 
     @contextmanager
     def _recursive_open(self, readonly):
