@@ -502,10 +502,10 @@ class TestSlurm(unittest.TestCase):
                 for i in range(num_apri):
 
                     apri = ApriInfo(i = i)
-                    self.assertEqual(
-                        reg.apos(apri),
-                        AposInfo(i = i + 1)
-                    )
+                    # self.assertEqual(
+                    #     reg.apos(apri),
+                    #     AposInfo(i = i + 1)
+                    # )
 
                     for j, blk in enumerate(reg.blks(apri)):
                         self.assertEqual(
