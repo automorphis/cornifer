@@ -220,6 +220,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
     if update_timeout <= 0:
         raise ValueError("`update_timeout` must be positive.")
 
+    print(1)
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
     update = update_period is not None and tmp_dir is not None
@@ -228,6 +229,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
     num_active_txns = mp_ctx.Value("i", 0)
     timeout_wait_period = 0.5
     update_wait_period = 0.1
+    print(2)
 
     with ExitStack() as stack:
 
@@ -235,6 +237,8 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
 
             for reg in regs:
                 stack.enter_context(reg.tmp_db(tmp_dir, update_period))
+
+        print(3)
 
         for proc_index in range(num_procs):
             procs.append(mp_ctx.Process(
