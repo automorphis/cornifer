@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ._utilities import check_type, check_return_int, check_type_None_default, check_Path_None_default, \
-    check_return_int_None_default, resolve_path
+    check_return_int_None_default, resolve_path, is_deletable
 from ._utilities.multiprocessing import start_with_timeout
 from .info import ApriInfo, AposInfo
 from .blocks import Block
@@ -243,7 +243,13 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
         if tmp_dir is not None:
 
             for reg in regs:
+                with file.open("a") as fh:
+                    for d in reg._perm_db_filepath.iterdir():
+                        fh.write(f"{d} {is_deletable(d)}")
                 stack.enter_context(reg.tmp_db(tmp_dir, update_period))
+                with file.open("a") as fh:
+                    for d in reg._perm_db_filepath.iterdir():
+                        fh.write(f"{d} {is_deletable(d)}")
 
         with file.open("a") as fh:
             fh.write("2\n")
