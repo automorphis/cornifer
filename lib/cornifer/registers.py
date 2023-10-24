@@ -816,7 +816,14 @@ class Register(ABC):
                 with file.open("a") as fh:
                     fh.write(f"{e}\n")
 
-                raise e
+                try:
+                    for f in self._perm_db_filepath.iterdir():
+                        f.unlink()
+                except BaseException as ee:
+                    with file.open("a") as fh:
+                        fh.write(f"{ee}\n")
+
+                    raise ee from e
 
             with file.open("a") as fh:
                 fh.write("9.6\n")
