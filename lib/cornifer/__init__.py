@@ -28,7 +28,7 @@ from .info import ApriInfo, AposInfo
 from .blocks import Block
 from .registers import Register, PickleRegister, NumpyRegister
 from .regloader import search, load_ident, load_shorthand
-from .errors import DataNotFoundError, CompressionError, DecompressionError, RegisterError
+from .errors import DataNotFoundError, CompressionError, DecompressionError, RegisterError, RegisterOpenError
 
 __all__ = [
     "ApriInfo",
@@ -204,7 +204,11 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
         tmp_dir = resolve_path(tmp_dir)
 
     for i, reg in enumerate(regs):
+
         check_type(reg, f"regs[{i}]", Register)
+
+        if reg._opened:
+            raise RegisterOpenError(f"`regs[{i}]` cannot be open during a call to `parallelize`.")
 
     if tmp_dir is not None and len(regs) == 0:
         warnings.warn(

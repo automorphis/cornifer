@@ -170,7 +170,16 @@ def to_str(db):
     else:
         return ""
 
+def debug_lmdb_is_open(db):
 
+    try:
+        with db.begin(): pass
+
+    except lmdb.Error:
+        return False
+
+    else:
+        return True
 
 
 class _LmdbPrefixIter:

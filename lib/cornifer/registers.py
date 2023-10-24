@@ -794,6 +794,8 @@ class Register(ABC):
         with file.open("a") as fh:
             for f in self._perm_db_filepath.iterdir():
                 fh.write(str(f) + "\n")
+            for f in tmp_filename.iterdir():
+                fh.write(str(f) + "\n")
 
 
         if complete:
