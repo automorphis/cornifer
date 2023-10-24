@@ -536,7 +536,7 @@ class Register(ABC):
             self._txn_wait_event.wait(timeout = self._txn_wait_timeout)
 
             with self._num_active_txns.get_lock():
-                self._num_active_txns += 1
+                self._num_active_txns.value += 1
 
         try:
             yield
@@ -546,7 +546,7 @@ class Register(ABC):
             if self._do_manage_txn:
 
                 with self._num_active_txns.get_lock():
-                    self._num_active_txns -= 1
+                    self._num_active_txns.value -= 1
 
     @contextmanager
     def _reversible_writer(self):
