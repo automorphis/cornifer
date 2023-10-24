@@ -230,7 +230,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
     num_active_txns = mp_ctx.Value("i", 0)
     timeout_wait_period = 0.5
     update_wait_period = 0.1
-    with file.open("w") as fh:
+    with file.open("a") as fh:
         fh.write("1\n")
 
     with ExitStack() as stack:
@@ -240,7 +240,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
             for reg in regs:
                 stack.enter_context(reg.tmp_db(tmp_dir, update_period))
 
-        with file.open("w") as fh:
+        with file.open("a") as fh:
             fh.write("2\n")
 
         for proc_index in range(num_procs):
@@ -249,24 +249,24 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
                 args = (target, num_procs, proc_index, args, regs, num_active_txns, txn_wait_event)
             ))
 
-        with file.open("w") as fh:
+        with file.open("a") as fh:
             fh.write("3\n")
 
         for proc in procs:
-            with file.open("w") as fh:
+            with file.open("a") as fh:
                 fh.write("4\n")
             proc.start()
-            with file.open("w") as fh:
+            with file.open("a") as fh:
                 fh.write("5\n")
 
         last_update_end = time.time()
 
-        with file.open("w") as fh:
+        with file.open("a") as fh:
             fh.write("6\n")
 
         while True: # timeout loop
 
-            with file.open("w") as fh:
+            with file.open("a") as fh:
                 fh.write(f"timeout loop {time.ctime()}\n")
 
             if time.time() - start >= timeout:
@@ -285,7 +285,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
                 txn_wait_event.clear() # block future transactions
 
                 while True: # update loop
-                    with file.open("w") as fh:
+                    with file.open("a") as fh:
                         fh.write(f"update loop {time.ctime()}\n")
                     # wait for current transactions to complete before updating
                     if num_active_txns == 0:
