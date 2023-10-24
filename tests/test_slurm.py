@@ -483,7 +483,7 @@ class TestSlurm(unittest.TestCase):
 
         for num_procs in (1, 2, 10, 50):
 
-            write_batch_file(timeout, slurm_test_main_filename, num_procs + 1, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout}')
+            write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout}')
             print(f'Submitting test batch #4 (num_procs = {num_procs})...')
             self.submit_batch()
             self.wait_till_running(allocation_max_sec, allocation_query_sec)
