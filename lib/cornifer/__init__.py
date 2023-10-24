@@ -296,8 +296,15 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
                             fh.write("7\n")
                         for reg in regs:
 
+                            with file.open("a") as fh:
+                                fh.write("8\n")
+
                             with reg._tmp_close():
+                                with file.open("a") as fh:
+                                    fh.write("9\n")
                                 reg.update_perm_db(update_timeout + update_start - time.time())
+                                with file.open("a") as fh:
+                                    fh.write("10\n")
 
                         txn_wait_event.set() # allow transactions
                         break # update loop
