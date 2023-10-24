@@ -267,8 +267,10 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
 
         while True: # timeout loop
 
-            with file.open("a") as fh:
-                fh.write(f"timeout loop {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            with reg.open(readonly = True):
+
+                with file.open("a") as fh:
+                    fh.write(f"timeout loop {datetime.now().strftime('%H:%M:%S.%f')} {regs[0].num_apri()}\n")
 
             if time.time() - start >= timeout:
 
@@ -287,9 +289,9 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
 
                 while True: # update loop
                     with file.open("a") as fh:
-                        fh.write(f"update loop {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"update loop {datetime.now().strftime('%H:%M:%S.%f')} {num_active_txns.value}\n")
                     # wait for current transactions to complete before updating
-                    if num_active_txns == 0:
+                    if num_active_txns.value == 0:
 
                         for reg in regs:
 
