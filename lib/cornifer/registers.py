@@ -813,7 +813,6 @@ class Register(ABC):
 
             with file.open("a") as fh:
                 fh.write("9.6\n")
-            tmp_filename.rename(self._perm_db_filepath)
             with file.open("a") as fh:
                 fh.write("9.7\n")
             write_txt_file(self._digest(), self._digest_filepath, True)
