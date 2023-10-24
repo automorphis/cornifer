@@ -805,6 +805,10 @@ class Register(ABC):
             with file.open("a") as fh:
                 fh.write("9.5\n")
 
+            with file.open("a") as fh:
+                for d in self._perm_db_filepath.iterdir():
+                    fh.write(f"{d} {is_deletable(d)}\n")
+
             try:
                 shutil.rmtree(self._perm_db_filepath)
 
