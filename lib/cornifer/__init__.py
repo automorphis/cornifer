@@ -292,7 +292,8 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
                         fh.write(f"update loop {datetime.now().strftime('%H:%M:%S.%f')} {num_active_txns.value}\n")
                     # wait for current transactions to complete before updating
                     if num_active_txns.value == 0:
-
+                        with file.open("a") as fh:
+                            fh.write("7\n")
                         for reg in regs:
 
                             with reg._tmp_close():
