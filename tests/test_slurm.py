@@ -478,8 +478,8 @@ class TestSlurm(unittest.TestCase):
         num_blks = 100
         blk_len = 1000
         update_period = 10
-        update_timeout = 60
-        timeout = 600
+        update_timeout = 10
+        timeout = 60
 
         for num_procs in (1, 2, 10, 50):
 

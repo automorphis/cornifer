@@ -230,7 +230,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
     num_active_txns = mp_ctx.Value("i", 0)
     timeout_wait_period = 0.5
     update_wait_period = 0.1
-    with file.open("a") as fh:
+    with file.open("w") as fh:
         fh.write("1\n")
 
     with ExitStack() as stack:
@@ -267,7 +267,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
         while True: # timeout loop
 
             with file.open("a") as fh:
-                fh.write(f"timeout loop {time.strftime('%l:%M:%S.%f %p')}\n")
+                fh.write(f"timeout loop {time.strftime('%H:%M:%S.%f')}\n")
 
             if time.time() - start >= timeout:
 
@@ -286,7 +286,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
 
                 while True: # update loop
                     with file.open("a") as fh:
-                        fh.write(f"update loop {time.strftime('%l:%M:%S.%f %p')}\n")
+                        fh.write(f"update loop {time.strftime('%H:%M:%S.%f')}\n")
                     # wait for current transactions to complete before updating
                     if num_active_txns == 0:
 
