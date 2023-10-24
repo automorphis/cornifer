@@ -18,6 +18,7 @@ import time
 import warnings
 
 from contextlib import contextmanager, ExitStack, AbstractContextManager
+from datetime import datetime
 from pathlib import Path
 
 from ._utilities import check_type, check_return_int, check_type_None_default, check_Path_None_default, \
@@ -267,7 +268,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
         while True: # timeout loop
 
             with file.open("a") as fh:
-                fh.write(f"timeout loop {time.strftime('%H:%M:%S.%f')}\n")
+                fh.write(f"timeout loop {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             if time.time() - start >= timeout:
 
@@ -286,7 +287,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
 
                 while True: # update loop
                     with file.open("a") as fh:
-                        fh.write(f"update loop {time.strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"update loop {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     # wait for current transactions to complete before updating
                     if num_active_txns == 0:
 
