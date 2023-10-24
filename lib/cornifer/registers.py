@@ -16,6 +16,8 @@ import itertools
 import json
 import pickle
 import shutil
+import sys
+import traceback
 import warnings
 import zipfile
 from contextlib import contextmanager, ExitStack
@@ -765,14 +767,15 @@ class Register(ABC):
         start = time.time()
         self._check_not_open_raise("update_perm_db")
         tmp_filename = self._perm_db_filepath.parent / (DATABASE_FILEPATH.name + "_tmp")
+        traceback.print_stack(file=file)
         with file.open("a") as fh:
-            fh.write("9.1\n")
+            fh.write(f"9.1\n")
 
         if tmp_filename.exists():
             shutil.rmtree(tmp_filename)
 
         with file.open("a") as fh:
-            fh.write("9.2\n")
+            fh.write("9.2")
 
         if timeout is not None:
             with file.open("a") as fh:
