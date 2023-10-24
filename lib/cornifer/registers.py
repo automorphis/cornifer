@@ -767,8 +767,9 @@ class Register(ABC):
         start = time.time()
         self._check_not_open_raise("update_perm_db")
         tmp_filename = self._perm_db_filepath.parent / (DATABASE_FILEPATH.name + "_tmp")
-        traceback.print_stack(file=file)
         with file.open("a") as fh:
+            for line in traceback.format_stack():
+                fh.write(line.strip() + "\n")
             fh.write(f"9.1\n")
 
         if tmp_filename.exists():
