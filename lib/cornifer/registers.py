@@ -805,30 +805,11 @@ class Register(ABC):
             with file.open("a") as fh:
                 fh.write("9.5\n")
 
-            with file.open("a") as fh:
-                for d in self._perm_db_filepath.iterdir():
-                    fh.write(f"{d} {is_deletable(d)}\n")
+            for d in tmp_filename.iterdir():
+                d.rename(self._perm_db_filepath / d.name)
 
-            try:
-                shutil.rmtree(self._perm_db_filepath)
+            tmp_filename.rmdir()
 
-            except BaseException as e:
-
-                with file.open("a") as fh:
-                    for d in self._perm_db_filepath.iterdir():
-                        fh.write(f"{d} {is_deletable(d)}\n")
-
-                with file.open("a") as fh:
-                    fh.write(f"{e}\n")
-
-                try:
-                    for f in self._perm_db_filepath.iterdir():
-                        f.unlink()
-                except BaseException as ee:
-                    with file.open("a") as fh:
-                        fh.write(f"{ee}\n")
-
-                    raise ee from e
 
             with file.open("a") as fh:
                 fh.write("9.6\n")
