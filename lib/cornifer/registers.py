@@ -813,6 +813,11 @@ class Register(ABC):
                 shutil.rmtree(self._perm_db_filepath)
 
             except BaseException as e:
+
+                with file.open("a") as fh:
+                    for d in self._perm_db_filepath.iterdir():
+                        fh.write(f"{d} {is_deletable(d)}\n")
+
                 with file.open("a") as fh:
                     fh.write(f"{e}\n")
 
