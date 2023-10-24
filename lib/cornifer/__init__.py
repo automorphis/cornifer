@@ -246,14 +246,18 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
                 args = (target, num_procs, proc_index, args, regs, num_active_txns, txn_wait_event)
             ))
 
+        print(4)
+
         for proc in procs:
             proc.start()
 
         last_update_end = time.time()
 
+        print(5)
+
         while True: # timeout loop
 
-            print("timeout loop", time.time())
+            print("timeout loop", time.ctime())
 
             if time.time() - start >= timeout:
 
@@ -271,7 +275,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
                 txn_wait_event.clear() # block future transactions
 
                 while True: # update loop
-                    print("update loop", time.time())
+                    print("update loop", time.ctime())
                     # wait for current transactions to complete before updating
                     if num_active_txns == 0:
 
