@@ -318,12 +318,17 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
 
                             with file.open("a") as fh:
                                 fh.write("8\n")
-
+                            with file.open("a") as fh:
+                                for d in regs[0]._perm_db_filepath.iterdir():
+                                    fh.write(f"{d} {is_deletable(d)}\n")
                             with file.open("a") as fh:
                                 fh.write("9\n")
                             reg.update_perm_db(update_timeout + update_start - time.time())
                             with file.open("a") as fh:
                                 fh.write("10\n")
+                            with file.open("a") as fh:
+                                for d in regs[0]._perm_db_filepath.iterdir():
+                                    fh.write(f"{d} {is_deletable(d)}\n")
 
                         txn_wait_event.set() # allow transactions
                         break # update loop
