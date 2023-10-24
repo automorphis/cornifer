@@ -792,7 +792,15 @@ class Register(ABC):
             with file.open("a") as fh:
                 fh.write("9.5\n")
 
-            shutil.rmtree(self._perm_db_filepath)
+            try:
+                shutil.rmtree(self._perm_db_filepath)
+
+            except BaseException as e:
+                with file.open("a") as fh:
+                    fh.write(str(e))
+
+                raise e
+
             with file.open("a") as fh:
                 fh.write("9.6\n")
             tmp_filename.rename(self._perm_db_filepath)
