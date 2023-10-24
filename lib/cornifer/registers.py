@@ -2167,10 +2167,15 @@ class Register(ABC):
 
             with self._manage_txn():
 
-                with self._db.begin() as ro_txn:
-                    blk_key, compressed_key, filename, add_apri, startn = self._append_disk_blk_pre(
-                        blk.apri(), None, True, blk.startn(), len(blk), ro_txn
-                    )
+                try:
+
+                    with self._db.begin() as ro_txn:
+                        blk_key, compressed_key, filename, add_apri, startn = self._append_disk_blk_pre(
+                            blk.apri(), None, True, blk.startn(), len(blk), ro_txn
+                        )
+
+                except lmdb.ReadersFullError as e:
+                    raise RuntimeError(str(self._num_active_txns.value)) from e
 
             rrw_txn = None
 
