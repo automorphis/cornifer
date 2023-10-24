@@ -249,7 +249,9 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
         print(4)
 
         for proc in procs:
+            print(4.1)
             proc.start()
+            print(4.2)
 
         last_update_end = time.time()
 
