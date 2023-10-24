@@ -18,6 +18,7 @@ import time
 import warnings
 
 from contextlib import contextmanager, ExitStack, AbstractContextManager
+from pathlib import Path
 
 from ._utilities import check_type, check_return_int, check_type_None_default, check_Path_None_default, \
     check_return_int_None_default, resolve_path
@@ -220,7 +221,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
     if update_timeout <= 0:
         raise ValueError("`update_timeout` must be positive.")
 
-    print(1)
+    file = Path.home() / "parallelize.txt"
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
     update = update_period is not None and tmp_dir is not None
@@ -229,7 +230,8 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
     num_active_txns = mp_ctx.Value("i", 0)
     timeout_wait_period = 0.5
     update_wait_period = 0.1
-    print(2)
+    with file.open("w") as fh:
+        fh.write("1\n")
 
     with ExitStack() as stack:
 
@@ -238,7 +240,8 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
             for reg in regs:
                 stack.enter_context(reg.tmp_db(tmp_dir, update_period))
 
-        print(3)
+        with file.open("w") as fh:
+            fh.write("2\n")
 
         for proc_index in range(num_procs):
             procs.append(mp_ctx.Process(
@@ -246,20 +249,25 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
                 args = (target, num_procs, proc_index, args, regs, num_active_txns, txn_wait_event)
             ))
 
-        print(4)
+        with file.open("w") as fh:
+            fh.write("3\n")
 
         for proc in procs:
-            print(4.1)
+            with file.open("w") as fh:
+                fh.write("4\n")
             proc.start()
-            print(4.2)
+            with file.open("w") as fh:
+                fh.write("5\n")
 
         last_update_end = time.time()
 
-        print(5)
+        with file.open("w") as fh:
+            fh.write("6\n")
 
         while True: # timeout loop
 
-            print("timeout loop", time.ctime())
+            with file.open("w") as fh:
+                fh.write(f"timeout loop {time.ctime()}\n")
 
             if time.time() - start >= timeout:
 
@@ -277,7 +285,8 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
                 txn_wait_event.clear() # block future transactions
 
                 while True: # update loop
-                    print("update loop", time.ctime())
+                    with file.open("w") as fh:
+                        fh.write(f"update loop {time.ctime()}\n")
                     # wait for current transactions to complete before updating
                     if num_active_txns == 0:
 
