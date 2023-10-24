@@ -267,7 +267,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
         while True: # timeout loop
 
             with file.open("a") as fh:
-                fh.write(f"timeout loop {time.ctime()}\n")
+                fh.write(f"timeout loop {time.strftime('%l:%M:%S.%f %p')}\n")
 
             if time.time() - start >= timeout:
 
@@ -286,7 +286,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
 
                 while True: # update loop
                     with file.open("a") as fh:
-                        fh.write(f"update loop {time.ctime()}\n")
+                        fh.write(f"update loop {time.strftime('%l:%M:%S.%f %p')}\n")
                     # wait for current transactions to complete before updating
                     if num_active_txns == 0:
 
