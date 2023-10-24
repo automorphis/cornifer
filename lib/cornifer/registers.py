@@ -797,7 +797,7 @@ class Register(ABC):
 
             except BaseException as e:
                 with file.open("a") as fh:
-                    fh.write(str(e))
+                    fh.write(f"{e}\n")
 
                 raise e
 
@@ -901,23 +901,47 @@ class Register(ABC):
 
     def _open(self, readonly):
 
+        file = Path.home() / "parallelize.txt"
+        with file.open("a") as fh:
+            fh.write("9.5.1\n")
+
         if Register._instance_exists(self._local_dir):
+            with file.open("a") as fh:
+                fh.write("9.5.2\n")
+
             ret = Register._get_instance(self._local_dir)
 
         else:
+            with file.open("a") as fh:
+                fh.write("9.5.3\n")
+
             ret = self
 
         if ret._db is not None and ret._opened:
+            with file.open("a") as fh:
+                fh.write("9.5.4\n")
             raise RegisterAlreadyOpenError(self)
 
         ret._readonly = readonly
+        with file.open("a") as fh:
+            fh.write("9.5.5\n")
+
         ret._db = open_lmdb(ret._write_db_filepath, ret._db_map_size, readonly)
+        with file.open("a") as fh:
+            fh.write("9.5.6\n")
+
 
         with ret._reader() as ro_txn:
+            with file.open("a") as fh:
+                fh.write("9.5.7\n")
+
             ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
 
         ret._max_length = 10 ** ret._length_length - 1
         ret._opened = True
+        with file.open("a") as fh:
+            fh.write("9.5.8\n")
+
         return ret
 
     def _close(self):
