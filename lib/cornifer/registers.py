@@ -761,12 +761,18 @@ class Register(ABC):
 
     def update_perm_db(self, timeout = None):
 
+        file = Path.home() / "parallelize.txt"
         start = time.time()
         self._check_not_open_raise("update_perm_db")
         tmp_filename = self._perm_db_filepath.parent / (DATABASE_FILEPATH.name + "_tmp")
+        with file.open("a") as fh:
+            fh.write("9.1\n")
 
         if tmp_filename.exists():
             shutil.rmtree(tmp_filename)
+
+        with file.open("a") as fh:
+            fh.write("9.2\n")
 
         if timeout is not None:
             complete = copytree_with_timeout(timeout + start - time.time(), self._write_db_filepath, tmp_filename)
@@ -774,9 +780,15 @@ class Register(ABC):
         else:
 
             shutil.copytree(self._write_db_filepath, tmp_filename)
+            with file.open("a") as fh:
+                fh.write("9.3\n")
+
             complete = True
 
         if complete:
+
+            with file.open("a") as fh:
+                fh.write("9.4\n")
 
             shutil.rmtree(self._perm_db_filepath)
             tmp_filename.rename(self._perm_db_filepath)
