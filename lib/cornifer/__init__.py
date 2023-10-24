@@ -249,6 +249,8 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
 
         while True: # timeout loop
 
+            print("timeout loop", time.time())
+
             if time.time() - start >= timeout:
 
                 for p in procs:
@@ -265,6 +267,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
                 txn_wait_event.clear() # block future transactions
 
                 while True: # update loop
+                    print("update loop", time.time())
                     # wait for current transactions to complete before updating
                     if num_active_txns == 0:
 
