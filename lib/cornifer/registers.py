@@ -99,6 +99,10 @@ _MAX_NUM_APRI                  = 10 ** _MAX_NUM_APRI_LEN
 
 class Register(ABC):
 
+    file_suffix = ""
+    _constructors = {}
+    _instances = {}
+
     #################################
     #            PATTERNS           #
 
@@ -268,12 +272,10 @@ class Register(ABC):
     # 1. Some contextmanagers may need to be `__exit__`ed in an order that is not opposite to the order they were
     #    `__enter__`ed. To accomplish this we use an `ExitStack`.
 
-    file_suffix = ""
-
     #################################
     #     PUBLIC INITIALIZATION     #
 
-    def __init__(self, dir, shorthand, msg, initial_reg_size = None, use_custom_lock = False, _create = True):
+    def __init__(self, dir, shorthand, msg, initial_reg_size = None, use_custom_lock = False, _pickle_data = None):
         """
         :param dir: (type `str`) Directory where this `Register` is saved.
         :param shorthand: (type `str`) A word or short phrase describing this `Register`.
@@ -286,6 +288,78 @@ class Register(ABC):
         be very large (e.g. 1 TB).
         :param use_custom_lock: (type `bool`, default `False`) Experimental.
         """
+
+        self._set_attributes(dir, shorthand, msg, initial_reg_size, use_custom_lock)
+        local_dir = random_unique_filename(self.dir, length = 4, alphabet = LOCAL_DIR_CHARS)
+
+        try:
+            # set local directory info and create LMDB database
+            local_dir.mkdir(exist_ok=False)
+            (local_dir / REG_FILENAME).mkdir(exist_ok=False)
+            (local_dir / DATABASE_FILEPATH).mkdir(exist_ok=False)
+            write_txt_file(self._shorthand, local_dir / SHORTHAND_FILEPATH)
+            write_txt_file(self._msg, local_dir / MSG_FILEPATH)
+            write_txt_file(self._version, local_dir / VERSION_FILEPATH)
+            write_txt_file(str(type(self).__name__), local_dir / CLS_FILEPATH)
+            write_txt_file(str(self._db_map_size), local_dir / MAP_SIZE_FILEPATH)
+            write_txt_file("",
+                           local_dir / WRITE_DB_FILEPATH)  # this file has to exist prior to `_set_local_dir` call
+            self._set_local_dir(local_dir)
+            write_txt_file(str(self._write_db_filepath), local_dir / WRITE_DB_FILEPATH, True)
+            self._db = open_lmdb(self._write_db_filepath, self._db_map_size, False)
+
+            with self._writer() as rw_txn:
+
+                rw_txn.put(_START_N_HEAD_KEY, str(self._startn_head).encode("ASCII"))
+                rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startn_tail_length).encode("ASCII"))
+                rw_txn.put(_LENGTH_LENGTH_KEY, str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"))
+                rw_txn.put(_CURR_ID_KEY, b"0")
+
+            self._db.close()
+            Register._add_instance(local_dir, self)
+
+        except BaseException as e:
+
+            if local_dir.exists():
+                shutil.rmtree(local_dir)
+
+            raise e
+
+    def __init_subclass__(cls, **kwargs):
+
+        Register._constructors[cls.__name__] = cls
+        file_suffix = kwargs.pop("file_suffix", None)
+
+        if file_suffix is not None:
+
+            if not isinstance(file_suffix, str):
+                raise TypeError(f"`file_suffix` keyword argument must be of type `str`, not `{type(file_suffix)}`.")
+
+            if len(file_suffix) > 0 and file_suffix[0] != ".":
+                file_suffix = "." + file_suffix
+
+            cls.file_suffix = file_suffix
+
+        super().__init_subclass__(**kwargs)
+
+    def __new__(cls, dir, shorthand, msg, initial_reg_size = None, use_custom_lock = False, _pickle_data = None):
+
+        if _pickle_data is not None:
+            local_dir = Path(_pickle_data)
+
+        else:
+            local_dir = None
+
+        if local_dir is not None and Register._instance_exists(local_dir):
+            return Register._get_instance(local_dir)
+
+        else:
+            return super().__new__(cls)
+
+    #################################
+    #     PROTEC INITIALIZATION     #
+
+    def _set_attributes(self, dir, shorthand, msg, initial_reg_size, use_custom_lock):
 
         check_Path(dir, "dir")
         check_type(shorthand, "shorthand", str)
@@ -346,68 +420,6 @@ class Register(ABC):
         self._txn_wait_event = None
         self._txn_wait_timeout = None
 
-        if _create:
-            self._create()
-
-    def __init_subclass__(cls, **kwargs):
-
-        Register._constructors[cls.__name__] = cls
-        file_suffix = kwargs.pop("file_suffix", None)
-
-        if file_suffix is not None:
-
-            if not isinstance(file_suffix, str):
-                raise TypeError(f"`file_suffix` keyword argument must be of type `str`, not `{type(file_suffix)}`.")
-
-            if len(file_suffix) > 0 and file_suffix[0] != ".":
-                file_suffix = "." + file_suffix
-
-            cls.file_suffix = file_suffix
-
-        super().__init_subclass__(**kwargs)
-
-    #################################
-    #     PROTEC INITIALIZATION     #
-
-    _constructors = {}
-    _instances = {}
-
-    def _create(self):
-        # set local directory info and create LMDB database
-        local_dir = random_unique_filename(self.dir, length = 4, alphabet = LOCAL_DIR_CHARS)
-
-        try:
-
-            local_dir.mkdir(exist_ok = False)
-            (local_dir / REG_FILENAME).mkdir(exist_ok = False)
-            (local_dir / DATABASE_FILEPATH).mkdir(exist_ok = False)
-            write_txt_file(self._shorthand, local_dir / SHORTHAND_FILEPATH)
-            write_txt_file(self._msg, local_dir / MSG_FILEPATH)
-            write_txt_file(self._version, local_dir / VERSION_FILEPATH)
-            write_txt_file(str(type(self).__name__), local_dir / CLS_FILEPATH)
-            write_txt_file(str(self._db_map_size), local_dir / MAP_SIZE_FILEPATH)
-            write_txt_file("", local_dir / WRITE_DB_FILEPATH) # this file has to exist prior to `_set_local_dir` call
-            self._set_local_dir(local_dir)
-            write_txt_file(str(self._write_db_filepath), local_dir / WRITE_DB_FILEPATH, True)
-            self._db = open_lmdb(self._write_db_filepath, self._db_map_size, False)
-
-            with self._writer() as rw_txn:
-
-                rw_txn.put(_START_N_HEAD_KEY, str(self._startn_head).encode("ASCII"))
-                rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startn_tail_length).encode("ASCII"))
-                rw_txn.put(_LENGTH_LENGTH_KEY, str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"))
-                rw_txn.put(_CURR_ID_KEY, b"0")
-
-            self._db.close()
-            Register._add_instance(local_dir, self)
-
-        except BaseException as e:
-
-            if local_dir.exists():
-                shutil.rmtree(local_dir)
-
-            raise e
-
     @staticmethod
     def _from_local_dir(local_dir):
         """Return a `Register` instance from a `local_dir` with the correct concrete subclass.
@@ -452,7 +464,8 @@ class Register(ABC):
             shorthand = read_txt_file(local_dir / SHORTHAND_FILEPATH)
             msg = read_txt_file(local_dir / MSG_FILEPATH)
             map_size = int(read_txt_file(local_dir / MAP_SIZE_FILEPATH))
-            reg = con(local_dir.parent, shorthand, msg, map_size, False, _create = False)
+            reg = object.__new__(con)
+            reg._set_attributes(local_dir.parent, shorthand, msg, map_size, False)
             reg._set_local_dir(local_dir)
             reg._version = read_txt_file(local_dir / VERSION_FILEPATH)
             return reg
@@ -500,7 +513,17 @@ class Register(ABC):
         return {"local_dir" : str(self._local_dir)}
 
     def __setstate__(self, state):
-        return Register._from_local_dir(Path(state["local_dir"]))
+
+        local_dir = Path(state["local_dir"])
+
+        if Register._instance_exists(local_dir):
+            return
+
+        else:
+            self.__dict__ = Register._from_local_dir(local_dir).__dict__
+
+    def __getnewargs__(self):
+        return None, None, None, None, None, str(self._local_dir)
 
     #################################
     #         TRANSACTIONS          #
