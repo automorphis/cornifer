@@ -49,6 +49,7 @@ if __name__ == "__main__":
     mp_ctx = multiprocessing.get_context("spawn")
     num_active_txns = mp_ctx.Value("i", 0)
     txn_wait_event = mp_ctx.Event()
+    txn_wait_event.set()
     procs = []
 
     for proc_index in range(num_procs):
