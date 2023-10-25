@@ -62,5 +62,5 @@ if __name__ == "__main__":
         for proc in procs:
             proc.start()
 
-    for proc in procs:
-        proc.join()
+        for proc in procs:
+            proc.join()
