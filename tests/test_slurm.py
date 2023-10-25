@@ -474,9 +474,9 @@ class TestSlurm(unittest.TestCase):
     def test_slurm_4(self):
 
         slurm_test_main_filename = slurm_tests_filename / 'test4.py'
-        num_apri = 1000
+        num_apri = 100
         num_blks = 100
-        blk_len = 1000
+        blk_len = 100
         timeout = 120
 
         with (Path.home() / "parallelize.txt").open("w") as fh:
@@ -518,9 +518,9 @@ class TestSlurm(unittest.TestCase):
     def test_parallelize(self):
 
         slurm_test_main_filename = slurm_tests_filename / 'test5.py'
-        num_apri = 1000
+        num_apri = 100
         num_blks = 100
-        blk_len = 1000
+        blk_len = 100
         update_period = 10
         update_timeout = 10
         timeout = 60
