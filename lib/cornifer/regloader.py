@@ -440,6 +440,7 @@ def _val_match(search_val, apri_val):
 
 def _wait_for_latency(ident, reg, timeout):
 
+    file = Path.home() / "parallelize.txt"
     digest_file_wait_int = 0.5
     digest_wait_int = 5
     digest_filepath = ident / DIGEST_FILEPATH
@@ -459,8 +460,11 @@ def _wait_for_latency(ident, reg, timeout):
     while time.time() - start < timeout:
 
         digest = read_txt_file(digest_filepath)
+        digest_ = reg._digest()
+        with file.open("a") as fh:
+            fh.write(f"{digest}, {digest_}\n")
 
-        if reg._digest() == digest:
+        if digest_ == digest:
             return
 
         else:
