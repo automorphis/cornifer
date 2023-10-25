@@ -509,10 +509,12 @@ class TestSlurm(unittest.TestCase):
                     )
 
                     for j, blk in enumerate(reg.blks(apri)):
-                        self.assertEqual(
-                            blk,
-                            Block(np.arange(j * blk_len, (j + 1) * blk_len), apri)
-                        )
+
+                        with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk_:
+                            self.assertEqual(
+                                blk,
+                                blk_
+                            )
 
 
     def test_parallelize(self):
