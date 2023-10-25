@@ -749,28 +749,11 @@ class Register(ABC):
 
     def update_perm_db(self, timeout = None):
 
-        start = time.time()
         tmp_filename = random_unique_filename(self._perm_db_filepath.parent)
-
-        if tmp_filename.exists():
-            shutil.rmtree(tmp_filename)
-
-        if timeout is not None:
-            complete = copytree_with_timeout(timeout + start - time.time(), self._write_db_filepath, tmp_filename)
-
-        else:
-
-            shutil.copytree(self._write_db_filepath, tmp_filename)
-            complete = True
-
-        if complete:
-
-            (tmp_filename / DATA_FILEPATH.name).rename(self._perm_db_filepath / DATA_FILEPATH.name)
-            tmp_filename.rmdir()
-            write_txt_file(self._digest(), self._digest_filepath, True)
-
-        else:
-            shutil.rmtree(tmp_filename)
+        shutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename / DATA_FILEPATH.name)
+        (tmp_filename / DATA_FILEPATH.name).rename(self._perm_db_filepath / DATA_FILEPATH.name)
+        tmp_filename.rmdir()
+        write_txt_file(self._digest(), self._digest_filepath, True)
 
     #################################
     #    PROTEC REGISTER METHODS    #
