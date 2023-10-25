@@ -11,15 +11,27 @@ from cornifer import parallelize, NumpyRegister, ApriInfo, AposInfo, Block
 def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len, num_active_txns, txn_wait_event):
 
     reg._set_txn_shared_data(num_active_txns, txn_wait_event)
+    file = Path.home() / "parallelize.txt"
+
+    with file.open('a') as fh:
+        fh.write("1\n")
 
     with reg.open() as reg:
 
+        with file.open('a') as fh:
+            fh.write("2\n")
+
         for i in range(proc_index, num_apri, num_procs):
+
+            with file.open('a') as fh:
+                fh.write(f"3, {i}\n")
 
             apri = ApriInfo(i = i)
             reg.set_apos(apri, AposInfo(i = i + 1))
 
             for j in range(num_blks):
+                with file.open('a') as fh:
+                    fh.write(f"4, {i}, {j}\n")
                 with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
                     reg.append_disk_blk(blk)
 
