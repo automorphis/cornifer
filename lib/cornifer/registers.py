@@ -750,6 +750,7 @@ class Register(ABC):
     def update_perm_db(self, timeout = None):
 
         tmp_filename = random_unique_filename(self._perm_db_filepath.parent)
+        tmp_filename.mkdir(exist_ok = False)
         shutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename / DATA_FILEPATH.name)
         (tmp_filename / DATA_FILEPATH.name).rename(self._perm_db_filepath / DATA_FILEPATH.name)
         tmp_filename.rmdir()
