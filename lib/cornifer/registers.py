@@ -749,64 +749,30 @@ class Register(ABC):
 
     def update_perm_db(self, timeout = None):
 
-        file = Path.home() / "parallelize.txt"
         start = time.time()
         tmp_filename = random_unique_filename(self._perm_db_filepath.parent)
-        with file.open("a") as fh:
-            for line in traceback.format_stack():
-                fh.write(line.strip() + "\n")
-            fh.write(f"9.1\n")
 
         if tmp_filename.exists():
             shutil.rmtree(tmp_filename)
 
-        with file.open("a") as fh:
-            fh.write("9.2\n")
-
         if timeout is not None:
-            with file.open("a") as fh:
-                fh.write("9.3\n")
             complete = copytree_with_timeout(timeout + start - time.time(), self._write_db_filepath, tmp_filename)
 
         else:
 
             shutil.copytree(self._write_db_filepath, tmp_filename)
-            with file.open("a") as fh:
-                fh.write("9.4\n")
-
             complete = True
 
-        with file.open("a") as fh:
-            for f in self._perm_db_filepath.iterdir():
-                fh.write(str(f) + "\n")
-            for f in tmp_filename.iterdir():
-                fh.write(str(f) + "\n")
-
         if complete:
-
-            with file.open("a") as fh:
-                fh.write("9.5\n")
 
             for d in tmp_filename.iterdir():
                 d.rename(self._perm_db_filepath / d.name)
 
             tmp_filename.rmdir()
-
-
-            with file.open("a") as fh:
-                fh.write("9.6\n")
-            with file.open("a") as fh:
-                fh.write("9.7\n")
             write_txt_file(self._digest(), self._digest_filepath, True)
-            with file.open("a") as fh:
-                fh.write("9.8\n")
 
         else:
-            with file.open("a") as fh:
-                fh.write("9.9\n")
             shutil.rmtree(tmp_filename)
-            with file.open("a") as fh:
-                fh.write("9.10\n")
 
     #################################
     #    PROTEC REGISTER METHODS    #
@@ -894,34 +860,17 @@ class Register(ABC):
 
     def _open(self, readonly):
 
-        file = Path.home() / "parallelize.txt"
-        with file.open("a") as fh:
-            fh.write("9.5.1\n")
-
         if Register._instance_exists(self._local_dir):
-            with file.open("a") as fh:
-                fh.write("9.5.2\n")
-
             ret = Register._get_instance(self._local_dir)
 
         else:
-            with file.open("a") as fh:
-                fh.write("9.5.3\n")
-
             ret = self
 
         if ret._db is not None and ret._opened:
-            with file.open("a") as fh:
-                fh.write("9.5.4\n")
             raise RegisterAlreadyOpenError(self)
 
         ret._readonly = readonly
-        with file.open("a") as fh:
-            fh.write("9.5.5\n")
-
         ret._db = open_lmdb(ret._write_db_filepath, ret._db_map_size, readonly)
-        with file.open("a") as fh:
-            fh.write("9.5.6\n")
 
         with ret._manage_txn():
 
@@ -930,9 +879,6 @@ class Register(ABC):
 
         ret._max_length = 10 ** ret._length_length - 1
         ret._opened = True
-        with file.open("a") as fh:
-            fh.write("9.5.8\n")
-
         return ret
 
     def _close(self):
