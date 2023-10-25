@@ -860,28 +860,14 @@ class Register(ABC):
 
     def _open(self, readonly):
 
-        file = Path.home() / "parallelize.txt"
-
-        with file.open("a") as fh:
-            fh.write("1.1")
-
         if Register._instance_exists(self._local_dir):
-            with file.open("a") as fh:
-                fh.write("1.2")
             ret = Register._get_instance(self._local_dir)
 
         else:
-            with file.open("a") as fh:
-                fh.write("1.3")
             ret = self
 
         if ret._db is not None and ret._opened:
-            with file.open("a") as fh:
-                fh.write("1.4")
             raise RegisterAlreadyOpenError(self)
-
-        with file.open("a") as fh:
-            fh.write("1.5")
 
         ret._readonly = readonly
         ret._db = open_lmdb(ret._write_db_filepath, ret._db_map_size, readonly)
