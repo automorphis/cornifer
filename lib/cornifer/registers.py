@@ -768,7 +768,7 @@ class Register(ABC):
             f"{hash_file(self._cls_filepath).hexdigest()},"
             f"{hash_file(self._db_map_size_filepath).hexdigest()},"
             f"{hash_file(self._perm_db_filepath / DATA_FILEPATH.name).hexdigest()},"
-            f"{(self._perm_db_filepath / DATA_FILEPATH.name).getsize()}"
+            f"{(self._perm_db_filepath / DATA_FILEPATH.name).stat().st_size}"
         )
 
     def _approx_memory(self):
