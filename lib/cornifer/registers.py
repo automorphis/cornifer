@@ -765,9 +765,7 @@ class Register(ABC):
 
         if complete:
 
-            for d in tmp_filename.iterdir():
-                d.rename(self._perm_db_filepath / d.name)
-
+            (tmp_filename / DATA_FILEPATH.name).rename(self._perm_db_filepath / DATA_FILEPATH.name)
             tmp_filename.rmdir()
             write_txt_file(self._digest(), self._digest_filepath, True)
 
