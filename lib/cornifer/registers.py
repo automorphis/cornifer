@@ -761,13 +761,14 @@ class Register(ABC):
 
     def _digest(self):
 
-        ret = hash_file(self._version_filepath)
-        hash_file(self._shorthand_filepath, ret)
-        hash_file(self._msg_filepath, ret)
-        hash_file(self._cls_filepath, ret)
-        hash_file(self._db_map_size_filepath, ret)
-        hash_file(self._perm_db_filepath / DATA_FILEPATH.name, ret)
-        return ret.hexdigest()
+        return (
+            hash_file(self._version_filepath).hexdigest(),
+            hash_file(self._shorthand_filepath).hexdigest(),
+            hash_file(self._msg_filepath).hexdigest(),
+            hash_file(self._cls_filepath).hexdigest(),
+            hash_file(self._db_map_size_filepath).hexdigest(),
+            hash_file(self._perm_db_filepath / DATA_FILEPATH.name).hexdigest()
+        )
 
     def _approx_memory(self):
         # use only for debugging
