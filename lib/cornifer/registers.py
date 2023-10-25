@@ -749,10 +749,23 @@ class Register(ABC):
 
     def update_perm_db(self, timeout = None):
 
+        file = Path.home() / 'parallelize.txt'
+
+        with file.open('a') as fh:
+            fh.write(f"{(self._write_db_filepath / DATA_FILEPATH.name).stat().st_size}\n")
+
         tmp_filename = random_unique_filename(self._perm_db_filepath.parent)
         tmp_filename.mkdir(exist_ok = False)
         shutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename / DATA_FILEPATH.name)
+
+        with file.open('a') as fh:
+            fh.write(f"{tmp_filename.stat().st_size}\n")
+
         (tmp_filename / DATA_FILEPATH.name).rename(self._perm_db_filepath / DATA_FILEPATH.name)
+
+        with file.open('a') as fh:
+            fh.write(f"{(self._perm_db_filepath / DATA_FILEPATH.name).stat().st_size}\n")
+
         tmp_filename.rmdir()
         write_txt_file(self._digest(), self._digest_filepath, True)
 
