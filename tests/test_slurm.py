@@ -479,6 +479,9 @@ class TestSlurm(unittest.TestCase):
         blk_len = 1000
         timeout = 120
 
+        with (Path.home() / "parallelize.txt").open("w") as fh:
+            fh.write("")
+
         for num_procs in (1, 2, 10, 50):
 
             write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len}')
