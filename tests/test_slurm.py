@@ -471,19 +471,17 @@ class TestSlurm(unittest.TestCase):
                 list(reg[ApriInfo(hi = "hello"), :])
             )
 
-    def test_parallelize(self):
+    def test_slurm_4(self):
 
         slurm_test_main_filename = slurm_tests_filename / 'test4.py'
         num_apri = 1000
         num_blks = 100
         blk_len = 1000
-        update_period = 10
-        update_timeout = 10
         timeout = 60
 
         for num_procs in (1, 2, 10, 50):
 
-            write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout}')
+            write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len}')
             print(f'Submitting test batch #4 (num_procs = {num_procs})...')
             self.submit_batch()
             self.wait_till_running(allocation_max_sec, allocation_query_sec)
@@ -502,10 +500,53 @@ class TestSlurm(unittest.TestCase):
                 for i in range(num_apri):
 
                     apri = ApriInfo(i = i)
-                    # self.assertEqual(
-                    #     reg.apos(apri),
-                    #     AposInfo(i = i + 1)
-                    # )
+                    self.assertEqual(
+                        reg.apos(apri),
+                        AposInfo(i = i + 1)
+                    )
+
+                    for j, blk in enumerate(reg.blks(apri)):
+                        self.assertEqual(
+                            blk,
+                            Block(np.arange(j * blk_len, (j + 1) * blk_len), apri)
+                        )
+
+
+    def test_parallelize(self):
+
+        slurm_test_main_filename = slurm_tests_filename / 'test5.py'
+        num_apri = 1000
+        num_blks = 100
+        blk_len = 1000
+        update_period = 10
+        update_timeout = 10
+        timeout = 60
+
+        for num_procs in (1, 2, 10, 50):
+
+            write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout}')
+            print(f'Submitting test batch #5 (num_procs = {num_procs})...')
+            self.submit_batch()
+            self.wait_till_running(allocation_max_sec, allocation_query_sec)
+            print(f'Running test #5...')
+            self.wait_till_not_running(timeout, running_query_sec)
+            print('Checking test #5...')
+            self.check_empty_error_file()
+            reg = load_shorthand('sh', test_home_dir, True)
+            self.assertEqual(
+                reg._write_db_filepath,
+                reg._perm_db_filepath
+            )
+
+            with reg.open(readonly = True) as reg:
+
+                for i in range(num_apri):
+
+                    apri = ApriInfo(i = i)
+                    self.assertEqual(
+                        reg.apos(apri),
+                        AposInfo(i = i + 1)
+                    )
 
                     for j, blk in enumerate(reg.blks(apri)):
                         self.assertEqual(

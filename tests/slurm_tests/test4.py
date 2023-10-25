@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 import sys
 import time
@@ -7,22 +8,19 @@ import numpy as np
 
 from cornifer import parallelize, NumpyRegister, ApriInfo, AposInfo, Block
 
-def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
+def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len, num_active_txns, txn_wait_event):
 
-    print(type(reg))
-    print(reg.__dict__)
+    reg._set_txn_shared_data(num_active_txns, txn_wait_event)
 
-    with reg.open() as reg:
+    for i in range(proc_index, num_apri, num_procs):
 
-        for i in range(proc_index, num_apri, num_procs):
+        apri = ApriInfo(i = i)
+        reg.set_apos(apri, AposInfo(i = i + 1))
 
-            apri = ApriInfo(i = i)
-            reg.set_apos(apri, AposInfo(i = i + 1))
+        for j in range(num_blks):
+            with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
+                reg.append_disk_blk(blk)
 
-            for j in range(num_blks):
-
-                with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
-                    reg.append_disk_blk(blk)
 
 if __name__ == "__main__":
 
@@ -32,9 +30,22 @@ if __name__ == "__main__":
     num_apri = int(sys.argv[3])
     num_blks = int(sys.argv[4])
     blk_len = int(sys.argv[5])
-    update_period = int(sys.argv[6])
-    update_timeout = int(sys.argv[7])
-    timeout = int(sys.argv[8])
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = NumpyRegister(test_home_dir, "sh", "msg")
-    parallelize(num_procs, f, (reg, num_apri, num_blks, blk_len), timeout - 5, tmp_filename, (reg,), update_period, update_timeout)
+    mp_ctx = multiprocessing.get_context("spawn")
+    num_active_txns = mp_ctx.Value("i", 0)
+    txn_wait_event = mp_ctx.Event()
+    procs = []
+
+    for proc_index in range(num_procs):
+        procs.append(mp_ctx.Process(target = f, args = (
+            num_procs, proc_index, reg, num_apri, num_blks, blk_len, num_active_txns, txn_wait_event
+        )))
+
+    with reg.tmp_db(tmp_filename):
+
+        for proc in procs:
+            proc.start()
+
+    for proc in procs:
+        proc.join()
