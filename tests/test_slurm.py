@@ -492,7 +492,7 @@ class TestSlurm(unittest.TestCase):
             self.wait_till_not_running(timeout, running_query_sec)
             print('Checking test #4...')
             self.check_empty_error_file()
-            reg = load_shorthand('sh', test_home_dir, True)
+            reg = load_shorthand('sh', test_home_dir, True, 120)
             self.assertEqual(
                 reg._write_db_filepath,
                 reg._perm_db_filepath
