@@ -2,6 +2,7 @@ import multiprocessing
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +14,7 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
     file = Path.home() / "parallelize.txt"
 
     with file.open('a') as fh:
-        fh.write(f"starting {os.getpid()}\n")
+        fh.write(f"starting {os.getpid()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
     with reg.open() as reg:
 
