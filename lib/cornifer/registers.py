@@ -14,6 +14,7 @@
 """
 import itertools
 import json
+import os
 import pickle
 import shutil
 import sys
@@ -555,6 +556,8 @@ class Register(ABC):
     @contextmanager
     def _manage_txn(self):
 
+        file = Path.home() / "parallelize.txt"
+
         if self._do_manage_txn:
 
             if self._reset_lockfile.value == 1:
@@ -564,7 +567,11 @@ class Register(ABC):
                 # when all processes arrive at the barrier, the lockfile is reset and the db for exactly one process is
                 # opened before the barrier releases (see `Register._create_txn_shared_data` and
                 # `Register._reset_lockfile_action`).
+                with file.open("a") as fh:
+                    fh.write(f"{os.getpid()} at barrier...\n")
                 proc_index = self._reset_lockfile_barrier.wait(timeout = self._timeout)
+                with file.open("a") as fh:
+                    fh.write(f"{os.getpid()} released...\n")
 
                 if not self._opened:
                     # open db for remaining processes
@@ -590,6 +597,8 @@ class Register(ABC):
 
     @contextmanager
     def _txn(self, kind):
+
+        file = Path.home() / "parallelize.txt"
 
         if kind not in ("reader", "writer", "reversible"):
             raise ValueError
@@ -621,13 +630,19 @@ class Register(ABC):
 
             if i == 0 or (i == 1 and not self._do_manage_txn):
                 # perform simple reset on first failure
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} performing soft reset...")
                 self._db.close()
                 self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} finished soft reset...")
 
             elif i == 1: # hence `self._do_manage_txn is True`
                 # perform more complicated reset, closing database handles for all processes, deleting the lockfile,
                 # and reopening database handles, which creates a new lockfile (this code is found in
                 # `Register._manage_txn`).
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} ordered hard reset...")
                 self._reset_lockfile.value = 1
 
     def _reset_lockfile_action(self):
