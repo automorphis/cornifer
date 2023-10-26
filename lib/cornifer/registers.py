@@ -26,6 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from abc import ABC, abstractmethod
 import time
+from threading import BrokenBarrierError
 
 import lmdb
 import numpy as np
@@ -570,7 +571,14 @@ class Register(ABC):
                 # `Register._reset_lockfile_action`).
                 with file.open("a") as fh:
                     fh.write(f"{os.getpid()} at barrier {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                proc_index = self._reset_lockfile_barrier.wait(timeout = self._timeout)
+
+                try:
+                    proc_index = self._reset_lockfile_barrier.wait(timeout = self._timeout)
+
+                except BrokenBarrierError:
+                    with file.open("a") as fh:
+                        fh.write(f"{os.getpid()} crashed {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    raise
                 with file.open("a") as fh:
                     fh.write(f"{os.getpid()} released {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
