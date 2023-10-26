@@ -28,7 +28,7 @@ import time
 import lmdb
 import numpy as np
 
-from ._utilities.multiprocessing import copytree_with_timeout
+from ._utilities.multiprocessing import copytree_with_timeout, wait_for_value
 from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, CompressionError, \
     DecompressionError, NOT_ABSOLUTE_ERROR_MESSAGE, RegisterRecoveryError, BlockNotOpenError, DataExistsError, \
     RegisterNotOpenError, RegisterOpenError
@@ -42,7 +42,8 @@ from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter,  num_op
     r_txn_prefix_iter, r_txn_count_keys
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
-    REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, WRITE_DB_FILEPATH, DATA_FILEPATH, DIGEST_FILEPATH
+    REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, WRITE_DB_FILEPATH, DATA_FILEPATH, DIGEST_FILEPATH, \
+    LOCK_FILEPATH
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _NO_DEBUG = 0
@@ -421,10 +422,12 @@ class Register(ABC):
         self.compress_elapsed = 0
         self.decompress_elapsed = 0
         # TRANSACTIONS #
+        self._timeout = None
         self._do_manage_txn = False
+        self._reset_lockfile = None
         self._num_active_txns = None
-        self._txn_wait_event = None
-        self._txn_wait_timeout = None
+        self._allow_txns = None
+        self._reset_lockfile_barrier = None
 
     @staticmethod
     def _from_local_dir(local_dir):
@@ -516,7 +519,14 @@ class Register(ABC):
     #           PICKLING            #
 
     def __getstate__(self):
-        return {"local_dir" : str(self._local_dir)}
+        return {
+            "local_dir" : str(self._local_dir),
+            "num_active_txns" : self._num_active_txns,
+            "allow_txns" : self._allow_txns,
+            "reset_lockfile" : self._reset_lockfile,
+            "reset_lockfile_barrier" : self._reset_lockfile_barrier,
+            "do_manage_txn" : self._do_manage_txn
+        }
 
     def __setstate__(self, state):
 
@@ -526,7 +536,13 @@ class Register(ABC):
             return
 
         else:
+
             self.__dict__ = Register._from_local_dir(local_dir).__dict__
+            self._num_active_txns = state["num_active_txns"]
+            self._allow_txns = state["allow_txns"]
+            self._reset_lockfile = state["reset_lockfile"]
+            self._reset_lockfile_barrier = state["reset_lockfile_barrier"]
+            self._do_manage_txn = state["do_manage_txn"]
 
     def __getnewargs__(self):
         return None, None, None, None, None, str(self._local_dir)
@@ -539,7 +555,23 @@ class Register(ABC):
 
         if self._do_manage_txn:
 
-            self._txn_wait_event.wait(timeout = self._txn_wait_timeout)
+            if self._reset_lockfile.value == 1:
+
+                self._db.close()
+                self._opened = False
+                # when all processes arrive at the barrier, the lockfile is reset and the db for exactly one process is
+                # opened before the barrier releases (see `Register._create_txn_shared_data` and
+                # `Register._reset_lockfile_action`).
+                proc_index = self._reset_lockfile_barrier.wait(timeout = self._timeout)
+
+                if not self._opened:
+                    # open db for remaining processes
+                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+
+                if proc_index == 0:
+                    self._reset_lockfile.value = 0
+
+            self._allow_txns.wait(timeout = self._timeout)
 
             with self._num_active_txns.get_lock():
                 self._num_active_txns.value += 1
@@ -555,12 +587,12 @@ class Register(ABC):
                     self._num_active_txns.value -= 1
 
     @contextmanager
-    def _txn(self, kind, num_retries = 1):
+    def _txn(self, kind):
 
         if kind not in ("reader", "writer", "reversible"):
             raise ValueError
 
-        for i in range(num_retries + 1):
+        for i in range(3):
 
             with ExitStack() as stack:
 
@@ -577,7 +609,7 @@ class Register(ABC):
 
                 except lmdb.ReadersFullError:
 
-                    if i >= num_retries:
+                    if i >= 2:
                         raise
 
                 else:
@@ -585,14 +617,31 @@ class Register(ABC):
                     yield txn
                     return
 
-            self._db.close()
-            self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+            if i == 0 or (i == 1 and not self._do_manage_txn):
+                # perform simple reset on first failure
+                self._db.close()
+                self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
 
-    def _set_txn_shared_data(self, num_active_txns, txn_wait_event):
+            elif i == 1: # hence `self._do_manage_txn is True`
+                # perform more complicated reset, closing database handles for all processes, deleting the lockfile,
+                # and reopening database handles, which creates a new lockfile (this code is found in
+                # `Register._manage_txn`).
+                self._reset_lockfile.value = 1
 
+    def _reset_lockfile_action(self):
+
+        (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
+        self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+        self._opened = True
+
+    def _create_txn_shared_data(self, mp_ctx, num_procs):
+
+        self._num_active_txns = mp_ctx.Value('i', 0)
+        self._allow_txns = mp_ctx.Event()
+        self._allow_txns.set()
+        self._reset_lockfile = mp_ctx.Value('i', 0)
+        self._reset_lockfile_barrier = mp_ctx.Barrier(num_procs, self._reset_lockfile_action)
         self._do_manage_txn = True
-        self._num_active_txns = num_active_txns
-        self._txn_wait_event = txn_wait_event
 
     #################################
     #    PUBLIC REGISTER METHODS    #

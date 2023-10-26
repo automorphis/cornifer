@@ -6,11 +6,10 @@ from pathlib import Path
 
 import numpy as np
 
-from cornifer import parallelize, NumpyRegister, ApriInfo, AposInfo, Block
+from cornifer import NumpyRegister, ApriInfo, AposInfo, Block
 
-def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len, num_active_txns, txn_wait_event):
+def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
-    reg._set_txn_shared_data(num_active_txns, txn_wait_event)
     file = Path.home() / "parallelize.txt"
 
     with file.open('a') as fh:
@@ -47,14 +46,12 @@ if __name__ == "__main__":
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = NumpyRegister(test_home_dir, "sh", "msg")
     mp_ctx = multiprocessing.get_context("spawn")
-    num_active_txns = mp_ctx.Value("i", 0)
-    txn_wait_event = mp_ctx.Event()
-    txn_wait_event.set()
+    reg._create_txn_shared_data(mp_ctx, num_procs)
     procs = []
 
     for proc_index in range(num_procs):
         procs.append(mp_ctx.Process(target = f, args = (
-            num_procs, proc_index, reg, num_apri, num_blks, blk_len, num_active_txns, txn_wait_event
+            num_procs, proc_index, reg, num_apri, num_blks, blk_len
         )))
 
     with reg.tmp_db(tmp_filename):

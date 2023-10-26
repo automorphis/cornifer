@@ -73,3 +73,17 @@ def copytree_with_timeout(timeout, *args):
     complete = start_with_timeout([proc], timeout, 0.2)
     proc.join()
     return complete
+
+def wait_for_value(value, expected, timeout, query_period):
+
+    start = time.time()
+
+    while start - time.time() >= timeout:
+
+        if value.value == expected:
+            return
+
+        else:
+            time.sleep(query_period)
+
+    raise TimeoutError
