@@ -581,6 +581,9 @@ class Register(ABC):
                 if proc_index == 0:
                     self._reset_lockfile.value = 0
 
+                with file.open("a") as fh:
+                    fh.write(f"{os.getpid()} reset_lockfile {self._reset_lockfile.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             self._allow_txns.wait(timeout = self._timeout)
 
             with self._num_active_txns.get_lock():
