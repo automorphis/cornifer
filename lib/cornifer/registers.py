@@ -634,7 +634,7 @@ class Register(ABC):
         self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
         self._opened = True
 
-    def _create_txn_shared_data(self, mp_ctx, num_procs):
+    def _create_txn_shared_data(self, mp_ctx, num_procs, timeout):
 
         self._num_active_txns = mp_ctx.Value('i', 0)
         self._allow_txns = mp_ctx.Event()
@@ -642,6 +642,7 @@ class Register(ABC):
         self._reset_lockfile = mp_ctx.Value('i', 0)
         self._reset_lockfile_barrier = mp_ctx.Barrier(num_procs, self._reset_lockfile_action)
         self._do_manage_txn = True
+        self._timeout = timeout
 
     #################################
     #    PUBLIC REGISTER METHODS    #

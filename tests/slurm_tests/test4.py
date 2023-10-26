@@ -46,7 +46,7 @@ if __name__ == "__main__":
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = NumpyRegister(test_home_dir, "sh", "msg")
     mp_ctx = multiprocessing.get_context("spawn")
-    reg._create_txn_shared_data(mp_ctx, num_procs)
+    reg._create_txn_shared_data(mp_ctx, num_procs, 15)
     procs = []
 
     for proc_index in range(num_procs):
