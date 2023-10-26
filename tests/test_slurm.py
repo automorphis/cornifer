@@ -480,8 +480,7 @@ class TestSlurm(unittest.TestCase):
         timeout = 120
 
         for num_procs in (1, 2, 10, 50):
-            with (Path.home() / "parallelize.txt").open("w") as fh:
-                fh.write("")
+
             write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len}')
             print(f'Submitting test batch #4 (num_procs = {num_procs})...')
             self.submit_batch()
@@ -490,7 +489,7 @@ class TestSlurm(unittest.TestCase):
             self.wait_till_not_running(timeout, running_query_sec)
             print('Checking test #4...')
             self.check_empty_error_file()
-            reg = load_shorthand('sh', test_home_dir, True, 120)
+            reg = load_shorthand('sh', test_home_dir, True)
             self.assertEqual(
                 reg._write_db_filepath,
                 reg._perm_db_filepath
@@ -513,6 +512,8 @@ class TestSlurm(unittest.TestCase):
                                 blk,
                                 blk_
                             )
+
+            shutil.rmtree(reg._local_dir)
 
 
     def test_parallelize(self):
