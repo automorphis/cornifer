@@ -12,8 +12,8 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
     file = Path.home() / "parallelize.txt"
 
-    # with file.open('a') as fh:
-    #     fh.write("1\n")
+    with file.open('a') as fh:
+        fh.write(f"starting {os.getpid()}\n")
 
     with reg.open() as reg:
 
