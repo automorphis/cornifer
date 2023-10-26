@@ -573,7 +573,7 @@ class Register(ABC):
                     fh.write(f"{os.getpid()} at barrier {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 try:
-                    proc_index = self._reset_lockfile_barrier.wait(timeout = self._timeout)
+                    self._reset_lockfile_barrier.wait(timeout = self._timeout)
 
                 except BrokenBarrierError:
                     with file.open("a") as fh:
@@ -585,12 +585,12 @@ class Register(ABC):
                 if not self._opened:
                     # open db for remaining processes
                     self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+                    self._opened = True
 
-                if proc_index == 0:
-                    self._reset_lockfile.value = 0
+                self._reset_lockfile.value = 0
 
                 with file.open("a") as fh:
-                    fh.write(f"{os.getpid()} reset_lockfile {self._reset_lockfile.value} {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} reset_lockfile {self._reset_lockfile.value} {self._opened} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             self._allow_txns.wait(timeout = self._timeout)
 
