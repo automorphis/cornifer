@@ -570,17 +570,17 @@ class Register(ABC):
                 # opened before the barrier releases (see `Register._create_txn_shared_data` and
                 # `Register._reset_lockfile_action`).
                 with file.open("a") as fh:
-                    fh.write(f"{os.getpid()} at barrier {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} at barrier {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 try:
                     proc_index = self._reset_lockfile_barrier.wait(timeout = self._timeout)
 
                 except BrokenBarrierError:
                     with file.open("a") as fh:
-                        fh.write(f"{os.getpid()} crashed {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} crashed {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     raise
                 with file.open("a") as fh:
-                    fh.write(f"{os.getpid()} released {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} released {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 if not self._opened:
                     # open db for remaining processes
@@ -590,7 +590,7 @@ class Register(ABC):
                     self._reset_lockfile.value = 0
 
                 with file.open("a") as fh:
-                    fh.write(f"{os.getpid()} reset_lockfile {self._reset_lockfile.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} reset_lockfile {self._reset_lockfile.value} {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             self._allow_txns.wait(timeout = self._timeout)
 
@@ -643,11 +643,11 @@ class Register(ABC):
             if i == 0 or (i == 1 and not self._do_manage_txn):
                 # perform simple reset on first failure
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} performing soft reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} performing soft reset {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._db.close()
                 self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} finished soft reset {datetime.now().strftime('%H:%M:%S.%f')}... \n")
+                    fh.write(f"{os.getpid()} finished soft reset {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}... \n")
 
             elif i == 1: # hence `self._do_manage_txn is True`
                 # perform more complicated reset, closing database handles for all processes, deleting the lockfile,
