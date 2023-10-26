@@ -631,11 +631,11 @@ class Register(ABC):
             if i == 0 or (i == 1 and not self._do_manage_txn):
                 # perform simple reset on first failure
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} performing soft reset...")
+                    fh.write(f"{os.getpid()} performing soft reset...\n")
                 self._db.close()
                 self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} finished soft reset...")
+                    fh.write(f"{os.getpid()} finished soft reset...\n")
 
             elif i == 1: # hence `self._do_manage_txn is True`
                 # perform more complicated reset, closing database handles for all processes, deleting the lockfile,
