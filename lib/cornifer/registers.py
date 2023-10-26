@@ -525,7 +525,8 @@ class Register(ABC):
             "allow_txns" : self._allow_txns,
             "reset_lockfile" : self._reset_lockfile,
             "reset_lockfile_barrier" : self._reset_lockfile_barrier,
-            "do_manage_txn" : self._do_manage_txn
+            "do_manage_txn" : self._do_manage_txn,
+            "timeout" : self._timeout
         }
 
     def __setstate__(self, state):
@@ -543,6 +544,7 @@ class Register(ABC):
             self._reset_lockfile = state["reset_lockfile"]
             self._reset_lockfile_barrier = state["reset_lockfile_barrier"]
             self._do_manage_txn = state["do_manage_txn"]
+            self._timeout = state["timeout"]
 
     def __getnewargs__(self):
         return None, None, None, None, None, str(self._local_dir)
