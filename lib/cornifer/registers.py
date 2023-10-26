@@ -22,6 +22,7 @@ import traceback
 import warnings
 import zipfile
 from contextlib import contextmanager, ExitStack
+from datetime import datetime
 from pathlib import Path
 from abc import ABC, abstractmethod
 import time
@@ -568,10 +569,10 @@ class Register(ABC):
                 # opened before the barrier releases (see `Register._create_txn_shared_data` and
                 # `Register._reset_lockfile_action`).
                 with file.open("a") as fh:
-                    fh.write(f"{os.getpid()} at barrier...\n")
+                    fh.write(f"{os.getpid()} at barrier {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 proc_index = self._reset_lockfile_barrier.wait(timeout = self._timeout)
                 with file.open("a") as fh:
-                    fh.write(f"{os.getpid()} released...\n")
+                    fh.write(f"{os.getpid()} released {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 if not self._opened:
                     # open db for remaining processes
@@ -631,18 +632,18 @@ class Register(ABC):
             if i == 0 or (i == 1 and not self._do_manage_txn):
                 # perform simple reset on first failure
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} performing soft reset...\n")
+                    fh.write(f"{os.getpid()} performing soft reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._db.close()
                 self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} finished soft reset...\n")
+                    fh.write(f"{os.getpid()} finished soft reset {datetime.now().strftime('%H:%M:%S.%f')}... \n")
 
             elif i == 1: # hence `self._do_manage_txn is True`
                 # perform more complicated reset, closing database handles for all processes, deleting the lockfile,
                 # and reopening database handles, which creates a new lockfile (this code is found in
                 # `Register._manage_txn`).
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} ordered hard reset...")
+                    fh.write(f"{os.getpid()} ordered hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._reset_lockfile.value = 1
 
     def _reset_lockfile_action(self):

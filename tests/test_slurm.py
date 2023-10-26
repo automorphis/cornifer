@@ -481,6 +481,9 @@ class TestSlurm(unittest.TestCase):
 
         for num_procs in (10, 50):
 
+            with (Path.home() / "parallelize.txt").open("w") as fh:
+                fh.write("")
+
             write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len}')
             print(f'Submitting test batch #4 (num_procs = {num_procs})...')
             self.submit_batch()
