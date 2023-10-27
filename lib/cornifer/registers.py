@@ -661,11 +661,11 @@ class Register(ABC):
                         (self._write_db_filepath, self._db_map_size, self._readonly),
                         0.5
                     )
+
+                except TimeoutError:
                     with file.open('a') as fh:
                         fh.write(
                             f"{os.getpid()} soft reset timeout {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                except TimeoutError:
                     self._reset_lockfile.value = 1
 
                 else:
