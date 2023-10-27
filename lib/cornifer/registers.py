@@ -682,7 +682,7 @@ class Register(ABC):
     def _reset_lockfile_action(self):
 
         (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-        self._db = function_with_timeout(open_lmdb, (self._write_db_filepath, self._db_map_size, self._readonly), 0.5)
+        self._db = function_with_timeout(open_lmdb, (self._write_db_filepath, self._db_map_size, self._readonly), 1)
         self._opened = True
 
     def _create_txn_shared_data(self, mp_ctx, num_procs, timeout):
