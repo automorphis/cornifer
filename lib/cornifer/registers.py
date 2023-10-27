@@ -661,6 +661,9 @@ class Register(ABC):
                         (self._write_db_filepath, self._db_map_size, self._readonly),
                         0.5
                     )
+                    with file.open('a') as fh:
+                        fh.write(
+                            f"{os.getpid()} soft reset timeout {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 except TimeoutError:
                     self._reset_lockfile.value = 1
@@ -668,8 +671,8 @@ class Register(ABC):
                 else:
                     self._opened = True
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} finished soft reset {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}... \n")
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} finished soft reset {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}... \n")
 
             elif i == 1: # hence `self._do_manage_txn is True`
                 # perform more complicated reset, closing database handles for all processes, deleting the lockfile,
