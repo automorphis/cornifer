@@ -40,7 +40,8 @@ from .blocks import Block, MemmapBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
-    write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int, hash_file
+    write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int, hash_file, \
+    function_with_timeout
 from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter,  num_open_readers_accurate, \
     r_txn_prefix_iter, r_txn_count_keys
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
@@ -564,8 +565,10 @@ class Register(ABC):
 
             if self._reset_lockfile.value == 1:
 
-                self._db.close()
-                self._opened = False
+                if self._opened: # a soft reset could fail by indefinitely hanging on open_lmdb
+
+                    self._db.close()
+                    self._opened = False
                 # when all processes arrive at the barrier, the lockfile is reset and the db for exactly one process is
                 # opened before the barrier releases (see `Register._create_txn_shared_data` and
                 # `Register._reset_lockfile_action`).
@@ -584,7 +587,11 @@ class Register(ABC):
 
                 if not self._opened:
                     # open db for remaining processes
-                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+                    self._db = function_with_timeout(
+                        open_lmdb,
+                        (self._write_db_filepath, self._db_map_size, self._readonly),
+                        0.5
+                    )
                     self._opened = True
 
                 self._reset_lockfile.value = 0
@@ -641,11 +648,26 @@ class Register(ABC):
                     return
 
             if i == 0 or (i == 1 and not self._do_manage_txn):
-                # perform simple reset on first failure
+                # perform soft reset on first failure
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} performing soft reset {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 self._db.close()
-                self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+                self._opened = False
+
+                try:
+                    self._db = function_with_timeout(
+                        open_lmdb,
+                        (self._write_db_filepath, self._db_map_size, self._readonly),
+                        0.5
+                    )
+
+                except TimeoutError:
+                    self._reset_lockfile.value = 1
+
+                else:
+                    self._opened = True
+
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} finished soft reset {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}... \n")
 
@@ -660,7 +682,7 @@ class Register(ABC):
     def _reset_lockfile_action(self):
 
         (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-        self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+        self._db = function_with_timeout(open_lmdb, (self._write_db_filepath, self._db_map_size, self._readonly), 0.5)
         self._opened = True
 
     def _create_txn_shared_data(self, mp_ctx, num_procs, timeout):

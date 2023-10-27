@@ -15,6 +15,7 @@
 import hashlib
 import random
 import re
+import signal
 import string
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
@@ -330,6 +331,23 @@ def is_deletable(path):
 
     except Exception as e:
         raise e
+
+def _raise_TimeoutError(*_):
+    raise TimeoutError
+
+def function_with_timeout(func, args, timeout):
+    # doesn't work on Windows
+    signal.signal(signal.SIGALRM, _raise_TimeoutError())
+
+    try:
+
+        signal.alarm(timeout)
+        return func(args)
+
+    finally:
+
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, signal.SIG_DFL)
 
 # def get_leftmost_layer(s, begin = 0):
 #
