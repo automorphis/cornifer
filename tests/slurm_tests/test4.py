@@ -23,8 +23,8 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
         for i in range(proc_index, num_apri, num_procs):
 
-            # with file.open('a') as fh:
-            #     fh.write(f"3, {i}\n")
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} {i} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             apri = ApriInfo(i = i)
             reg.set_apos(apri, AposInfo(i = i + 1))
