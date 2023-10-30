@@ -363,6 +363,11 @@ def function_with_timeout(func, args, timeout):
             fh.write(f'{os.getpid()} function call timedout {datetime.now().strftime("%H:%M:%S.%f")}\n')
         raise
 
+    except BaseException as e:
+        with file.open('a') as fh:
+            fh.write(f'{os.getpid()} function call erroredout {e} {datetime.now().strftime("%H:%M:%S.%f")}\n')
+        raise e
+
     finally:
 
         with file.open('a') as fh:
