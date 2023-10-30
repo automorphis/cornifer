@@ -606,7 +606,7 @@ class Register(ABC):
         file = Path.home() / "parallelize.txt"
 
         with file.open('a') as fh:
-            fh.write(f"{os.getpid()} requesting txn {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            fh.write(f"{os.getpid()} requesting txn {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         if kind not in ("reader", "writer", "reversible"):
             raise ValueError
