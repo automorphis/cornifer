@@ -582,6 +582,8 @@ class Register(ABC):
                     self._opened = True
 
                 self._reset_lockfile.value = 0
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} hard reset succeeded {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             self._allow_txns.wait(timeout = self._timeout)
 
