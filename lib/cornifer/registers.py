@@ -618,7 +618,7 @@ class Register(ABC):
                 stack.enter_context(self._manage_txn())
 
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} txn managed {i} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} txn managed {i} {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 try:
 
