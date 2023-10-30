@@ -333,7 +333,10 @@ def is_deletable(path):
     except Exception as e:
         raise e
 
-def _raise_TimeoutError(*_):
+def _raise_TimeoutError(signum, frame):
+    file = Path.home() / "parallelize.txt"
+    with file.open('a') as fh:
+        fh.write(f'{os.getpid()} _raise_TimeoutError called {datetime.now().strftime("%H:%M:%S.%f")}\n')
     raise TimeoutError
 
 def function_with_timeout(func, args, timeout):
