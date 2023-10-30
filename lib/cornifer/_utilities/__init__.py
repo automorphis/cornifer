@@ -333,45 +333,20 @@ def is_deletable(path):
     except Exception as e:
         raise e
 
-def _raise_TimeoutError(signum, frame):
-    file = Path.home() / "parallelize.txt"
-    with file.open('a') as fh:
-        fh.write(f'{os.getpid()} _raise_TimeoutError called {datetime.now().strftime("%H:%M:%S.%f")}\n')
+def _raise_TimeoutError(*_):
     raise TimeoutError
 
 def function_with_timeout(func, args, timeout):
     # doesn't work on Windows
     timeout = check_return_int(timeout,  "timeout")
     signal.signal(signal.SIGALRM, _raise_TimeoutError)
-    file = Path.home() / "parallelize.txt"
-    with file.open('a') as fh:
-        fh.write(f'{os.getpid()} timeout {timeout} {datetime.now().strftime("%H:%M:%S.%f")}\n')
 
     try:
-        with file.open('a') as fh:
-            fh.write(f'{os.getpid()} function call 1 {datetime.now().strftime("%H:%M:%S.%f")}\n')
         signal.alarm(timeout)
-        with file.open('a') as fh:
-            fh.write(f'{os.getpid()} function call 2 {datetime.now().strftime("%H:%M:%S.%f")}\n')
-        ret = func(*args)
-        with file.open('a') as fh:
-            fh.write(f'{os.getpid()} function call 3 {datetime.now().strftime("%H:%M:%S.%f")}\n')
-        return ret
-
-    except TimeoutError:
-        with file.open('a') as fh:
-            fh.write(f'{os.getpid()} function call timedout {datetime.now().strftime("%H:%M:%S.%f")}\n')
-        raise
-
-    except BaseException as e:
-        with file.open('a') as fh:
-            fh.write(f'{os.getpid()} function call erroredout {e} {datetime.now().strftime("%H:%M:%S.%f")}\n')
-        raise e
+        return func(*args)
 
     finally:
 
-        with file.open('a') as fh:
-            fh.write(f'{os.getpid()} resetting alarm {datetime.now().strftime("%H:%M:%S.%f")}\n')
         signal.alarm(0)
         signal.signal(signal.SIGALRM, signal.SIG_DFL)
 

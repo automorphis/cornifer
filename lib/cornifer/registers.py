@@ -559,8 +559,6 @@ class Register(ABC):
     @contextmanager
     def _manage_txn(self):
 
-        file = Path.home() / "parallelize.txt"
-
         if self._do_manage_txn:
 
             if self._reset_lockfile.value == 1:
@@ -570,20 +568,9 @@ class Register(ABC):
                     self._db.close()
                     self._opened = False
                 # when all processes arrive at the barrier, the lockfile is reset and the db for exactly one process is
-                # opened before the barrier releases (see `Register._create_txn_shared_data` and
+                # opened, thenthe barrier releases (see `Register._create_txn_shared_data` and
                 # `Register._reset_lockfile_action`).
-                with file.open("a") as fh:
-                    fh.write(f"{os.getpid()} at barrier {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                try:
-                    self._reset_lockfile_barrier.wait(timeout = self._timeout)
-
-                except BrokenBarrierError:
-                    with file.open("a") as fh:
-                        fh.write(f"{os.getpid()} crashed {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                    raise
-                with file.open("a") as fh:
-                    fh.write(f"{os.getpid()} released {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                self._reset_lockfile_barrier.wait(timeout = self._timeout)
 
                 if not self._opened:
                     # open db for remaining processes
@@ -591,9 +578,6 @@ class Register(ABC):
                     self._opened = True
 
                 self._reset_lockfile.value = 0
-
-                with file.open("a") as fh:
-                    fh.write(f"{os.getpid()} reset_lockfile {self._reset_lockfile.value} {self._opened} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             self._allow_txns.wait(timeout = self._timeout)
 
@@ -612,8 +596,6 @@ class Register(ABC):
 
     @contextmanager
     def _txn(self, kind):
-
-        file = Path.home() / "parallelize.txt"
 
         if kind not in ("reader", "writer", "reversible"):
             raise ValueError
@@ -645,9 +627,6 @@ class Register(ABC):
 
             if i == 0 or (i == 1 and not self._do_manage_txn):
                 # perform soft reset on first failure, closing database handle and reopening for this process only
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} performing soft reset {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
                 self._db.close()
                 self._opened = False
 
@@ -655,23 +634,15 @@ class Register(ABC):
                     self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
 
                 except lmdb.ReadersFullError:
-                    with file.open('a') as fh:
-                        fh.write(
-                            f"{os.getpid()} soft reset failed {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     self._reset_lockfile.value = 1
 
                 else:
                     self._opened = True
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} finished soft reset {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}... \n")
-
             elif i == 1: # hence `self._do_manage_txn is True`
                 # perform hard reset, closing database handles for all processes, deleting the lockfile,
                 # and reopening database handles, which creates a new lockfile (this code is found in
                 # `Register._manage_txn`).
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} ordered hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._reset_lockfile.value = 1
 
     def _reset_lockfile_action(self):
