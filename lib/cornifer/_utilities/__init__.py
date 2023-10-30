@@ -345,11 +345,13 @@ def function_with_timeout(func, args, timeout):
     try:
 
         signal.alarm(timeout)
-        return func(*args)
+        ret = func(*args)
+        return ret
 
     except TimeoutError:
         with file.open('a') as fh:
             fh.write(f'{os.getpid()} function call timedout {datetime.now().strftime("%H:%M:%S.%f")}\n')
+        raise
 
     finally:
 
