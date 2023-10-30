@@ -339,16 +339,22 @@ def function_with_timeout(func, args, timeout):
     # doesn't work on Windows
     timeout = check_return_int(timeout,  "timeout")
     signal.signal(signal.SIGALRM, _raise_TimeoutError())
+    errored_out = False
 
     try:
 
         signal.alarm(timeout)
         return func(args)
 
+    except:
+
+        errored_out = True
+        raise
+
     finally:
 
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, signal.SIG_DFL)
+        if not errored_out:
+            signal.alarm(0)
 
 # def get_leftmost_layer(s, begin = 0):
 #
