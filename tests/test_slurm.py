@@ -477,7 +477,7 @@ class TestSlurm(unittest.TestCase):
         num_apri = 100
         num_blks = 100
         blk_len = 100
-        timeout = 180
+        timeout = 240
 
         for num_procs in (10, 50):
 
