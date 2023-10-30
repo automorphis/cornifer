@@ -349,12 +349,12 @@ def function_with_timeout(func, args, timeout):
 
     except TimeoutError:
         with file.open('a') as fh:
-            fh.write(f'{os.getpid()} function call timedout')
+            fh.write(f'{os.getpid()} function call timedout\n')
 
     finally:
 
         with file.open('a') as fh:
-            fh.write(f'{os.getpid()} function call did not timeout')
+            fh.write(f'{os.getpid()} resetting alarm\n')
         signal.alarm(0)
         signal.signal(signal.SIGALRM, signal.SIG_DFL)
 
