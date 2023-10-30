@@ -590,7 +590,7 @@ class Register(ABC):
                     self._db = function_with_timeout(
                         open_lmdb,
                         (self._write_db_filepath, self._db_map_size, self._readonly),
-                        0.5
+                        1
                     )
                     self._opened = True
 
@@ -648,7 +648,7 @@ class Register(ABC):
                     return
 
             if i == 0 or (i == 1 and not self._do_manage_txn):
-                # perform soft reset on first failure
+                # perform soft reset on first failure, closing database handle and reopening for this process only
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} performing soft reset {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
@@ -659,7 +659,7 @@ class Register(ABC):
                     self._db = function_with_timeout(
                         open_lmdb,
                         (self._write_db_filepath, self._db_map_size, self._readonly),
-                        0.5
+                        1
                     )
 
                 except TimeoutError:
@@ -675,7 +675,7 @@ class Register(ABC):
                         fh.write(f"{os.getpid()} finished soft reset {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}... \n")
 
             elif i == 1: # hence `self._do_manage_txn is True`
-                # perform more complicated reset, closing database handles for all processes, deleting the lockfile,
+                # perform hard reset, closing database handles for all processes, deleting the lockfile,
                 # and reopening database handles, which creates a new lockfile (this code is found in
                 # `Register._manage_txn`).
                 with file.open('a') as fh:

@@ -337,6 +337,7 @@ def _raise_TimeoutError(*_):
 
 def function_with_timeout(func, args, timeout):
     # doesn't work on Windows
+    timeout = check_return_int(timeout,  "timeout")
     signal.signal(signal.SIGALRM, _raise_TimeoutError())
 
     try:
