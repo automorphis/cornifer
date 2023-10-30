@@ -13,6 +13,7 @@
     GNU General Public License for more details.
 """
 import hashlib
+import os
 import random
 import re
 import signal
@@ -339,14 +340,21 @@ def function_with_timeout(func, args, timeout):
     # doesn't work on Windows
     timeout = check_return_int(timeout,  "timeout")
     signal.signal(signal.SIGALRM, _raise_TimeoutError)
+    file = Path.home() / "parallelize.txt"
 
     try:
 
         signal.alarm(timeout)
         return func(*args)
 
+    except TimeoutError:
+        with file.open('a') as fh:
+            fh.write(f'{os.getpid()} function call timedout')
+
     finally:
 
+        with file.open('a') as fh:
+            fh.write(f'{os.getpid()} function call did not timeout')
         signal.alarm(0)
         signal.signal(signal.SIGALRM, signal.SIG_DFL)
 
