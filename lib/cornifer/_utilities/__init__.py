@@ -346,7 +346,7 @@ def function_with_timeout(func, args, timeout):
         signal.alarm(timeout)
         return func(args)
 
-    except:
+    except TimeoutError:
 
         errored_out = True
         raise
