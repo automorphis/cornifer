@@ -631,10 +631,9 @@ class Register(ABC):
 
                 except lmdb.ReadersFullError:
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} \t total failure {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
                     if i >= 2:
+                        with file.open('a') as fh:
+                            fh.write(f"{os.getpid()} \t total failure {datetime.now().strftime('%H:%M:%S.%f')}\n")
                         raise
 
                 except BaseException as e:
