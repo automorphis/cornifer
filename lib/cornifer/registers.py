@@ -636,6 +636,9 @@ class Register(ABC):
                             fh.write(f"{os.getpid()} \t total failure {datetime.now().strftime('%H:%M:%S.%f')}\n")
                         raise
 
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} \t txn creation failed {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 except BaseException as e:
 
                     with file.open('a') as fh:
