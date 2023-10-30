@@ -344,6 +344,8 @@ def function_with_timeout(func, args, timeout):
     timeout = check_return_int(timeout,  "timeout")
     signal.signal(signal.SIGALRM, _raise_TimeoutError)
     file = Path.home() / "parallelize.txt"
+    with file.open('a') as fh:
+        fh.write(f'{os.getpid()} timeout {timeout} {datetime.now().strftime("%H:%M:%S.%f")}\n')
 
     try:
         with file.open('a') as fh:
