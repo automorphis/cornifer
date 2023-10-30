@@ -634,7 +634,12 @@ class Register(ABC):
                     self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
 
                 except lmdb.ReadersFullError:
-                    self._reset_lockfile.value = 1
+
+                    if self._do_manage_txn:
+                        self._reset_lockfile.value = 1
+
+                    else:
+                        raise
 
                 else:
                     self._opened = True

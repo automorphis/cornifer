@@ -31,7 +31,7 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
             for j in range(num_blks):
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {j} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"\t{os.getpid()} {j} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
                     reg.append_disk_blk(blk)
 
