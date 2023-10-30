@@ -573,7 +573,7 @@ class Register(ABC):
                 # opened, thenthe barrier releases (see `Register._create_txn_shared_data` and
                 # `Register._reset_lockfile_action`).
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} at barrier {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"\t{os.getpid()} at barrier {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._reset_lockfile_barrier.wait(timeout = self._timeout)
 
                 if not self._opened:
@@ -583,7 +583,7 @@ class Register(ABC):
 
                 self._reset_lockfile.value = 0
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} hard reset succeeded {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"\t{os.getpid()} hard reset succeeded {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             self._allow_txns.wait(timeout = self._timeout)
 
@@ -644,7 +644,7 @@ class Register(ABC):
             if i == 0 or (i == 1 and not self._do_manage_txn):
                 # perform soft reset on first failure, closing database handle and reopening for this process only
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} starting soft reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"\t{os.getpid()} starting soft reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._db.close()
                 self._opened = False
 
@@ -654,7 +654,7 @@ class Register(ABC):
                 except lmdb.ReadersFullError:
 
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} soft reset failed, ordering hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"\t{os.getpid()} soft reset failed, ordering hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     if self._do_manage_txn:
                         self._reset_lockfile.value = 1
@@ -664,7 +664,7 @@ class Register(ABC):
 
                 else:
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} soft reset succeeded {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"\t{os.getpid()} soft reset succeeded {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     self._opened = True
 
             elif i == 1: # hence `self._do_manage_txn is True`
@@ -672,7 +672,7 @@ class Register(ABC):
                 # and reopening database handles, which creates a new lockfile (this code is found in
                 # `Register._manage_txn`).
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} ordering hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"\t{os.getpid()} ordering hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._reset_lockfile.value = 1
 
     def _reset_lockfile_action(self):
