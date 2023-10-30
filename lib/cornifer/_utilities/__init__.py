@@ -343,7 +343,7 @@ def function_with_timeout(func, args, timeout):
     try:
 
         signal.alarm(timeout)
-        return func(args)
+        return func(*args)
 
     finally:
 
