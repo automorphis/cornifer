@@ -343,9 +343,14 @@ def function_with_timeout(func, args, timeout):
     file = Path.home() / "parallelize.txt"
 
     try:
-
+        with file.open('a') as fh:
+            fh.write(f'{os.getpid()} function call 1 {datetime.now().strftime("%H:%M:%S.%f")}\n')
         signal.alarm(timeout)
+        with file.open('a') as fh:
+            fh.write(f'{os.getpid()} function call 2 {datetime.now().strftime("%H:%M:%S.%f")}\n')
         ret = func(*args)
+        with file.open('a') as fh:
+            fh.write(f'{os.getpid()} function call 3 {datetime.now().strftime("%H:%M:%S.%f")}\n')
         return ret
 
     except TimeoutError:
