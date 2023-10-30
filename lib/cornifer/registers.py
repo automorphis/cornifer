@@ -587,11 +587,7 @@ class Register(ABC):
 
                 if not self._opened:
                     # open db for remaining processes
-                    self._db = function_with_timeout(
-                        open_lmdb,
-                        (self._write_db_filepath, self._db_map_size, self._readonly),
-                        1
-                    )
+                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
                     self._opened = True
 
                 self._reset_lockfile.value = 0
@@ -656,16 +652,12 @@ class Register(ABC):
                 self._opened = False
 
                 try:
-                    self._db = function_with_timeout(
-                        open_lmdb,
-                        (self._write_db_filepath, self._db_map_size, self._readonly),
-                        1
-                    )
+                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
 
-                except TimeoutError:
+                except lmdb.ReadersFullError:
                     with file.open('a') as fh:
                         fh.write(
-                            f"{os.getpid()} soft reset timeout {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                            f"{os.getpid()} soft reset failed {self._allow_txns.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     self._reset_lockfile.value = 1
 
                 else:
@@ -685,7 +677,7 @@ class Register(ABC):
     def _reset_lockfile_action(self):
 
         (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-        self._db = function_with_timeout(open_lmdb, (self._write_db_filepath, self._db_map_size, self._readonly), 1)
+        self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
         self._opened = True
 
     def _create_txn_shared_data(self, mp_ctx, num_procs, timeout):
