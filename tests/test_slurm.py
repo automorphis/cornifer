@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, timedelta
 import os
 import re
 import shutil
@@ -31,7 +31,7 @@ def write_batch_file(time_sec, slurm_test_main_filename, num_processes, args):
 f"""#!/usr/bin/env bash
 
 #SBATCH --job-name=corniferslurmtests
-#SBATCH --time={datetime.timedelta(seconds = time_sec)}
+#SBATCH --time={timedelta(seconds = time_sec)}
 #SBATCH --ntasks={num_processes}
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-core=1
@@ -510,15 +510,15 @@ class TestSlurm(unittest.TestCase):
                 fh.write("")
 
             write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len}')
-            print(f'Submitting test batch #4 (num_procs = {num_procs})...')
+            print(f'Submitting test batch #4 (num_procs = {num_procs}) {datetime.now().strftime("%H:%M:%S.%f")}...')
             self.submit_batch()
             self.wait_till_running(allocation_max_sec, allocation_query_sec)
-            print(f'Running test #4...')
+            print(f'Running test #4 {datetime.now().strftime("%H:%M:%S.%f")}...')
             self.wait_till_not_running(timeout, running_query_sec)
-            print('Checking test #4...')
+            print(f'Checking test #4 {datetime.now().strftime("%H:%M:%S.%f")}...')
             self.check_empty_error_file()
             reg = load_shorthand('sh', test_home_dir, True)
-            print('Register loaded.')
+            print(f'Register loaded. {datetime.now().strftime("%H:%M:%S.%f")}')
             self.assertEqual(
                 reg._write_db_filepath,
                 reg._perm_db_filepath
