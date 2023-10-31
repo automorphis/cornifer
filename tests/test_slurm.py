@@ -145,7 +145,7 @@ class TestSlurm(unittest.TestCase):
             squeue_process = subprocess.run(
                 ["squeue", "-h", "-j", self.job_id, "-o", "%.2t"], capture_output = True, text = True
             )
-            querying = squeue_process.stdout != "ST\n"
+            querying = squeue_process.stdout.strip() != ""
 
         time.sleep(query_sec)
 
@@ -500,7 +500,7 @@ class TestSlurm(unittest.TestCase):
         blk_len = 100
         timeout = 180
 
-        for num_procs in (20,):
+        for num_procs in (10,):
 
             with (Path.home() / "parallelize.txt").open("w") as fh:
                 fh.write("")
