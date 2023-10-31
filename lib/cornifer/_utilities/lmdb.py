@@ -12,8 +12,9 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
-
+import os
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 import lmdb
@@ -34,10 +35,15 @@ class ReversibleWriter:
     @contextmanager
     def begin(self):
 
+        file = Path.home() / 'parallelize.txt'
+
         with self.db.begin(write = True) as rw_txn:
 
             self.txn = rw_txn
             yield self
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} \t reversible writer committing {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         self.committed = True
 
