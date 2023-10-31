@@ -2244,7 +2244,6 @@ class Register(ABC):
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} \t append_disk_blk after disk2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-
                 if ret_metadata:
                     return startn, file_metadata
 
