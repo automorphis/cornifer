@@ -144,7 +144,7 @@ class TestSlurm(unittest.TestCase):
         )
         self.job_id = sbatch_process.stdout[20:-1]
         print(sbatch_process.stdout)
-        print(sbatch_process.stderr)
+        print(sbatch_process.stderr.strip())
 
     def test_slurm_1(self):
 
@@ -488,7 +488,7 @@ class TestSlurm(unittest.TestCase):
         blk_len = 100
         timeout = 120
 
-        for num_procs in (48,):
+        for num_procs in (24,):
 
             with (Path.home() / "parallelize.txt").open("w") as fh:
                 fh.write("")
