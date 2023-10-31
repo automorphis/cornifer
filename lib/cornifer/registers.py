@@ -527,8 +527,9 @@ class Register(ABC):
             "local_dir" : str(self._local_dir),
             "num_active_txns" : self._num_active_txns,
             "allow_txns" : self._allow_txns,
-            "reset_lockfile" : self._reset_lockfile,
-            "reset_lockfile_barrier" : self._reset_lockfile_barrier,
+            "hard_reset" : self._hard_reset,
+            "num_alive_procs" : self._num_alive_procs,
+            "num_waiting_procs" : self._num_waiting_procs,
             "do_manage_txn" : self._do_manage_txn,
             "timeout" : self._timeout
         }
@@ -563,25 +564,40 @@ class Register(ABC):
 
         if self._do_manage_txn:
 
-            if self._reset_lockfile.value == 1:
+            if not self._hard_reset.is_set(): # If not set, must do hard reset
 
-                if self._opened: # a soft reset could fail by indefinitely hanging on open_lmdb
+                if self._opened: # a soft reset could fail on `open_lmdb`
 
                     self._db.close()
                     self._opened = False
-                # when all processes arrive at the barrier, the lockfile is reset and the db for exactly one process is
-                # opened, thenthe barrier releases (see `Register._create_txn_shared_data` and
-                # `Register._reset_lockfile_action`).
+                # when the last process arrives, the lockfile is reset and the db for the last process is opened, then
+                # the wait releases and the remaining processes opens their db's.
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} \t at barrier {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                self._reset_lockfile_barrier.wait(timeout = self._timeout)
 
-                if not self._opened:
-                    # open db for remaining processes
+                if self._num_waiting_procs.value < self._num_alive_procs.value - 1:
+
+                    with self._num_waiting_procs.get_lock():
+                        self._num_waiting_procs.value += 1
+
+                    try:
+                        self._hard_reset.wait(self._timeout)
+
+                    finally:
+
+                        with self._num_waiting_procs.get_lock():
+                            self._num_waiting_procs.value -= 1
+
                     self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
                     self._opened = True
 
-                self._reset_lockfile.value = 0
+                else:
+                    # last process to arrive performs hard reset and notifies remaining processes to proceed
+                    (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
+                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+                    self._opened = True
+                    self._hard_reset.set() # notify waiting processes
+
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} \t hard reset succeeded {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
@@ -695,19 +711,14 @@ class Register(ABC):
                     fh.write(f"{os.getpid()} \t ordering hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._reset_lockfile.value = 1
 
-    def _reset_lockfile_action(self):
-
-        (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-        self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
-        self._opened = True
-
     def _create_txn_shared_data(self, mp_ctx, num_procs, timeout):
 
         self._num_active_txns = mp_ctx.Value('i', 0)
         self._allow_txns = mp_ctx.Event()
         self._allow_txns.set()
-        self._reset_lockfile = mp_ctx.Value('i', 0)
-        self._reset_lockfile_barrier = mp_ctx.Barrier(num_procs, self._reset_lockfile_action)
+        self._hard_reset = mp_ctx.Event()
+        self._num_alive_procs = mp_ctx.Value('i', 0)
+        self._num_waiting_procs = mp_ctx.Value('i', 0)
         self._do_manage_txn = True
         self._timeout = timeout
 
@@ -861,7 +872,7 @@ class Register(ABC):
     @contextmanager
     def tmp_db(self, tmp_dir, timeout = None):
 
-        self._check_not_open_raise("make_tmp_db")
+        self._check_not_open_raise("tmp_db")
         new_write_db_filepath = random_unique_filename(tmp_dir)
         self._write_db_filepath = new_write_db_filepath
 

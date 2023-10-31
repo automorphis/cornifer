@@ -8,37 +8,41 @@ from pathlib import Path
 import numpy as np
 
 from cornifer import NumpyRegister, ApriInfo, AposInfo, Block
+from cornifer._utilities.multiprocessing import process_wrapper
+
 
 def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
-    file = Path.home() / "parallelize.txt"
+    with process_wrapper(reg._num_alive_procs):
 
-    with file.open('a') as fh:
-        fh.write(f"{os.getpid()} \t starting {datetime.now().strftime('%H:%M:%S.%f')}\n")
+        file = Path.home() / "parallelize.txt"
 
-    with reg.open() as reg:
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} \t starting {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-        # with file.open('a') as fh:
-        #     fh.write("2\n")
+        with reg.open() as reg:
 
-        for i in range(proc_index, num_apri, num_procs):
+            # with file.open('a') as fh:
+            #     fh.write("2\n")
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} {i} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            for i in range(proc_index, num_apri, num_procs):
 
-            apri = ApriInfo(i = i)
-            reg.set_apos(apri, AposInfo(i = i + 1))
-
-            for j in range(num_blks):
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {j} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
-                    reg.append_disk_blk(blk)
+                    fh.write(f"{os.getpid()} {i} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+                apri = ApriInfo(i = i)
+                reg.set_apos(apri, AposInfo(i = i + 1))
+
+                for j in range(num_blks):
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} returned to caller {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} {j} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
+                        reg.append_disk_blk(blk)
+                        with file.open('a') as fh:
+                            fh.write(f"{os.getpid()} returned to caller {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} Block exit {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} Block exit {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
 
 
