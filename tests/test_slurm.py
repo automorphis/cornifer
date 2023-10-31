@@ -121,6 +121,8 @@ class TestSlurm(unittest.TestCase):
             )
             querying = "PD" in squeue_process.stdout
 
+        print(squeue_process.stdout)
+
     def wait_till_not_running(self, max_sec, query_sec):
 
         querying = True
