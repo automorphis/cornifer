@@ -1681,12 +1681,19 @@ class Register(ABC):
 
     def set_apos(self, apri, apos, exists_ok = False):
 
+        file = Path.home() / "parallelize.txt"
         self._check_open_raise("set_apos")
         self._check_readwrite_raise("set_apos")
         check_type(apri, "apri", ApriInfo)
         check_type(apos, "apos", AposInfo)
 
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} set_apos before reader {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
         with self._txn("reader") as ro_txn:
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} set_apos reader {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             add_apri, add_apos_inner, apos_key, apos_json = self._set_apos_pre(
                 apri, None, True, apos, None, True, exists_ok, ro_txn
@@ -1695,9 +1702,18 @@ class Register(ABC):
             if _debug == 2:
                 time.sleep(10 ** 8)
 
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} set_apos before writer {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
         with self._txn("writer") as rw_txn:
 
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} set_apos writer {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             self._set_apos_disk(apri, apos, add_apri, add_apos_inner, apos_key, apos_json, rw_txn)
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} set_apos after disk {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             if _debug == 1:
                 time.sleep(10 ** 8)
