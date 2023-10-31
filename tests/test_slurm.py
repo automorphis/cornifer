@@ -143,8 +143,8 @@ class TestSlurm(unittest.TestCase):
             ["sbatch", str(sbatch_filename)], capture_output = True, text = True
         )
         self.job_id = sbatch_process.stdout[20:-1]
-        print(sbatch_process.stdout)
-        print(sbatch_process.stderr.strip())
+        print(sbatch_process.stdout.replace('\n', ''))
+        print(sbatch_process.stderr.replace('\n', ''))
 
     def test_slurm_1(self):
 
