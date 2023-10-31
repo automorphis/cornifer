@@ -19,5 +19,7 @@ if __name__ == '__main__':
         for i, line in enumerate(fh.readlines()):
             last_lines[get_pid(line)] = (i, line)
 
-    for key, val in last_lines.items():
+    last_lines = sorted([(key, val) for key, val in last_lines.items()], key = lambda t: t[1][0])
+
+    for key, val in last_lines:
         print(key, val)
