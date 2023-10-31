@@ -1116,6 +1116,7 @@ class Register(ABC):
             yield
 
         finally:
+
             self.__dict__[elapsed_name] += time.time() - start_time
 
     #################################
