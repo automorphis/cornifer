@@ -2228,6 +2228,9 @@ class Register(ABC):
 
             try:
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} \t append_disk_blk before disk {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 with self._txn("reversible") as rrw_txn:
                     self._add_disk_blk_disk(
                         blk.apri(), blk.startn(), len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
