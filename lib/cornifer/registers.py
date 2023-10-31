@@ -2252,6 +2252,9 @@ class Register(ABC):
 
             except BaseException as e:
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} \t append_disk_blk error {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 if rrw_txn is not None:
 
                     with self._txn("writer") as rw_txn:
