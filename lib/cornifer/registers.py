@@ -649,7 +649,7 @@ class Register(ABC):
                 else:
 
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} txn created {i} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} txn created {i} {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     yield txn
                     return
 
