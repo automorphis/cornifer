@@ -36,10 +36,10 @@ f"""#!/usr/bin/env bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
-#SBATCH --nodelist=u128
 
 {python_command} {slurm_test_main_filename} {num_processes} {test_home_dir} {args}
 """)
+#SBATCH --nodelist=u128
 #SBATCH --output=/dev/null
 #SBATCH --mail-user=lane.662@osu.edu
 #SBATCH --mail-type=all
