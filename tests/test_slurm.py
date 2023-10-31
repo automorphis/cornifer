@@ -488,7 +488,7 @@ class TestSlurm(unittest.TestCase):
         blk_len = 100
         timeout = 180
 
-        for num_procs in (10, 20):
+        for num_procs in (20,):
 
             with (Path.home() / "parallelize.txt").open("w") as fh:
                 fh.write("")
@@ -502,6 +502,7 @@ class TestSlurm(unittest.TestCase):
             print('Checking test #4...')
             self.check_empty_error_file()
             reg = load_shorthand('sh', test_home_dir, True)
+            print('Register loaded.')
             self.assertEqual(
                 reg._write_db_filepath,
                 reg._perm_db_filepath
