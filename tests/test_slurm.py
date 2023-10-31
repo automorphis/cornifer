@@ -36,6 +36,7 @@ f"""#!/usr/bin/env bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
+#SBATCH --nodelist=u128
 
 {python_command} {slurm_test_main_filename} {num_processes} {test_home_dir} {args}
 """)
@@ -500,7 +501,7 @@ class TestSlurm(unittest.TestCase):
         blk_len = 100
         timeout = 180
 
-        for num_procs in (10,):
+        for num_procs in (10, 20):
 
             with (Path.home() / "parallelize.txt").open("w") as fh:
                 fh.write("")
