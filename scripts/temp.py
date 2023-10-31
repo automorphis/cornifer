@@ -17,11 +17,7 @@ if __name__ == '__main__':
     with file.open('r') as fh:
 
         for i, line in enumerate(fh.readlines()):
-
             last_lines[i, get_pid(line)] = line
-
-            if len(last_lines) >= num_procs:
-                break # line loop
 
     for key, val in last_lines.items():
         print(key, val)
