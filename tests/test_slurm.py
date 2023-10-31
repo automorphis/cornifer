@@ -69,7 +69,7 @@ class TestSlurm(unittest.TestCase):
 
     def check_empty_error_file(self):
 
-        error_filename.exists()
+        self.assertTrue(error_filename.exists())
 
         with error_filename.open("r") as fh:
 
@@ -119,7 +119,15 @@ class TestSlurm(unittest.TestCase):
         while querying:
 
             if time.time() - start >= max_sec:
-                raise Exception("Ran out of time!")
+
+                with error_filename.open("r") as fh:
+
+                    contents = ""
+
+                    for line in fh:
+                        contents += line
+
+                raise Exception(f"Ran out of time! Error file contents: {contents}")
 
             time.sleep(query_sec)
             squeue_process = subprocess.run(
