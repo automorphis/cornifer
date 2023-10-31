@@ -5,7 +5,11 @@ from pathlib import Path
 def get_pid(line):
 
     pid_re = r'\d+\s'
-    return re.match(pid_re, line)[0][:-1]
+    match = re.match(pid_re, line)
+    if match is not None:
+        return match[0][:-1]
+    else:
+        return None
 
 
 if __name__ == '__main__':
@@ -22,20 +26,22 @@ if __name__ == '__main__':
 
             pid = get_pid(line)
 
-            if pid in last_lines.keys():
+            if pid is not None:
 
-                lines = last_lines[pid]
+                if pid in last_lines.keys():
 
-                if len(lines) == memory:
-                    del lines[0]
+                    lines = last_lines[pid]
 
-                lines.append((i, line))
+                    if len(lines) == memory:
+                        del lines[0]
 
-            else:
-                last_lines[pid] = [(i,line)]
+                    lines.append((i, line))
 
-            if 'succeeded' in line:
-                num_succeeded += 1
+                else:
+                    last_lines[pid] = [(i,line)]
+
+                if 'succeeded' in line:
+                    num_succeeded += 1
 
     for pid in last_lines.keys():
 
