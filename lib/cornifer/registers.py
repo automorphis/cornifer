@@ -693,7 +693,7 @@ class Register(ABC):
                         fh.write(f"{os.getpid()} \t soft reset failed, ordering hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     if self._do_manage_txn:
-                        self._reset_lockfile.value = 1
+                        self._hard_reset.clear()
 
                     else:
                         raise
@@ -709,9 +709,9 @@ class Register(ABC):
                 # `Register._manage_txn`).
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} \t ordering hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                self._reset_lockfile.value = 1
+                self._hard_reset.clear()
 
-    def _create_txn_shared_data(self, mp_ctx, num_procs, timeout):
+    def _create_txn_shared_data(self, mp_ctx, timeout):
 
         self._num_active_txns = mp_ctx.Value('i', 0)
         self._allow_txns = mp_ctx.Event()
