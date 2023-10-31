@@ -14,7 +14,7 @@ if __name__ == '__main__':
     last_lines = {}
     file = Path.home() / 'parallelize.txt'
     num_succeeded = 0
-    memory = 15
+    memory = 25
 
     with file.open('r') as fh:
 
