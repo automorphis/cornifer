@@ -22,5 +22,5 @@ if __name__ == '__main__':
             if len(last_lines) >= num_procs:
                 break # line loop
 
-    for key, val in last_lines:
+    for key, val in last_lines.items():
         print(key, val)
