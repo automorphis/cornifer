@@ -597,8 +597,14 @@ class Register(ABC):
 
             if self._do_manage_txn:
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} \t finalizing txn manage {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 with self._num_active_txns.get_lock():
                     self._num_active_txns.value -= 1
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} \t counter decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
     @contextmanager
     def _txn(self, kind):
