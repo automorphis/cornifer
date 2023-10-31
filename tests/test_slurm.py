@@ -69,17 +69,7 @@ class TestSlurm(unittest.TestCase):
 
     def check_empty_error_file(self):
 
-        try:
-            self.assertTrue(error_filename.exists())
-
-        except AssertionError:
-
-            print(error_filename)
-
-            for d in error_filename.parent.iterdir():
-                print(d)
-
-            raise
+        error_filename.exists()
 
         with error_filename.open("r") as fh:
 
@@ -117,7 +107,7 @@ class TestSlurm(unittest.TestCase):
 
             time.sleep(query_sec)
             squeue_process = subprocess.run(
-                ["squeue", "-j", self.job_id, "-o", "%.2t"], capture_output = True, text = True
+                ["squeue", "-h", "-j", self.job_id, "-o", "%.2t"], capture_output = True, text = True
             )
             querying = "PD" in squeue_process.stdout
 
@@ -143,7 +133,7 @@ class TestSlurm(unittest.TestCase):
 
             time.sleep(query_sec)
             squeue_process = subprocess.run(
-                ["squeue", "-j", self.job_id, "-o", "%.2t"], capture_output = True, text = True
+                ["squeue", "-h", "-j", self.job_id, "-o", "%.2t"], capture_output = True, text = True
             )
             querying = squeue_process.stdout != "ST\n"
 
