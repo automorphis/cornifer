@@ -546,8 +546,9 @@ class Register(ABC):
             self.__dict__ = Register._from_local_dir(local_dir).__dict__
             self._num_active_txns = state["num_active_txns"]
             self._allow_txns = state["allow_txns"]
-            self._reset_lockfile = state["reset_lockfile"]
-            self._reset_lockfile_barrier = state["reset_lockfile_barrier"]
+            self._hard_reset = state["hard_reset"]
+            self._num_alive_procs = state["num_alive_procs"]
+            self._num_waiting_procs = state["num_waiting_procs"]
             self._do_manage_txn = state["do_manage_txn"]
             self._timeout = state["timeout"]
 
