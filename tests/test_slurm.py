@@ -69,7 +69,17 @@ class TestSlurm(unittest.TestCase):
 
     def check_empty_error_file(self):
 
-        error_filename.exists()
+        try:
+            self.assertTrue(error_filename.exists())
+
+        except AssertionError:
+
+            print(error_filename)
+
+            for d in error_filename.parent.iterdir():
+                print(d)
+
+            raise
 
         with error_filename.open("r") as fh:
 
