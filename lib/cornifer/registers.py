@@ -651,6 +651,8 @@ class Register(ABC):
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} txn created {i} {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     yield txn
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} _txn returning {i} {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     return
 
             if i == 0 or (i == 1 and not self._do_manage_txn):

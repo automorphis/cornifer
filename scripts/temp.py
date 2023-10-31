@@ -11,7 +11,7 @@ def get_pid(line):
 if __name__ == '__main__':
 
     num_procs = 10
-    last_lines = OrderedDict()
+    last_lines = {}
     file = Path.home() / 'parallelize.txt'
 
     with file.open('r') as fh:
