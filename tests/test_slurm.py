@@ -39,7 +39,7 @@ f"""#!/usr/bin/env bash
 
 {python_command} {slurm_test_main_filename} {num_processes} {test_home_dir} {args}
 """)
-#SBATCH --nodelist=u128
+#SBATCH --nodelist=u128,u135,u032
 #SBATCH --output=/dev/null
 #SBATCH --mail-user=lane.662@osu.edu
 #SBATCH --mail-type=all

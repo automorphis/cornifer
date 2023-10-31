@@ -14,20 +14,35 @@ if __name__ == '__main__':
     last_lines = {}
     file = Path.home() / 'parallelize.txt'
     num_succeeded = 0
+    memory = 3
 
     with file.open('r') as fh:
 
         for i, line in enumerate(fh.readlines()):
 
-            last_lines[get_pid(line)] = (i, line)
+            pid = get_pid(line)
+
+            if pid in last_lines.keys():
+
+                lines = last_lines[pid]
+
+                if len(lines) == memory:
+                    del lines[0]
+
+                lines.append((i, line))
+
+            else:
+                last_lines[pid] = [(i,line)]
 
             if 'succeeded' in line:
                 num_succeeded += 1
 
-    last_lines = sorted([(key, val) for key, val in last_lines.items()], key = lambda t: t[1][0])
+    for pid in last_lines.keys():
 
-    for key, val in last_lines:
-        print(key, val)
+        print(pid)
+
+        for val in last_lines[pid]:
+            print(f"\t{val}")
 
     print(num_succeeded)
     print(num_succeeded // (len(last_lines) - 1))
