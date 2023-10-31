@@ -45,6 +45,9 @@ class ReversibleWriter:
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} \t reversible writer committing {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} \t reversible writer committed {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
         self.committed = True
 
     def cursor(self):
