@@ -2209,7 +2209,7 @@ class Register(ABC):
 
         with self._time("add_elapsed"):
 
-            file = Path.home() / "reversible.txt"
+            file = Path.home() / "parallelize.txt"
             self._check_open_raise("append_disk_blk")
             self._check_readwrite_raise("append_disk_blk")
             self._check_blk_open_raise(blk, "append_disk_blk")
