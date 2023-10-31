@@ -2203,6 +2203,7 @@ class Register(ABC):
 
         with self._time("add_elapsed"):
 
+            file = Path.home() / "reversible.txt"
             self._check_open_raise("append_disk_blk")
             self._check_readwrite_raise("append_disk_blk")
             self._check_blk_open_raise(blk, "append_disk_blk")
@@ -2225,8 +2226,15 @@ class Register(ABC):
                     self._add_disk_blk_disk(
                         blk.apri(), blk.startn(), len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
                     )
+                    
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} \t append_disk_blk before disk2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 file_metadata = type(self)._add_disk_blk_disk2(blk.segment(), filename, ret_metadata, kwargs)
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} \t append_disk_blk after disk2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
 
                 if ret_metadata:
                     return startn, file_metadata
