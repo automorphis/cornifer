@@ -1,4 +1,5 @@
 import re
+from collections import OrderedDict
 from pathlib import Path
 
 def get_pid(line):
@@ -10,14 +11,14 @@ def get_pid(line):
 if __name__ == '__main__':
 
     num_procs = 10
-    last_lines = {}
+    last_lines = OrderedDict()
     file = Path.home() / 'parallelize.txt'
 
     with file.open('r') as fh:
 
-        for line in fh.readlines():
+        for i, line in enumerate(fh.readlines()):
 
-            last_lines[get_pid(line)] = line
+            last_lines[i, get_pid(line)] = line
 
             if len(last_lines) >= num_procs:
                 break # line loop
