@@ -36,7 +36,7 @@ f"""#!/usr/bin/env bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-core=1
 #SBATCH --error={error_filename}
-#SBATCH --nodelist=u128,u135,u032
+#SBATCH --exclude=u120
 
 {python_command} {slurm_test_main_filename} {num_processes} {test_home_dir} {args}
 """)
