@@ -544,7 +544,6 @@ class TestSlurm(unittest.TestCase):
 
             shutil.rmtree(reg._local_dir)
 
-
     def test_parallelize(self):
 
         slurm_test_main_filename = slurm_tests_filename / 'test5.py'

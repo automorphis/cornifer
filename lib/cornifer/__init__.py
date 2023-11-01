@@ -12,6 +12,7 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
+import asyncio
 import inspect
 import multiprocessing
 import time
@@ -23,7 +24,7 @@ from pathlib import Path
 
 from ._utilities import check_type, check_return_int, check_type_None_default, check_Path_None_default, \
     check_return_int_None_default, resolve_path, is_deletable
-from ._utilities.multiprocessing import start_with_timeout
+from ._utilities.multiprocessing import start_with_timeout, process_wrapper
 from .info import ApriInfo, AposInfo
 from .blocks import Block
 from .registers import Register, PickleRegister, NumpyRegister
@@ -152,12 +153,10 @@ def openblks(*blks):
     with ExitStack() as stack:
         yield tuple([stack.enter_context(blk) for blk in blks])
 
-def _wrap_target(target, num_procs, proc_index, args, regs, num_active_txns, txn_wait_event):
+def _wrap_target(target, num_procs, proc_index, args, num_alive_procs):
 
-    for reg in regs:
-        reg._set_txn_shared_data(num_active_txns, txn_wait_event)
-
-    target(num_procs, proc_index, *args)
+    with process_wrapper(num_alive_procs):
+        target(num_procs, proc_index, *args)
 
 def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, regs = (), update_period = None, update_timeout = 60):
 
@@ -226,71 +225,33 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
     if update_timeout <= 0:
         raise ValueError("`update_timeout` must be positive.")
 
+    async def update_all_perm_dbs(timeout_):
+        await asyncio.gather(*(reg_._update_perm_db(timeout_) for reg_ in regs))
+
     file = Path.home() / "parallelize.txt"
     mp_ctx = multiprocessing.get_context("spawn")
+    num_alive_procs = mp_ctx.Value('i', 0)
     procs = []
-    update = update_period is not None and tmp_dir is not None
-    txn_wait_event = mp_ctx.Event()
-    txn_wait_event.set() # transactions initially do not have to wait
-    num_active_txns = mp_ctx.Value("i", 0)
-    timeout_wait_period = 0.5
-    update_wait_period = 0.1
-    with file.open("w") as fh:
-        fh.write("1\n")
 
     with ExitStack() as stack:
 
         if tmp_dir is not None:
 
             for reg in regs:
-                with file.open("a") as fh:
-                    for d in reg._perm_db_filepath.iterdir():
-                        fh.write(f"{d} {is_deletable(d)}\n")
                 stack.enter_context(reg.tmp_db(tmp_dir, update_period))
-                with file.open("a") as fh:
-                    for d in reg._perm_db_filepath.iterdir():
-                        fh.write(f"{d} {is_deletable(d)}\n")
-
-        with file.open("a") as fh:
-            fh.write("2\n")
 
         for proc_index in range(num_procs):
             procs.append(mp_ctx.Process(
                 target = _wrap_target,
-                args = (target, num_procs, proc_index, args, regs, num_active_txns, txn_wait_event)
+                args = (target, num_procs, proc_index, args, num_alive_procs)
             ))
 
-        with file.open("a") as fh:
-            for d in regs[0]._perm_db_filepath.iterdir():
-                fh.write(f"{d} {is_deletable(d)}\n")
-
-        with file.open("a") as fh:
-            fh.write("3\n")
-
         for proc in procs:
-            with file.open("a") as fh:
-                fh.write("4\n")
-            with file.open("a") as fh:
-                for d in regs[0]._perm_db_filepath.iterdir():
-                    fh.write(f"{d} {is_deletable(d)}\n")
             proc.start()
-            with file.open("a") as fh:
-                fh.write("5\n")
-            with file.open("a") as fh:
-                for d in regs[0]._perm_db_filepath.iterdir():
-                    fh.write(f"{d} {is_deletable(d)}\n")
 
         last_update_end = time.time()
 
-        with file.open("a") as fh:
-            fh.write("6\n")
-
         while True: # timeout loop
-
-            with reg.open(readonly = True):
-
-                with file.open("a") as fh:
-                    fh.write(f"timeout loop {datetime.now().strftime('%H:%M:%S.%f')} {regs[0].num_apri()}\n")
 
             if time.time() - start >= timeout:
 
@@ -302,48 +263,17 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
             elif all(not proc.is_alive() for proc in procs):
                 break # timeout loop
 
-            elif update and time.time() - last_update_end >= update_period:
+            elif update_period is not None and tmp_dir is not None and time.time() - last_update_end >= update_period:
 
                 update_start = time.time()
-                txn_wait_event.clear() # block future transactions
 
-                while True: # update loop
-                    with file.open("a") as fh:
-                        fh.write(f"update loop {datetime.now().strftime('%H:%M:%S.%f')} {num_active_txns.value}\n")
-                    # wait for current transactions to complete before updating
-                    if num_active_txns.value == 0:
-                        with file.open("a") as fh:
-                            fh.write("7\n")
-                        for reg in regs:
+                for reg in regs:
+                    reg._do_update_perm_db.clear() # block future transactions
 
-                            with file.open("a") as fh:
-                                fh.write("8\n")
-                            with file.open("a") as fh:
-                                for d in regs[0]._perm_db_filepath.iterdir():
-                                    fh.write(f"{d} {is_deletable(d)}\n")
-                            with file.open("a") as fh:
-                                fh.write("9\n")
-                            reg.update_perm_db(update_timeout + update_start - time.time())
-                            with file.open("a") as fh:
-                                fh.write("10\n")
-                            with file.open("a") as fh:
-                                for d in regs[0]._perm_db_filepath.iterdir():
-                                    fh.write(f"{d} {is_deletable(d)}\n")
-
-                        txn_wait_event.set() # allow transactions
-                        break # update loop
-
-                    else:
-                        time.sleep(update_wait_period)
-
-                    if time.time() - update_start >= update_timeout:
-
-                        warnings.warn("Permanent `Register` periodic update timed out.")
-                        break # update loop
-
+                asyncio.run(update_all_perm_dbs(update_timeout + update_start - time.time()))
                 last_update_end = time.time()
 
-            time.sleep(timeout_wait_period)
+            time.sleep(1)
 
         for proc in procs:
             proc.join()

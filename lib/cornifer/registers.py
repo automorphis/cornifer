@@ -12,6 +12,7 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
+import asyncio
 import itertools
 import json
 import os
@@ -30,6 +31,8 @@ from threading import BrokenBarrierError
 
 import lmdb
 import numpy as np
+import aioshutil
+import aiofiles
 
 from ._utilities.multiprocessing import copytree_with_timeout, wait_for_value
 from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, CompressionError, \
@@ -426,12 +429,15 @@ class Register(ABC):
         self.compress_elapsed = 0
         self.decompress_elapsed = 0
         # TRANSACTIONS #
-        self._timeout = None
-        self._do_manage_txn = False
-        self._reset_lockfile = None
+        self._do_update_perm_db = False
+        self._update_perm_db_event = None
         self._num_active_txns = None
-        self._allow_txns = None
-        self._reset_lockfile_barrier = None
+        self._update_perm_db_timeout = None
+        self._do_hard_reset = False
+        self._hard_reset_event = None
+        self._num_alive_procs = None
+        self._num_waiting_procs = None
+        self._hard_reset_timeout = None
 
     @staticmethod
     def _from_local_dir(local_dir):
@@ -524,19 +530,21 @@ class Register(ABC):
 
     def __getstate__(self):
         return {
-            "local_dir" : str(self._local_dir),
-            "num_active_txns" : self._num_active_txns,
-            "allow_txns" : self._allow_txns,
-            "hard_reset" : self._hard_reset,
-            "num_alive_procs" : self._num_alive_procs,
-            "num_waiting_procs" : self._num_waiting_procs,
-            "do_manage_txn" : self._do_manage_txn,
-            "timeout" : self._timeout
+            'local_dir' : str(self._local_dir),
+            'do_update_perm_db' : self._do_update_perm_db,
+            'update_perm_db_event' : self._update_perm_db_event,
+            'num_active_txns' : self._num_active_txns,
+            'update_perm_db_timeout' : self._update_perm_db_timeout,
+            'do_hard_reset' : self._do_hard_reset,
+            'hard_reset_event' : self._hard_reset_event,
+            'num_alive_procs' : self._num_alive_procs,
+            'num_waiting_procs' : self._num_waiting_procs,
+            'hard_reset_timeout' : self._hard_reset_timeout
         }
 
     def __setstate__(self, state):
 
-        local_dir = Path(state["local_dir"])
+        local_dir = Path(state['local_dir'])
 
         if Register._instance_exists(local_dir):
             return
@@ -544,13 +552,15 @@ class Register(ABC):
         else:
 
             self.__dict__ = Register._from_local_dir(local_dir).__dict__
-            self._num_active_txns = state["num_active_txns"]
-            self._allow_txns = state["allow_txns"]
-            self._hard_reset = state["hard_reset"]
-            self._num_alive_procs = state["num_alive_procs"]
-            self._num_waiting_procs = state["num_waiting_procs"]
-            self._do_manage_txn = state["do_manage_txn"]
-            self._timeout = state["timeout"]
+            self._do_update_perm_db = state['do_update_perm_db']
+            self._update_perm_db_event = state['update_perm_db_event']
+            self._num_active_txns = state['num_active_txns']
+            self._update_perm_db_timeout = state['update_perm_db_timeout']
+            self._do_hard_reset = state['do_hard_reset']
+            self._hard_reset_event = state['hard_reset_event']
+            self._num_alive_procs = state['num_alive_procs']
+            self._num_waiting_procs = state['num_waiting_procs']
+            self._hard_reset_timeout = state['hard_reset_timeout']
 
     def __getnewargs__(self):
         return None, None, None, None, None, str(self._local_dir)
@@ -563,46 +573,40 @@ class Register(ABC):
 
         file = Path.home() / "parallelize.txt"
 
-        if self._do_manage_txn:
+        if self._do_hard_reset and not self._hard_reset_event.is_set(): # If not set, must do hard reset
 
-            if not self._hard_reset.is_set(): # If not set, must do hard reset
+            if self._opened: # a soft reset could fail on `open_lmdb`
 
-                if self._opened: # a soft reset could fail on `open_lmdb`
+                self._db.close()
+                self._opened = False
+            # when the last process arrives, the lockfile is reset and the db for the last process is opened, then
+            # the wait releases and the remaining processes opens their db's.
+            if self._num_waiting_procs.value < self._num_alive_procs.value - 1:
 
-                    self._db.close()
-                    self._opened = False
-                # when the last process arrives, the lockfile is reset and the db for the last process is opened, then
-                # the wait releases and the remaining processes opens their db's.
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} \t at barrier {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                with self._num_waiting_procs.get_lock():
+                    self._num_waiting_procs.value += 1
 
-                if self._num_waiting_procs.value < self._num_alive_procs.value - 1:
+                try:
+                    self._hard_reset_event.wait(self._hard_reset_timeout)
+
+                finally:
 
                     with self._num_waiting_procs.get_lock():
-                        self._num_waiting_procs.value += 1
+                        self._num_waiting_procs.value -= 1
 
-                    try:
-                        self._hard_reset.wait(self._timeout)
+                self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+                self._opened = True
 
-                    finally:
+            else:
+                # last process to arrive performs hard reset and notifies remaining processes to proceed
+                (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
+                self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+                self._opened = True
+                self._hard_reset.set() # notify waiting processes
 
-                        with self._num_waiting_procs.get_lock():
-                            self._num_waiting_procs.value -= 1
+        if self._do_update_perm_db:
 
-                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
-                    self._opened = True
-
-                else:
-                    # last process to arrive performs hard reset and notifies remaining processes to proceed
-                    (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
-                    self._opened = True
-                    self._hard_reset.set() # notify waiting processes
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} \t hard reset succeeded {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-            self._allow_txns.wait(timeout = self._timeout)
+            self._update_perm_db_event.wait(self._update_perm_db_timeout)
 
             with self._num_active_txns.get_lock():
                 self._num_active_txns.value += 1
@@ -612,24 +616,13 @@ class Register(ABC):
 
         finally:
 
-            if self._do_manage_txn:
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} \t finalizing txn manage {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            if self._do_update_perm_db:
 
                 with self._num_active_txns.get_lock():
                     self._num_active_txns.value -= 1
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} \t counter decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
     @contextmanager
     def _txn(self, kind):
-
-        file = Path.home() / "parallelize.txt"
-
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} requesting txn {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         if kind not in ("reader", "writer", "reversible"):
             raise ValueError
@@ -639,9 +632,6 @@ class Register(ABC):
             with ExitStack() as stack:
 
                 stack.enter_context(self._manage_txn())
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} txn managed {i} {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 try:
 
@@ -654,34 +644,16 @@ class Register(ABC):
 
                 except lmdb.ReadersFullError:
 
-                    if i >= 2:
-                        with file.open('a') as fh:
-                            fh.write(f"{os.getpid()} \t total failure {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    if i == 2 or (i == 1 and not self._do_hard_reset):
                         raise
-
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} \t txn creation failed {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                except BaseException as e:
-
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} \t unexpected exception {i} {e} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                    raise e
 
                 else:
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} txn created {i} {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     yield txn
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} _txn returning {i} {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     return
 
-            if i == 0 or (i == 1 and not self._do_manage_txn):
+            if i == 0:
                 # perform soft reset on first failure, closing database handle and reopening for this process only
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} \t starting soft reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._db.close()
                 self._opened = False
 
@@ -690,38 +662,38 @@ class Register(ABC):
 
                 except lmdb.ReadersFullError:
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} \t soft reset failed, ordering hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                    if self._do_manage_txn:
-                        self._hard_reset.clear()
+                    if self._do_hard_reset:
+                        self._hard_reset_event.clear()
 
                     else:
                         raise
 
                 else:
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} \t soft reset succeeded {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     self._opened = True
 
-            elif i == 1: # hence `self._do_manage_txn is True`
+            elif i == 1: # hence `self._do_hard_reset is True`
                 # perform hard reset, closing database handles for all processes, deleting the lockfile,
                 # and reopening database handles, which creates a new lockfile (this code is found in
                 # `Register._manage_txn`).
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} \t ordering hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._hard_reset.clear()
 
-    def _create_txn_shared_data(self, mp_ctx, timeout):
+    def _create_update_perm_db_shared_data(self, mp_ctx, timeout):
 
+        self._do_update_perm_db = True
+        self._update_perm_db_event = mp_ctx.Event()
+        self._update_perm_db_event.set()
         self._num_active_txns = mp_ctx.Value('i', 0)
-        self._allow_txns = mp_ctx.Event()
-        self._allow_txns.set()
-        self._hard_reset = mp_ctx.Event()
+        self._update_perm_db_timeout = timeout
+
+    def _create_hard_reset_shared_data(self, mp_ctx, timeout):
+
+        self._do_hard_reset = True
+        self._hard_reset_event = mp_ctx.Event()
+        self._hard_reset_event.set()
         self._num_alive_procs = mp_ctx.Value('i', 0)
         self._num_waiting_procs = mp_ctx.Value('i', 0)
-        self._do_manage_txn = True
-        self._timeout = timeout
+        self._hard_reset_timeout = timeout
+
 
     #################################
     #    PUBLIC REGISTER METHODS    #
@@ -902,29 +874,35 @@ class Register(ABC):
 
             self._write_db_filepath = self._perm_db_filepath
             write_txt_file(str(self._write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
-            self.update_perm_db(timeout)
+            asyncio.run(self._update_perm_db(timeout))
 
-    def update_perm_db(self, timeout = None):
+    async def _update_perm_db(self, timeout):
 
+        start = time.time()
         file = Path.home() / 'parallelize.txt'
 
-        with file.open('a') as fh:
-            fh.write(f"{(self._write_db_filepath / DATA_FILEPATH.name).stat().st_size}\n")
+        while True:
 
-        tmp_filename = random_unique_filename(self._perm_db_filepath.parent)
-        tmp_filename.mkdir(exist_ok = False)
-        shutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename / DATA_FILEPATH.name)
+            if not self._do_manage_txn or self._num_active_txns.value == 0:
 
-        with file.open('a') as fh:
-            fh.write(f"{tmp_filename.stat().st_size}\n")
+                tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
 
-        (tmp_filename / DATA_FILEPATH.name).rename(self._perm_db_filepath / DATA_FILEPATH.name)
+                try:
+                    await asyncio.wait_for(aioshutil.copy(
+                        self._write_db_filepath / DATA_FILEPATH.name, tmp_filename), timeout + start - time.time()
+                    )
 
-        with file.open('a') as fh:
-            fh.write(f"{(self._perm_db_filepath / DATA_FILEPATH.name).stat().st_size}\n")
+                except TimeoutError:
 
-        tmp_filename.rmdir()
-        write_txt_file(self._digest(), self._digest_filepath, True)
+                    await aiofiles.unlink(tmp_filename, True)
+                    raise
+
+                tmp_filename.rename(self._perm_db_filepath / DATA_FILEPATH.name)
+                write_txt_file(self._digest(), self._digest_filepath, True)
+                self._do_update_perm_db.set()
+                return
+
+            await asyncio.sleep(0.1)
 
     #################################
     #    PROTEC REGISTER METHODS    #
