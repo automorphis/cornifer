@@ -981,7 +981,14 @@ class Register(ABC):
                     fh.write(f"{os.getpid()} updated {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 return
 
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} before sleep {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             await asyncio.sleep(0.1)
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} after sleep {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
 
     def _digest(self):
 

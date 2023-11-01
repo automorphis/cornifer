@@ -236,8 +236,10 @@ def parallelize(
     if update_timeout <= 0:
         raise ValueError("`update_timeout` must be positive.")
 
-    async def update_all_perm_dbs(timeout_):
-        await asyncio.gather(*(reg_._update_perm_db(timeout_) for reg_ in regs))
+    async def update_all_perm_dbs():
+
+        for reg_ in regs:
+            await reg_._update_perm_db(update_timeout)
 
     file = Path.home() / "parallelize.txt"
     mp_ctx = multiprocessing.get_context("spawn")
@@ -314,13 +316,10 @@ def parallelize(
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} update block in timeout loop {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-
-                update_start = time.time()
-
                 for reg in regs:
                     reg._update_perm_db_event.clear() # block future transactions
 
-                asyncio.run(update_all_perm_dbs(update_timeout + update_start - time.time()))
+                asyncio.run(update_all_perm_dbs())
                 last_update_end = time.time()
 
             time.sleep(1)
