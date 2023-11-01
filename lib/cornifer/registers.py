@@ -909,8 +909,15 @@ class Register(ABC):
 
         finally:
 
+            newline = '\n'
+
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} tmp_db finally {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+            with self.open():
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} {self.summary().replace(newline, ' ')} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             self._check_not_open_raise('tmp_db')
             asyncio.run(self._update_perm_db(timeout))
