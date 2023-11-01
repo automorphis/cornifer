@@ -732,7 +732,7 @@ class Register(ABC):
 
         with self._txn('reader') as ro_txn:
 
-            for apri in self._apris_disk(ro_txn):
+            for apri, apri_json in self._apris_disk(ro_txn):
 
                 num_disk_apri += 1
 
@@ -745,7 +745,7 @@ class Register(ABC):
                 else:
                     num_apos += 1
 
-                prefix = self._intervals_pre(apri, None, True, ro_txn)
+                prefix = self._intervals_pre(apri, apri_json, False, ro_txn)
                 total_disk_blk_len += self._total_len_disk(prefix, ro_txn)
 
         return (
