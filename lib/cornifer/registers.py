@@ -965,6 +965,8 @@ class Register(ABC):
                     raise
 
                 tmp_filename.rename(self._perm_db_filepath / DATA_FILEPATH.name)
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} updated {self._perm_db_filepath / DATA_FILEPATH.name} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 write_txt_file(self._digest(), self._digest_filepath, True)
                 self._update_perm_db_event.set()
                 with file.open('a') as fh:
