@@ -311,6 +311,10 @@ def parallelize(
 
             elif update_period is not None and tmp_dir is not None and time.time() - last_update_end >= update_period:
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} update block in timeout loop {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+
                 update_start = time.time()
 
                 for reg in regs:

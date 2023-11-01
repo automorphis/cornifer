@@ -35,18 +35,10 @@ class ReversibleWriter:
     @contextmanager
     def begin(self):
 
-        file = Path.home() / 'parallelize.txt'
-
         with self.db.begin(write = True) as rw_txn:
 
             self.txn = rw_txn
             yield self
-
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} \t reversible writer committing {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} \t reversible writer committed {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         self.committed = True
 
