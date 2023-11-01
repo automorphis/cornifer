@@ -924,10 +924,14 @@ class Register(ABC):
         if not self._do_update_perm_db:
             raise ValueError
 
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} _update_perm_db head {timeout} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+
         while time.time() - start < timeout:
 
             with file.open('a') as fh:
-                fh.write(f"{os.getpid()} _update_perm_db loop {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                fh.write(f"{os.getpid()} _update_perm_db loop {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             if self._num_active_txns.value == 0:
 
@@ -941,7 +945,6 @@ class Register(ABC):
                     fh.write(f"{os.getpid()} updating {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
-
 
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} {tmp_filename} {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
