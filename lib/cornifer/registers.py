@@ -602,7 +602,7 @@ class Register(ABC):
                 (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
                 self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
                 self._opened = True
-                self._hard_reset.set() # notify waiting processes
+                self._hard_reset_event.set() # notify waiting processes
 
         if self._do_update_perm_db:
 
