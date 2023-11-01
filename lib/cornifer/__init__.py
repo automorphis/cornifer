@@ -15,6 +15,7 @@
 import asyncio
 import inspect
 import multiprocessing
+import os
 import time
 import warnings
 
@@ -244,7 +245,14 @@ def parallelize(
     for reg in regs:
 
         if tmp_dir is not None:
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} creating update data {reg.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             reg._create_update_perm_db_shared_data(mp_ctx, update_timeout)
+
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} creating hard reset data {reg.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         reg._create_hard_reset_shared_data(mp_ctx, 2 * sec_per_block_upper_bound)
 
@@ -253,6 +261,8 @@ def parallelize(
         if tmp_dir is not None:
 
             for reg in regs:
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} entering tmp_db {reg.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 stack.enter_context(reg.tmp_db(tmp_dir, update_timeout))
 
         for proc_index in range(num_procs):
@@ -261,6 +271,9 @@ def parallelize(
                 args = (target, num_procs, proc_index, args, num_alive_procs)
             ))
 
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} starting procs {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
         for proc in procs:
             proc.start()
 
@@ -268,7 +281,13 @@ def parallelize(
 
         while True: # timeout loop
 
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} timeout loop {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             if time.time() - start >= timeout:
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} terminating procs {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 for p in procs:
                     p.terminate()
