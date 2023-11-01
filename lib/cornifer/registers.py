@@ -960,10 +960,11 @@ class Register(ABC):
                     fh.write(f"{os.getpid()} {self._write_db_filepath / DATA_FILEPATH.name} {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 try:
-                    await asyncio.wait_for(
-                        aioshutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename),
-                        timeout + start - time.time() if timeout is not None else None
-                    )
+                    shutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename)
+                    # await asyncio.wait_for(
+                    #     aioshutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename),
+                    #     timeout + start - time.time() if timeout is not None else None
+                    # )
 
                 except asyncio.exceptions.TimeoutError:
                     with file.open('a') as fh:
