@@ -953,9 +953,15 @@ class Register(ABC):
 
                 except TimeoutError:
                     with file.open('a') as fh:
-                        fh.write(
-                            f"{os.getpid()} oops! {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} oops! {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     await aiofiles.unlink(tmp_filename, True)
+                    raise
+
+                except BaseException:
+
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} double oops! {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                     raise
 
                 tmp_filename.rename(self._perm_db_filepath / DATA_FILEPATH.name)
