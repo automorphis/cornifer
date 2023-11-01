@@ -715,6 +715,48 @@ class Register(ABC):
     def __repr__(self):
         return f'{self.__class__.__name__}("{str(self.dir)}", "{self._shorthand}", "{self._msg}", {self._db_map_size})'
 
+    def summary(self):
+
+        self._check_open_raise("summary")
+
+        num_disk_apri = 0
+        num_ram_apri = 0
+        num_apos = 0
+        total_disk_blk_len = 0
+        total_ram_blk_len = 0
+
+        for apri in self._apris_ram():
+
+            num_ram_apri += 1
+            total_ram_blk_len += self._total_len_ram(apri)
+
+        with self._txn('reader') as ro_txn:
+
+            for apri in self._apris_disk(ro_txn):
+
+                num_disk_apri += 1
+
+                try:
+                    self.apos(apri)
+
+                except DataNotFoundError:
+                    pass
+
+                else:
+                    num_apos += 1
+
+                prefix = self._intervals_pre(apri, None, True, ro_txn)
+                total_disk_blk_len += self._total_len_disk(prefix, ro_txn)
+
+        return (
+            repr(self) + '\n' +
+            f"Total disk apri       : {num_disk_apri}\n"
+            f"Total ram apri        : {num_ram_apri}\n"
+            f"Total apos            : {num_apos}\n"
+            f"Total disk blk length : {total_disk_blk_len}\n"
+            f"Total ram blk length  : {total_ram_blk_len}"
+        )
+
     def set_shorthand(self, shorthand):
 
         check_type(shorthand, "shorthand", str)
@@ -876,6 +918,9 @@ class Register(ABC):
             write_txt_file(str(self._write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
             asyncio.run(self._update_perm_db(timeout))
 
+    #################################
+    #    PROTEC REGISTER METHODS    #
+
     async def _update_perm_db(self, timeout):
 
         start = time.time()
@@ -907,9 +952,6 @@ class Register(ABC):
                 return
 
             await asyncio.sleep(0.1)
-
-    #################################
-    #    PROTEC REGISTER METHODS    #
 
     def _digest(self):
 
