@@ -951,13 +951,16 @@ class Register(ABC):
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} {tmp_filename} {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} {timeout + start - time.time() if timeout is not None else None} {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 try:
                     await asyncio.wait_for(
                         aioshutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename),
                         timeout + start - time.time() if timeout is not None else None
                     )
 
-                except TimeoutError:
+                except asyncio.exceptions.TimeoutError:
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} oops! {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     await aiofiles.unlink(tmp_filename, True)
