@@ -675,7 +675,7 @@ class Register(ABC):
                 # perform hard reset, closing database handles for all processes, deleting the lockfile,
                 # and reopening database handles, which creates a new lockfile (this code is found in
                 # `Register._manage_txn`).
-                self._hard_reset.clear()
+                self._hard_reset_event.clear()
 
     def _create_update_perm_db_shared_data(self, mp_ctx, timeout):
 
