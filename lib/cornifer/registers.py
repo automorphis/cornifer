@@ -18,8 +18,6 @@ import json
 import os
 import pickle
 import shutil
-import sys
-import traceback
 import warnings
 import zipfile
 from contextlib import contextmanager, ExitStack
@@ -27,14 +25,11 @@ from datetime import datetime
 from pathlib import Path
 from abc import ABC, abstractmethod
 import time
-from threading import BrokenBarrierError
 
 import lmdb
 import numpy as np
 import aioshutil
-import aiofiles
 
-from ._utilities.multiprocessing import copytree_with_timeout, wait_for_value
 from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, CompressionError, \
     DecompressionError, NOT_ABSOLUTE_ERROR_MESSAGE, RegisterRecoveryError, BlockNotOpenError, DataExistsError, \
     RegisterNotOpenError, RegisterOpenError
@@ -963,7 +958,8 @@ class Register(ABC):
                 except asyncio.exceptions.TimeoutError:
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} oops! {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                    await aiofiles.unlink(tmp_filename, True)
+
+                    tmp_filename.unlink(missing_ok = True)
                     raise
 
                 except BaseException:
