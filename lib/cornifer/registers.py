@@ -938,8 +938,9 @@ class Register(ABC):
 
                 newline = '\n'
 
-                with file.open('a') as fh:
-                    fh.write(f'{os.getpid()} {self.summary().replace(newline, "")} {self.shorthand()} {datetime.now().strftime("%H:%M:%S.%f")}\n')
+                with self.open():
+                    with file.open('a') as fh:
+                        fh.write(f'{os.getpid()} {self.summary().replace(newline, "")} {self.shorthand()} {datetime.now().strftime("%H:%M:%S.%f")}\n')
 
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} updating {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
