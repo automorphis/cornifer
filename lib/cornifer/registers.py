@@ -939,7 +939,7 @@ class Register(ABC):
 
         self._update_perm_db_event.clear() # block future transactions
 
-        while time.time() - start < timeout:
+        while timeout is None or time.time() - start < timeout:
 
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} _update_perm_db loop {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
