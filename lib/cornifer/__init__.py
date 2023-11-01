@@ -289,8 +289,18 @@ def parallelize(
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} terminating procs {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} {regs[0]._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 for p in procs:
                     p.terminate()
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} procs terminated {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} {regs[0]._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
 
                 break # timeout loop
 
