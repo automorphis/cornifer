@@ -929,11 +929,21 @@ class Register(ABC):
         if not self._do_update_perm_db:
             raise ValueError
 
-        while True:
+        while time.time() - start < timeout:
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} _update_perm_db loop {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             if self._num_active_txns.value == 0:
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} updating {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
+
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} {tmp_filename} {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 try:
                     await asyncio.wait_for(
@@ -949,6 +959,8 @@ class Register(ABC):
                 tmp_filename.rename(self._perm_db_filepath / DATA_FILEPATH.name)
                 write_txt_file(self._digest(), self._digest_filepath, True)
                 self._update_perm_db_event.set()
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} updated {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 return
 
             await asyncio.sleep(0.1)
