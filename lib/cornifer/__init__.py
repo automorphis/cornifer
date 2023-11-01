@@ -25,7 +25,7 @@ from pathlib import Path
 
 from ._utilities import check_type, check_return_int, check_type_None_default, check_Path_None_default, \
     check_return_int_None_default, resolve_path, is_deletable
-from ._utilities.multiprocessing import start_with_timeout, process_wrapper
+from ._utilities.multiprocessing import start_with_timeout, process_wrapper, make_sigterm_raise_KeyboardInterrupt
 from .info import ApriInfo, AposInfo
 from .blocks import Block
 from .registers import Register, PickleRegister, NumpyRegister
@@ -155,6 +155,8 @@ def openblks(*blks):
         yield tuple([stack.enter_context(blk) for blk in blks])
 
 def _wrap_target(target, num_procs, proc_index, args, num_alive_procs):
+
+    make_sigterm_raise_KeyboardInterrupt()
 
     with process_wrapper(num_alive_procs):
         target(num_procs, proc_index, *args)
