@@ -881,6 +881,7 @@ class Register(ABC):
     @contextmanager
     def tmp_db(self, tmp_dir, timeout = None):
 
+        file = Path.home() / 'parallelize.txt'
         self._check_not_open_raise("tmp_db")
         new_write_db_filepath = random_unique_filename(tmp_dir)
         self._write_db_filepath = new_write_db_filepath
@@ -907,6 +908,9 @@ class Register(ABC):
             yield self
 
         finally:
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} tmp_db finally {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             self._check_not_open_raise('tmp_db')
             asyncio.run(self._update_perm_db(timeout))
