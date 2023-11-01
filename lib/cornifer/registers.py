@@ -694,7 +694,6 @@ class Register(ABC):
         self._num_waiting_procs = mp_ctx.Value('i', 0)
         self._hard_reset_timeout = timeout
 
-
     #################################
     #    PUBLIC REGISTER METHODS    #
 
@@ -872,6 +871,7 @@ class Register(ABC):
 
         finally:
 
+            self._check_not_open_raise('tmp_db')
             self._write_db_filepath = self._perm_db_filepath
             write_txt_file(str(self._write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
             asyncio.run(self._update_perm_db(timeout))
@@ -891,8 +891,9 @@ class Register(ABC):
                 tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
 
                 try:
-                    await asyncio.wait_for(aioshutil.copy(
-                        self._write_db_filepath / DATA_FILEPATH.name, tmp_filename), timeout + start - time.time()
+                    await asyncio.wait_for(
+                        aioshutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename),
+                        timeout + start - time.time() if timeout is not None else None
                     )
 
                 except TimeoutError:
