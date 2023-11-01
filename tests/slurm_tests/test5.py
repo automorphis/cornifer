@@ -23,6 +23,7 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
 if __name__ == "__main__":
 
+    file = Path.home() / 'parallelize.txt'
     start = time.time()
     num_procs = int(sys.argv[1])
     test_home_dir = Path(sys.argv[2])
@@ -34,4 +35,8 @@ if __name__ == "__main__":
     timeout = int(sys.argv[8])
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = NumpyRegister(test_home_dir, "sh", "msg")
+
+    with file.open('w') as fh:
+        fh.write('')
+
     parallelize(num_procs, f, (reg, num_apri, num_blks, blk_len), timeout - 5, tmp_filename, (reg,), update_period, update_timeout, 10)
