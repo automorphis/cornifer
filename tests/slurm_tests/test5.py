@@ -34,4 +34,4 @@ if __name__ == "__main__":
     timeout = int(sys.argv[8])
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = NumpyRegister(test_home_dir, "sh", "msg")
-    parallelize(num_procs, f, (reg, num_apri, num_blks, blk_len), timeout - 5, tmp_filename, (reg,), update_period, update_timeout)
+    parallelize(num_procs, f, (reg, num_apri, num_blks, blk_len), timeout - 5, tmp_filename, (reg,), update_period, update_timeout, 10)

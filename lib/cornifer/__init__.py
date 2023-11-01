@@ -158,7 +158,10 @@ def _wrap_target(target, num_procs, proc_index, args, num_alive_procs):
     with process_wrapper(num_alive_procs):
         target(num_procs, proc_index, *args)
 
-def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, regs = (), update_period = None, update_timeout = 60):
+def parallelize(
+    num_procs, target, args = (), timeout = 600, tmp_dir = None, regs = (), update_period = None, update_timeout = 60,
+    sec_per_block_upper_bound = 60
+):
 
     start = time.time()
     num_procs = check_return_int(num_procs, "num_procs")
@@ -219,6 +222,11 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
             f"You passed `regs` to `parallelize`, but did not pass `tmp_dir`."
         )
 
+    if tmp_dir is None and update_period is None:
+        warnings.warn(
+            'You passed `update_period` to `parallelize, but did not pass `tmp_dir`.'
+        )
+
     if update_period is not None and update_period <= 0:
         raise ValueError("`update_period` must be positive.")
 
@@ -233,12 +241,19 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
     num_alive_procs = mp_ctx.Value('i', 0)
     procs = []
 
+    for reg in regs:
+
+        if tmp_dir is not None:
+            reg._create_update_perm_db_shared_data(mp_ctx, update_timeout)
+
+        reg._create_hard_reset_shared_data(mp_ctx, 2 * sec_per_block_upper_bound)
+
     with ExitStack() as stack:
 
         if tmp_dir is not None:
 
             for reg in regs:
-                stack.enter_context(reg.tmp_db(tmp_dir, update_period))
+                stack.enter_context(reg.tmp_db(tmp_dir, update_timeout))
 
         for proc_index in range(num_procs):
             procs.append(mp_ctx.Process(
@@ -268,7 +283,7 @@ def parallelize(num_procs, target, args = (), timeout = 600, tmp_dir = None, reg
                 update_start = time.time()
 
                 for reg in regs:
-                    reg._do_update_perm_db.clear() # block future transactions
+                    reg._update_perm_db_event.clear() # block future transactions
 
                 asyncio.run(update_all_perm_dbs(update_timeout + update_start - time.time()))
                 last_update_end = time.time()
