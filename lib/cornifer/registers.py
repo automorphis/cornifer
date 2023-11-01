@@ -881,9 +881,12 @@ class Register(ABC):
         start = time.time()
         file = Path.home() / 'parallelize.txt'
 
+        if not self._do_update_perm_db:
+            raise ValueError
+
         while True:
 
-            if not self._do_manage_txn or self._num_active_txns.value == 0:
+            if self._num_active_txns.value == 0:
 
                 tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
 
@@ -899,7 +902,7 @@ class Register(ABC):
 
                 tmp_filename.rename(self._perm_db_filepath / DATA_FILEPATH.name)
                 write_txt_file(self._digest(), self._digest_filepath, True)
-                self._do_update_perm_db.set()
+                self._update_perm_db_event.set()
                 return
 
             await asyncio.sleep(0.1)
