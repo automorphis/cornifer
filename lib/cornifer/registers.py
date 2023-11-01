@@ -956,6 +956,9 @@ class Register(ABC):
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} {timeout + start - time.time() if timeout is not None else None} {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} {self._write_db_filepath / DATA_FILEPATH.name} {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 try:
                     await asyncio.wait_for(
                         aioshutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename),
