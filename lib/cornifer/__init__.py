@@ -316,9 +316,6 @@ def parallelize(
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} update block in timeout loop {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-                for reg in regs:
-                    reg._update_perm_db_event.clear() # block future transactions
-
                 asyncio.run(update_all_perm_dbs())
                 last_update_end = time.time()
 

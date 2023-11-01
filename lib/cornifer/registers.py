@@ -927,6 +927,13 @@ class Register(ABC):
         with file.open('a') as fh:
             fh.write(f"{os.getpid()} _update_perm_db head {timeout} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
+        newline = '\n'
+
+        with self.open():
+            with file.open('a') as fh:
+                fh.write(f'{os.getpid()} {self.summary().replace(newline, "")} {self.shorthand()} {datetime.now().strftime("%H:%M:%S.%f")}\n')
+
+        self._update_perm_db_event.clear() # block future transactions
 
         while time.time() - start < timeout:
 
@@ -935,14 +942,8 @@ class Register(ABC):
 
             if self._num_active_txns.value == 0:
 
-                newline = '\n'
-
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} what is going on {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                with self.open():
-                    with file.open('a') as fh:
-                        fh.write(f'{os.getpid()} {self.summary().replace(newline, "")} {self.shorthand()} {datetime.now().strftime("%H:%M:%S.%f")}\n')
 
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} updating {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
