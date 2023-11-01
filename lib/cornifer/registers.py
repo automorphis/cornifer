@@ -952,7 +952,9 @@ class Register(ABC):
                     )
 
                 except TimeoutError:
-
+                    with file.open('a') as fh:
+                        fh.write(
+                            f"{os.getpid()} oops! {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     await aiofiles.unlink(tmp_filename, True)
                     raise
 
