@@ -13,20 +13,12 @@ from cornifer._utilities.multiprocessing import process_wrapper
 
 def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
-    newline = '\n'
-
     with process_wrapper(reg._num_alive_procs):
 
-        file = Path.home() / "parallelize.txt"
-
         with file.open('a') as fh:
-            fh.write(f"{os.getpid()} \t starting {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            fh.write(f"{os.getpid()} starting {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         with reg.open() as reg:
-
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} {reg._write_db_filepath} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                fh.write(f"{os.getpid()} {reg._perm_db_filepath} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             for i in range(proc_index, num_apri, num_procs):
 
@@ -37,9 +29,6 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
                     with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
                         reg.append_disk_blk(blk)
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
 
 if __name__ == "__main__":
@@ -64,29 +53,12 @@ if __name__ == "__main__":
             num_procs, proc_index, reg, num_apri, num_blks, blk_len
         )))
 
-    with file.open('a') as fh:
-        fh.write(f"{os.getpid()} {reg._write_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-        fh.write(f"{os.getpid()} {reg._perm_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
 
     with reg.tmp_db(tmp_filename):
-
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} {reg._write_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-            fh.write(f"{os.getpid()} {reg._perm_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         for proc in procs:
             proc.start()
 
         for proc in procs:
             proc.join()
-
-        with reg.open(True) as reg:
-
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} parent {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} {reg._write_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-            fh.write(f"{os.getpid()} {reg._perm_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 

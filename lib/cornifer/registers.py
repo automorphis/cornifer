@@ -568,6 +568,9 @@ class Register(ABC):
 
         if self._do_hard_reset and not self._hard_reset_event.is_set(): # If not set, must do hard reset
 
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             if self._opened: # a soft reset could fail on `open_lmdb`
 
                 self._db.close()
@@ -596,6 +599,9 @@ class Register(ABC):
                 self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
                 self._opened = True
                 self._hard_reset_event.set() # notify waiting processes
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} finished hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         if self._do_update_perm_db:
 
@@ -907,33 +913,10 @@ class Register(ABC):
 
         finally:
 
-            newline = '\n'
-
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} tmp_db finally {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-            with self.open():
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {self.summary().replace(newline, ' ')} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} {self._write_db_filepath} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                fh.write(f"{os.getpid()} {self._perm_db_filepath} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
             self._check_not_open_raise('tmp_db')
             asyncio.run(self._update_perm_db(timeout))
             self._write_db_filepath = self._perm_db_filepath
             write_txt_file(str(self._write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} {self._write_db_filepath} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                fh.write(f"{os.getpid()} {self._perm_db_filepath} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-            with self.open():
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {self.summary().replace(newline, ' ')} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
 
     #################################
     #    PROTEC REGISTER METHODS    #
@@ -941,87 +924,34 @@ class Register(ABC):
     async def _update_perm_db(self, timeout):
 
         start = time.time()
-        file = Path.home() / 'parallelize.txt'
 
         if not self._do_update_perm_db:
             raise ValueError
-
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} _update_perm_db head {timeout} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-        newline = '\n'
-
-        with self.open():
-            with file.open('a') as fh:
-                fh.write(f'{os.getpid()} {self.summary().replace(newline, "")} {self.shorthand()} {datetime.now().strftime("%H:%M:%S.%f")}\n')
-
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} {self._write_db_filepath} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-            fh.write(f"{os.getpid()} {self._perm_db_filepath} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
         self._update_perm_db_event.clear() # block future transactions
 
         while timeout is None or time.time() - start < timeout:
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} _update_perm_db loop {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
             if self._num_active_txns.value == 0:
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} what is going on {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} updating {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {tmp_filename} {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {timeout + start - time.time() if timeout is not None else None} {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {self._write_db_filepath / DATA_FILEPATH.name} {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
                 try:
-                    shutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename)
-                    # await asyncio.wait_for(
-                    #     aioshutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename),
-                    #     timeout + start - time.time() if timeout is not None else None
-                    # )
+                    await asyncio.wait_for(
+                        aioshutil.copy(self._write_db_filepath / DATA_FILEPATH.name, tmp_filename),
+                        timeout + start - time.time() if timeout is not None else None
+                    )
 
-                except asyncio.exceptions.TimeoutError:
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} oops! {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                except (asyncio.exceptions.TimeoutError, TimeoutError):
 
                     tmp_filename.unlink(missing_ok = True)
                     raise
 
-                except BaseException:
-
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} double oops! {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                    raise
-
                 tmp_filename.rename(self._perm_db_filepath / DATA_FILEPATH.name)
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} updated {self._perm_db_filepath / DATA_FILEPATH.name} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 write_txt_file(self._digest(), self._digest_filepath, True)
                 self._update_perm_db_event.set()
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} updated {self.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 return
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} before sleep {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
             await asyncio.sleep(0.1)
-
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} after sleep {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
 
     def _digest(self):
