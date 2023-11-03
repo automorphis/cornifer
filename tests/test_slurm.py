@@ -596,3 +596,5 @@ class TestSlurm(unittest.TestCase):
                                 blk,
                                 blk_
                             )
+
+            shutil.rmtree(reg._local_dir)
