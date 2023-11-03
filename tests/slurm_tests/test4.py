@@ -65,10 +65,10 @@ if __name__ == "__main__":
         for proc in procs:
             proc.start()
 
+        for proc in procs:
+            proc.join()
+
         with reg.open(True) as reg:
 
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} parent {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-        for proc in procs:
-            proc.join()
