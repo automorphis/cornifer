@@ -258,7 +258,7 @@ def parallelize(
         with file.open('a') as fh:
             fh.write(f"{os.getpid()} creating hard reset data {reg.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-        reg._create_hard_reset_shared_data(mp_ctx, 2 * sec_per_block_upper_bound)
+        reg._create_hard_reset_shared_data(mp_ctx, num_alive_procs, 2 * sec_per_block_upper_bound)
 
     with ExitStack() as stack:
 

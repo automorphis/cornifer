@@ -689,12 +689,12 @@ class Register(ABC):
         self._num_active_txns = mp_ctx.Value('i', 0)
         self._update_perm_db_timeout = timeout
 
-    def _create_hard_reset_shared_data(self, mp_ctx, timeout):
+    def _create_hard_reset_shared_data(self, mp_ctx, num_alive_procs, timeout):
 
         self._do_hard_reset = True
         self._hard_reset_event = mp_ctx.Event()
         self._hard_reset_event.set()
-        self._num_alive_procs = mp_ctx.Value('i', 0)
+        self._num_alive_procs = num_alive_procs
         self._num_waiting_procs = mp_ctx.Value('i', 0)
         self._hard_reset_timeout = timeout
 
