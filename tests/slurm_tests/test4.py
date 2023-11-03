@@ -33,9 +33,6 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
                     with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
                         reg.append_disk_blk(blk)
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
 
 
 if __name__ == "__main__":
