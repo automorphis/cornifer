@@ -924,6 +924,7 @@ class Register(ABC):
                 fh.write(f"{os.getpid()} {self._perm_db_filepath} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             self._check_not_open_raise('tmp_db')
+            asyncio.run(self._update_perm_db(timeout))
             self._write_db_filepath = self._perm_db_filepath
             write_txt_file(str(self._write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
             with file.open('a') as fh:
@@ -935,7 +936,6 @@ class Register(ABC):
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} {self.summary().replace(newline, ' ')} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-            asyncio.run(self._update_perm_db(timeout))
 
     #################################
     #    PROTEC REGISTER METHODS    #
