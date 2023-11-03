@@ -1204,7 +1204,7 @@ class Register(ABC):
         self._local_dir = local_dir
         self._local_dir_bytes = str(self._local_dir).encode("ASCII")
         self._perm_db_filepath = self._local_dir / DATABASE_FILEPATH
-        self._write_db_filepath = self._perm_db_filepath
+        self._write_db_filepath = Path(read_txt_file(self._local_dir / WRITE_DB_FILEPATH))
         self._subreg_bytes = _SUB_KEY_PREFIX + self._local_dir_bytes
         self._version_filepath = self._local_dir / VERSION_FILEPATH
         self._msg_filepath = self._local_dir / MSG_FILEPATH
