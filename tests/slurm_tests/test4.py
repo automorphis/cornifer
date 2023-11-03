@@ -13,6 +13,8 @@ from cornifer._utilities.multiprocessing import process_wrapper
 
 def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
+    file = Path.home() / 'parallelize.txt'
+
     with process_wrapper(reg._num_alive_procs):
 
         with file.open('a') as fh:
