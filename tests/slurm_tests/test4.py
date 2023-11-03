@@ -65,19 +65,10 @@ if __name__ == "__main__":
         for proc in procs:
             proc.start()
 
-        while True:
+        with reg.open(True) as reg:
 
-            if all(not proc.is_alive() for proc in procs):
-                break
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} parent {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-            with reg.open(readonly = False) as reg:
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} parent loop {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-            time.sleep(1)
-
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} parent ending {datetime.now().strftime('%H:%M:%S.%f')}\n")
         for proc in procs:
             proc.join()
