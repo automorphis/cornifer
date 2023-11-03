@@ -929,6 +929,12 @@ class Register(ABC):
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} {self._write_db_filepath} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 fh.write(f"{os.getpid()} {self._perm_db_filepath} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+            with self.open():
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} {self.summary().replace(newline, ' ')} {self.shorthand()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             asyncio.run(self._update_perm_db(timeout))
 
     #################################

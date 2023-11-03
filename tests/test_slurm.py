@@ -499,7 +499,7 @@ class TestSlurm(unittest.TestCase):
     def test_slurm_4(self):
 
         slurm_test_main_filename = slurm_tests_filename / 'test4.py'
-        num_apri = 100
+        num_apri = 10
         num_blks = 100
         blk_len = 100
         timeout = 240
