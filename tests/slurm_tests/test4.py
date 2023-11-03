@@ -77,5 +77,7 @@ if __name__ == "__main__":
 
             time.sleep(1)
 
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} parent ending {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
         for proc in procs:
             proc.join()
