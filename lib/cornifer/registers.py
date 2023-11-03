@@ -732,7 +732,7 @@ class Register(ABC):
                 num_disk_apri += 1
 
                 try:
-                    self.apos(apri)
+                    self._apos_pre(apri, apri_json, False, ro_txn)
 
                 except DataNotFoundError:
                     pass
