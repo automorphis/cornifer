@@ -24,6 +24,10 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
         with reg.open() as reg:
 
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} {reg._write_db_filepath} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                fh.write(f"{os.getpid()} {reg._perm_db_filepath} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             for i in range(proc_index, num_apri, num_procs):
 
                 apri = ApriInfo(i = i)

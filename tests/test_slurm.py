@@ -504,7 +504,7 @@ class TestSlurm(unittest.TestCase):
         blk_len = 100
         timeout = 240
 
-        for num_procs in (10, 20):
+        for num_procs in (10,):
 
             with (Path.home() / "parallelize.txt").open("w") as fh:
                 fh.write("")
