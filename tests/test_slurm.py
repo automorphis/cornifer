@@ -589,7 +589,9 @@ class TestSlurm(unittest.TestCase):
                         raise
 
                     for j, blk in enumerate(reg.blks(apri)):
-                        self.assertEqual(
-                            blk,
-                            Block(np.arange(j * blk_len, (j + 1) * blk_len), apri)
-                        )
+
+                        with blk:
+                            self.assertEqual(
+                                blk,
+                                Block(np.arange(j * blk_len, (j + 1) * blk_len), apri)
+                            )
