@@ -299,18 +299,16 @@ class Register(ABC):
 
         try:
             # set local directory info and create LMDB database
-            local_dir.mkdir(exist_ok=False)
-            (local_dir / REG_FILENAME).mkdir(exist_ok=False)
-            (local_dir / DATABASE_FILEPATH).mkdir(exist_ok=False)
+            local_dir.mkdir(exist_ok = False)
+            (local_dir / REG_FILENAME).mkdir(exist_ok = False)
+            (local_dir / DATABASE_FILEPATH).mkdir(exist_ok = False)
             write_txt_file(self._shorthand, local_dir / SHORTHAND_FILEPATH)
             write_txt_file(self._msg, local_dir / MSG_FILEPATH)
             write_txt_file(self._version, local_dir / VERSION_FILEPATH)
             write_txt_file(str(type(self).__name__), local_dir / CLS_FILEPATH)
             write_txt_file(str(self._db_map_size), local_dir / MAP_SIZE_FILEPATH)
-            write_txt_file("",
-                           local_dir / WRITE_DB_FILEPATH)  # this file has to exist prior to `_set_local_dir` call
+            write_txt_file(str(local_dir / DATABASE_FILEPATH), local_dir / WRITE_DB_FILEPATH)
             self._set_local_dir(local_dir)
-            write_txt_file(str(self._write_db_filepath), local_dir / WRITE_DB_FILEPATH, True)
             self._db = open_lmdb(self._write_db_filepath, self._db_map_size, False)
 
             try:
