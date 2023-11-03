@@ -547,14 +547,14 @@ class TestSlurm(unittest.TestCase):
     def test_parallelize(self):
 
         slurm_test_main_filename = slurm_tests_filename / 'test5.py'
-        num_apri = 10
+        num_apri = 100
         num_blks = 100
         blk_len = 100
         update_period = 10
         update_timeout = 10
         timeout = 240
 
-        for num_procs in (1, 2, 10, 50):
+        for num_procs in (1, 2, 10, 20):
 
             write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout}')
             print(f'Submitting test batch #5 (num_procs = {num_procs}) {datetime.now().strftime("%H:%M:%S.%f")}...')
