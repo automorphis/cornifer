@@ -40,6 +40,8 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
 if __name__ == "__main__":
 
+    file = Path.home() / 'parallelize.txt'
+    newline = '\n'
     start = time.time()
     num_procs = int(sys.argv[1])
     test_home_dir = Path(sys.argv[2])
@@ -62,6 +64,18 @@ if __name__ == "__main__":
 
         for proc in procs:
             proc.start()
+
+        while True:
+
+            if all(not proc.is_alive() for proc in procs):
+                break
+
+            with reg.open(readonly = False) as reg:
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} parent loop {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+            time.sleep(1)
 
         for proc in procs:
             proc.join()
