@@ -60,7 +60,16 @@ if __name__ == "__main__":
             num_procs, proc_index, reg, num_apri, num_blks, blk_len
         )))
 
+    with file.open('a') as fh:
+        fh.write(f"{os.getpid()} {reg._write_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+        fh.write(f"{os.getpid()} {reg._perm_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+
     with reg.tmp_db(tmp_filename):
+
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} {reg._write_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            fh.write(f"{os.getpid()} {reg._perm_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         for proc in procs:
             proc.start()
