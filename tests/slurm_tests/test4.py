@@ -72,3 +72,8 @@ if __name__ == "__main__":
 
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} parent {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} {reg._write_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            fh.write(f"{os.getpid()} {reg._perm_db_filepath} {reg.shorthand()} {reg._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
