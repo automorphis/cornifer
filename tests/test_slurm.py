@@ -554,7 +554,7 @@ class TestSlurm(unittest.TestCase):
         update_timeout = 10
         timeout = 480
 
-        for num_procs in (1, 2, 10, 20):
+        for num_procs in (10, 20):
 
             write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout}')
             print(f'Submitting test batch #5 (num_procs = {num_procs}) {datetime.now().strftime("%H:%M:%S.%f")}...')

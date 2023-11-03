@@ -580,7 +580,7 @@ class Register(ABC):
             if self._num_waiting_procs.value < self._num_alive_procs.value - 1:
 
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} waiting 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} waiting 1 {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 with self._num_waiting_procs.get_lock():
                     self._num_waiting_procs.value += 1
@@ -599,7 +599,7 @@ class Register(ABC):
             else:
                 # last process to arrive performs hard reset and notifies remaining processes to proceed
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} waiting 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} waiting 2 {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
                 self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
                 self._opened = True
