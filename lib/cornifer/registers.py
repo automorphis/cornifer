@@ -588,7 +588,7 @@ class Register(ABC):
                     with self._num_waiting_procs.get_lock():
                         self._num_waiting_procs.value += 1
 
-                    if self._num_waiting_procs >= self._num_alive_procs.value:
+                    if self._num_waiting_procs.value >= self._num_alive_procs.value:
                         # race condition guard
                         with self._num_waiting_procs.get_lock():
                             self._num_waiting_procs.value -= 1
