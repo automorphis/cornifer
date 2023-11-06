@@ -547,6 +547,7 @@ class TestSlurm(unittest.TestCase):
     def test_parallelize(self):
 
         slurm_test_main_filename = slurm_tests_filename / 'test5.py'
+        file = Path.home() / 'parallelize.txt'
         num_apri = 100
         blk_len = 100
         update_period = 10
@@ -598,4 +599,14 @@ class TestSlurm(unittest.TestCase):
                                     blk_
                                 )
 
+                num_hard_resets = 0
+
+                with file.open('r') as fh:
+
+                    for line in fh.readlines():
+
+                        if 'finished hard reset' in line:
+                            num_hard_resets += 1
+
+                print(f'Successful hard resets: {num_hard_resets // num_procs}')
                 shutil.rmtree(reg._local_dir)
