@@ -564,6 +564,16 @@ class TestSlurm(unittest.TestCase):
                 self.wait_till_running(allocation_max_sec, allocation_query_sec)
                 print(f'Running test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
                 self.wait_till_not_running(timeout, running_query_sec)
+                num_hard_resets = 0
+
+                with file.open('r') as fh:
+
+                    for line in fh.readlines():
+
+                        if 'finished hard reset' in line:
+                            num_hard_resets += 1
+
+                print(f'Successful hard resets: {num_hard_resets // num_procs}')
                 print(f'Checking test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
                 self.check_empty_error_file()
                 reg = load_shorthand('sh', test_home_dir, True)
@@ -575,38 +585,28 @@ class TestSlurm(unittest.TestCase):
 
                 with reg.open(readonly = True) as reg:
 
-                    for i in range(num_apri):
+                        for i in range(num_apri):
 
-                        apri = ApriInfo(i = i)
+                            apri = ApriInfo(i = i)
 
-                        try:
-                            self.assertEqual(
-                                reg.apos(apri),
-                                AposInfo(i = i + 1)
-                            )
-
-                        except DataNotFoundError:
-
-                            print(reg.summary())
-                            raise
-
-                        for j, blk in enumerate(reg.blks(apri)):
-
-                            with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri, j * blk_len) as blk_:
-
+                            try:
                                 self.assertEqual(
-                                    blk,
-                                    blk_
+                                    reg.apos(apri),
+                                    AposInfo(i = i + 1)
                                 )
 
-                num_hard_resets = 0
+                            except DataNotFoundError:
 
-                with file.open('r') as fh:
+                                print(reg.summary())
+                                raise
 
-                    for line in fh.readlines():
+                            for j, blk in enumerate(reg.blks(apri)):
 
-                        if 'finished hard reset' in line:
-                            num_hard_resets += 1
+                                with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri, j * blk_len) as blk_:
 
-                print(f'Successful hard resets: {num_hard_resets // num_procs}')
+                                    self.assertEqual(
+                                        blk,
+                                        blk_
+                                    )
+
                 shutil.rmtree(reg._local_dir)
