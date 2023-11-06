@@ -45,7 +45,7 @@ if __name__ == "__main__":
     update_timeout = int(sys.argv[7])
     timeout = int(sys.argv[8])
     tmp_filename = Path(os.environ['TMPDIR'])
-    reg = NumpyRegister(test_home_dir, "sh", "msg")
+    reg = NumpyRegister(test_home_dir, "sh", "msg", 2 ** 40)
 
     with file.open('w') as fh:
         fh.write('')
