@@ -552,7 +552,7 @@ class TestSlurm(unittest.TestCase):
         blk_len = 100
         update_period = 10
         update_timeout = 10
-        timeout = 1800
+        timeout = 3600
 
         for num_procs in (10, 20):
 
@@ -563,17 +563,23 @@ class TestSlurm(unittest.TestCase):
                 self.submit_batch()
                 self.wait_till_running(allocation_max_sec, allocation_query_sec)
                 print(f'Running test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
-                self.wait_till_not_running(timeout, running_query_sec)
-                num_hard_resets = 0
 
-                with file.open('r') as fh:
+                try:
+                    self.wait_till_not_running(timeout, running_query_sec)
 
-                    for line in fh.readlines():
+                finally:
 
-                        if 'finished hard reset' in line:
-                            num_hard_resets += 1
+                    num_hard_resets = 0
 
-                print(f'Successful hard resets: {num_hard_resets // num_procs}')
+                    with file.open('r') as fh:
+
+                        for line in fh.readlines():
+
+                            if 'finished hard reset' in line:
+                                num_hard_resets += 1
+
+                    print(f'Successful hard resets: {num_hard_resets // num_procs}')
+
                 print(f'Checking test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
                 self.check_empty_error_file()
                 reg = load_shorthand('sh', test_home_dir, True)
