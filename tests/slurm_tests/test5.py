@@ -6,7 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
-from cornifer import parallelize, NumpyRegister, ApriInfo, AposInfo, Block
+from cornifer import NumpyRegister, ApriInfo, AposInfo, Block
+from cornifer.multiprocessing import parallelize
+
 
 def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 

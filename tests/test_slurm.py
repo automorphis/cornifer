@@ -548,7 +548,6 @@ class TestSlurm(unittest.TestCase):
 
         slurm_test_main_filename = slurm_tests_filename / 'test5.py'
         num_apri = 100
-        num_blks = 100
         blk_len = 100
         update_period = 10
         update_timeout = 10
@@ -556,45 +555,47 @@ class TestSlurm(unittest.TestCase):
 
         for num_procs in (10, 20):
 
-            write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout}')
-            print(f'Submitting test batch #5 (num_procs = {num_procs}) {datetime.now().strftime("%H:%M:%S.%f")}...')
-            self.submit_batch()
-            self.wait_till_running(allocation_max_sec, allocation_query_sec)
-            print(f'Running test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
-            self.wait_till_not_running(timeout, running_query_sec)
-            print(f'Checking test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
-            self.check_empty_error_file()
-            reg = load_shorthand('sh', test_home_dir, True)
-            print(f'Register loaded {datetime.now().strftime("%H:%M:%S.%f")}... ')
-            self.assertEqual(
-                reg._write_db_filepath,
-                reg._perm_db_filepath
-            )
+            for num_blks in (1, 10, 100, 1000):
 
-            with reg.open(readonly = True) as reg:
+                write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout}')
+                print(f'Submitting test batch #5 (num_procs = {num_procs}) {datetime.now().strftime("%H:%M:%S.%f")}...')
+                self.submit_batch()
+                self.wait_till_running(allocation_max_sec, allocation_query_sec)
+                print(f'Running test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
+                self.wait_till_not_running(timeout, running_query_sec)
+                print(f'Checking test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
+                self.check_empty_error_file()
+                reg = load_shorthand('sh', test_home_dir, True)
+                print(f'Register loaded {datetime.now().strftime("%H:%M:%S.%f")}... ')
+                self.assertEqual(
+                    reg._write_db_filepath,
+                    reg._perm_db_filepath
+                )
 
-                for i in range(num_apri):
+                with reg.open(readonly = True) as reg:
 
-                    apri = ApriInfo(i = i)
+                    for i in range(num_apri):
 
-                    try:
-                        self.assertEqual(
-                            reg.apos(apri),
-                            AposInfo(i = i + 1)
-                        )
+                        apri = ApriInfo(i = i)
 
-                    except DataNotFoundError:
-
-                        print(reg.summary())
-                        raise
-
-                    for j, blk in enumerate(reg.blks(apri)):
-
-                        with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri, j * blk_len) as blk_:
-
+                        try:
                             self.assertEqual(
-                                blk,
-                                blk_
+                                reg.apos(apri),
+                                AposInfo(i = i + 1)
                             )
 
-            shutil.rmtree(reg._local_dir)
+                        except DataNotFoundError:
+
+                            print(reg.summary())
+                            raise
+
+                        for j, blk in enumerate(reg.blks(apri)):
+
+                            with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri, j * blk_len) as blk_:
+
+                                self.assertEqual(
+                                    blk,
+                                    blk_
+                                )
+
+                shutil.rmtree(reg._local_dir)
