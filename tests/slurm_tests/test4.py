@@ -46,7 +46,8 @@ if __name__ == "__main__":
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = NumpyRegister(test_home_dir, "sh", "msg")
     mp_ctx = multiprocessing.get_context("spawn")
-    reg._create_hard_reset_shared_data(mp_ctx, 15)
+    num_alive_procs = mp_ctx.Value('i', 0)
+    reg._create_hard_reset_shared_data(mp_ctx, num_alive_procs, 15)
     reg._create_update_perm_db_shared_data(mp_ctx, 15)
     procs = []
 
