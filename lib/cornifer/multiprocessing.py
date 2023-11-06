@@ -8,9 +8,11 @@ from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
 
-from cornifer import make_sigterm_raise_KeyboardInterrupt, process_wrapper, check_return_int, check_type, \
-    check_Path_None_default, check_return_int_None_default, resolve_path, Register, RegisterOpenError
-
+from ._utilities.multiprocessing import make_sigterm_raise_KeyboardInterrupt, process_wrapper
+from ._utilities import check_return_int, check_type, check_Path_None_default, check_return_int_None_default, \
+    resolve_path
+from .registers import Register
+from .errors import RegisterOpenError
 
 def _wrap_target(target, num_procs, proc_index, args, num_alive_procs):
 
