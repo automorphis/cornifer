@@ -40,8 +40,8 @@ from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_d
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
     write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int, hash_file, \
     function_with_timeout
-from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter,  num_open_readers_accurate, \
-    r_txn_prefix_iter, r_txn_count_keys
+from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter, num_open_readers_accurate, \
+    r_txn_prefix_iter, r_txn_count_keys, create_lmdb
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
     REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, WRITE_DB_FILEPATH, DATA_FILEPATH, DIGEST_FILEPATH, \
@@ -309,7 +309,7 @@ class Register(ABC):
             write_txt_file(str(self._db_map_size), local_dir / MAP_SIZE_FILEPATH)
             write_txt_file(str(local_dir / DATABASE_FILEPATH), local_dir / WRITE_DB_FILEPATH)
             self._set_local_dir(local_dir)
-            self._db = open_lmdb(self._write_db_filepath, self._db_map_size, False)
+            self._db = create_lmdb(self._write_db_filepath, self._db_map_size, 10000)
 
             try:
 
@@ -603,7 +603,7 @@ class Register(ABC):
                         with self._num_waiting_procs.get_lock():
                             self._num_waiting_procs.value -= 1
 
-                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+                    self._db = open_lmdb(self._write_db_filepath, self._readonly)
                     self._opened = True
 
                 else:
@@ -611,7 +611,7 @@ class Register(ABC):
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} waiting 2 {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+                    self._db = open_lmdb(self._write_db_filepath, self._readonly)
                     self._opened = True
                     self._hard_reset_event.set() # notify waiting processes
 
@@ -672,7 +672,7 @@ class Register(ABC):
                 self._opened = False
 
                 try:
-                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
+                    self._db = open_lmdb(self._write_db_filepath, self._readonly)
 
                 except lmdb.ReadersFullError:
 
@@ -1062,7 +1062,7 @@ class Register(ABC):
             raise RegisterAlreadyOpenError(self)
 
         ret._readonly = readonly
-        ret._db = open_lmdb(ret._write_db_filepath, ret._db_map_size, readonly)
+        ret._db = open_lmdb(ret._write_db_filepath, readonly)
 
         with ret._txn("reader") as ro_txn:
             ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
@@ -1075,6 +1075,7 @@ class Register(ABC):
 
         self._opened = False
         self._db.close()
+
 
     @contextmanager
     def _recursive_open(self, readonly):

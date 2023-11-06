@@ -307,7 +307,7 @@ class Test_Register(TestCase):
 
         try:
 
-            reg._db = open_lmdb(local_dir / REG_FILENAME, 1, False)
+            reg._db = open_lmdb(local_dir / REG_FILENAME, False)
             reg._set_local_dir(local_dir)
 
             self.assertEqual(
@@ -427,7 +427,7 @@ class Test_Register(TestCase):
 
         try:
 
-            db = open_lmdb(reg._perm_db_filepath, 1, False)
+            db = open_lmdb(reg._perm_db_filepath, False)
 
             with db.begin() as txn:
 

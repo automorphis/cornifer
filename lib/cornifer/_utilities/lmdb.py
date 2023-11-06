@@ -74,26 +74,29 @@ class ReversibleWriter:
 
         self.txn.delete(key)
 
-def open_lmdb(filepath, mapsize, readonly):
+def create_lmdb(filepath, mapsize, max_readers):
 
     check_type(filepath, "filepath", Path)
-    mapsize = check_return_int(mapsize, "mapsize")
-    check_type(readonly, "readonly", bool)
-
-    if not filepath.is_absolute():
-        raise ValueError("`filepath` must be absolute.")
-
-    if mapsize <= 0:
-        raise ValueError("`mapsize` must be positive.")
+    mapsize = check_return_int(mapsize, 'mapsize')
+    max_readers = check_return_int(max_readers, 'max_readers')
 
     return lmdb.open(
         str(filepath),
         map_size = mapsize,
         subdir = True,
-        readonly = readonly,
         create = False,
-        max_readers = 10000
+        max_readers = max_readers
     )
+
+def open_lmdb(filepath, readonly):
+
+    check_type(filepath, "filepath", Path)
+    check_type(readonly, "readonly", bool)
+
+    if not filepath.is_absolute():
+        raise ValueError("`filepath` must be absolute.")
+
+    return lmdb.open(str(filepath), readonly = readonly)
 
 def db_has_key(key, db):
     """DEPRECATED, use `r_txn_has_key` instead."""
