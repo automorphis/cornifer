@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 
 from .errors import CannotLoadError
-from .regloader import load_ident
+from .registers import Register
 
 parser = argparse.ArgumentParser(
     prog='Cornifer',
@@ -16,14 +16,9 @@ to_print = f'`{str(filename)}` contains the following Registers:\n\n'
 for d in filename.iterdir():
 
     try:
-        reg = load_ident(d)
+        to_print += Register._summary(d) + '\n\n'
 
     except CannotLoadError:
         pass
-
-    else:
-
-        with reg.open(readonly=True) as reg:
-            to_print += reg.summary() + "\n\n"
 
 print(to_print)
