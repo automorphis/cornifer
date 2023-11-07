@@ -4678,6 +4678,21 @@ class Register(ABC):
         else:
             return msg
 
+class PickleRegister(Register, file_suffix = ".pickle"):
+
+    @classmethod
+    def dump_disk_data(cls, data, filename, **kwargs):
+
+        with filename.open("wb") as fh:
+            pickle.dump(data, fh)
+
+    @classmethod
+    def load_disk_data(cls, filename, **kwargs):
+
+        with filename.open("rb") as fh:
+            return pickle.load(fh), filename
+
+
 class NumpyRegister(Register, file_suffix = ".npy"):
 
     @classmethod
