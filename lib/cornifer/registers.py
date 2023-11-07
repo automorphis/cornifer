@@ -433,7 +433,7 @@ class Register(ABC):
         self._hard_reset_timeout = None
 
     @staticmethod
-    def _from_local_dir(local_dir, abstract = False):
+    def _from_local_dir(local_dir, monkeypatch = False):
         """Return a `Register` instance from a `local_dir` with the correct concrete subclass.
 
         This static method does not open the LMDB database at any point.
@@ -458,25 +458,26 @@ class Register(ABC):
 
             cls_name = read_txt_file(local_dir / CLS_FILEPATH)
 
-            if cls_name == "Register" and not abstract:
+            if cls_name == "Register":
                 raise TypeError(
                     "`Register` is an abstract class, meaning that `Register` itself cannot be instantiated, " +
                     "only its concrete subclasses."
                 )
 
-            elif abstract:
-                con = Register
+            con = Register._constructors.get(cls_name, None)
 
-            else:
+            if con is None and not monkeypatch:
+                raise TypeError(
+                    f"Cornifer is not aware of a `Register` subclass called `{cls_name}`. Please be sure that "
+                    f"`{cls_name}` properly subclasses `Register` and that `{cls_name}` is in the namespace by "
+                    f"importing it."
+                )
 
-                con = Register._constructors.get(cls_name, None)
+            elif monkeypatch:
 
-                if con is None:
-                    raise TypeError(
-                        f"Cornifer is not aware of a `Register` subclass called `{cls_name}`. Please be sure that "
-                        f"`{cls_name}` properly subclasses `Register` and that `{cls_name}` is in the namespace by "
-                        f"importing it."
-                    )
+                con = type(cls_name, (_LMDBOnlyRegister,), {})
+                del Register._constructors[cls_name]
+
 
             shorthand = read_txt_file(local_dir / SHORTHAND_FILEPATH)
             msg = read_txt_file(local_dir / MSG_FILEPATH)
@@ -4677,20 +4678,6 @@ class Register(ABC):
         else:
             return msg
 
-class PickleRegister(Register, file_suffix = ".pickle"):
-
-    @classmethod
-    def dump_disk_data(cls, data, filename, **kwargs):
-
-        with filename.open("wb") as fh:
-            pickle.dump(data, fh)
-
-    @classmethod
-    def load_disk_data(cls, filename, **kwargs):
-
-        with filename.open("rb") as fh:
-            return pickle.load(fh), filename
-
 class NumpyRegister(Register, file_suffix = ".npy"):
 
     @classmethod
@@ -5132,6 +5119,16 @@ class _CopyRegister(Register):
 
     def set_cls_name(self, cls_name):
         write_txt_file(cls_name, self._cls_filepath)
+
+class _LMDBOnlyRegister(Register):
+
+    @classmethod
+    def dump_disk_data(cls, data, filename, **kwargs):
+        raise NotImplementedError
+
+    @classmethod
+    def load_disk_data(cls, filename, **kwargs):
+        raise NotImplementedError
 
 class _RelationalApriInfoStrHook:
 
