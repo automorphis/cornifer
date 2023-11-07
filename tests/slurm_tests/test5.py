@@ -44,8 +44,9 @@ if __name__ == "__main__":
     update_period = int(sys.argv[6])
     update_timeout = int(sys.argv[7])
     timeout = int(sys.argv[8])
+    max_readers = int(sys.argv[9])
     tmp_filename = Path(os.environ['TMPDIR'])
-    reg = NumpyRegister(test_home_dir, "sh", "msg", 2 ** 40)
+    reg = NumpyRegister(test_home_dir, "sh", "msg", 2 ** 40, None, max_readers)
 
     with file.open('w') as fh:
         fh.write('')

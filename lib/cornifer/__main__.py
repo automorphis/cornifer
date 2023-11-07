@@ -5,8 +5,8 @@ from .errors import CannotLoadError
 from .registers import Register
 
 parser = argparse.ArgumentParser(
-    prog='Cornifer',
-    description='Prints information about Registers in the given directory.'
+    prog = 'Cornifer',
+    description = 'Prints information about Registers in the given directory.'
 )
 parser.add_argument('filename', nargs = '?', default = Path.cwd())
 args = parser.parse_args()

@@ -280,7 +280,7 @@ class Register(ABC):
     #################################
     #     PUBLIC INITIALIZATION     #
 
-    def __init__(self, dir, shorthand, msg, initial_reg_size = None, use_custom_lock = False, _pickle_data = None):
+    def __init__(self, dir, shorthand, msg, initial_reg_size = None, _pickle_data = None, _debug_max_readers = 10000):
         """
         :param dir: (type `str`) Directory where this `Register` is saved.
         :param shorthand: (type `str`) A word or short phrase describing this `Register`.
@@ -291,10 +291,9 @@ class Register(ABC):
         to this `Register`. If your `Register` exceeds `initial_reg_size`, then you can adjust the database size later
         via the method `increase_size`. If you are on a non-Windows system, there is no harm in setting this value to
         be very large (e.g. 1 TB).
-        :param use_custom_lock: (type `bool`, default `False`) Experimental.
         """
 
-        self._set_attributes(dir, shorthand, msg, initial_reg_size, use_custom_lock)
+        self._set_attributes(dir, shorthand, msg, initial_reg_size)
         local_dir = random_unique_filename(self.dir, length = 4, alphabet = LOCAL_DIR_CHARS)
 
         try:
@@ -309,7 +308,7 @@ class Register(ABC):
             write_txt_file(str(self._db_map_size), local_dir / MAP_SIZE_FILEPATH)
             write_txt_file(str(local_dir / DATABASE_FILEPATH), local_dir / WRITE_DB_FILEPATH)
             self._set_local_dir(local_dir)
-            self._db = create_lmdb(self._write_db_filepath, self._db_map_size, 10000)
+            self._db = create_lmdb(self._write_db_filepath, self._db_map_size, _debug_max_readers)
 
             try:
 
@@ -349,7 +348,7 @@ class Register(ABC):
 
         super().__init_subclass__(**kwargs)
 
-    def __new__(cls, dir, shorthand, msg, initial_reg_size = None, use_custom_lock = False, _pickle_data = None):
+    def __new__(cls, dir, shorthand, msg, initial_reg_size = None, _pickle_data = None, _debug_max_readers = 10000):
 
         if _pickle_data is not None:
             local_dir = Path(_pickle_data)
@@ -366,7 +365,7 @@ class Register(ABC):
     #################################
     #     PROTEC INITIALIZATION     #
 
-    def _set_attributes(self, dir, shorthand, msg, initial_reg_size, use_custom_lock):
+    def _set_attributes(self, dir, shorthand, msg, initial_reg_size):
 
         check_Path(dir, "dir")
         check_type(shorthand, "shorthand", str)
@@ -396,7 +395,6 @@ class Register(ABC):
         self._db_map_size_filepath = None # ditto
         self._cls_filepath = None # ditto
         self._digest_filepath = None # ditto
-        self._use_custom_lock = use_custom_lock
         # ATTRIBUTES
         self._shorthand = shorthand
         self._readonly = None
