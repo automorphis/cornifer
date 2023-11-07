@@ -981,7 +981,7 @@ class Register(ABC):
         reg = Register._from_local_dir(local_dir, True)
 
         with reg.open(readonly = True) as reg:
-            print(reg.summary())
+            return reg.summary()
 
     def _digest(self):
 
