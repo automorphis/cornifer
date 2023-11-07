@@ -23,7 +23,7 @@ def _wrap_target(target, num_procs, proc_index, args, num_alive_procs):
 
 
 def parallelize(
-    num_procs, target, args = (), timeout = 600, tmp_dir = None, regs = (), update_period = None, update_timeout = 60,
+    num_procs, target, args = (), timeout = 600, tmp_dir = None, update_period = None, update_timeout = 60,
     sec_per_block_upper_bound = 60
 ):
 
@@ -36,7 +36,6 @@ def parallelize(
     check_type(args, "args", tuple)
     timeout = check_return_int(timeout, "timeout")
     check_Path_None_default(tmp_dir, "tmp_dir", None)
-    check_type(regs, "regs", tuple)
     update_period = check_return_int_None_default(update_period, "update_period", None)
     update_timeout = check_return_int(update_timeout, "update_timeout")
 
@@ -69,22 +68,12 @@ def parallelize(
     if tmp_dir is not None:
         tmp_dir = resolve_path(tmp_dir)
 
-    for i, reg in enumerate(regs):
+    regs = tuple(arg for arg in args if isinstance(arg, Register))
 
-        check_type(reg, f"regs[{i}]", Register)
+    for reg in regs:
 
         if reg._opened:
-            raise RegisterOpenError(f"`regs[{i}]` cannot be open during a call to `parallelize`.")
-
-    if tmp_dir is not None and len(regs) == 0:
-        warnings.warn(
-            f"You passed `tmp_dir` to `parallelize`, but did not pass `regs`."
-        )
-
-    elif tmp_dir is None and len(regs) > 0:
-        warnings.warn(
-            f"You passed `regs` to `parallelize`, but did not pass `tmp_dir`."
-        )
+            raise RegisterOpenError(f"Register `{reg.shorthand()}` cannot be open during a call to `parallelize`.")
 
     if tmp_dir is None and update_period is None:
         warnings.warn(

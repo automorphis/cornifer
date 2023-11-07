@@ -50,4 +50,4 @@ if __name__ == "__main__":
     with file.open('w') as fh:
         fh.write('')
 
-    parallelize(num_procs, f, (reg, num_apri, num_blks, blk_len), timeout - 5, tmp_filename, (reg,), update_period, update_timeout, 10)
+    parallelize(num_procs, f, (reg, num_apri, num_blks, blk_len), timeout - 5, tmp_filename, update_period, update_timeout, 10)
