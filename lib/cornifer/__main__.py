@@ -17,7 +17,7 @@ for d in filename.iterdir():
     try:
         reg = load_ident(d)
 
-    except FileNotFoundError:
+    except (FileNotFoundError, ValueError):
         pass
 
     else:
