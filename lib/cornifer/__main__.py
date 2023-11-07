@@ -7,7 +7,7 @@ parser = argparse.ArgumentParser(
     prog='Cornifer',
     description='Prints information about Registers in the given directory.'
 )
-parser.add_argument('filename', default = Path.cwd())
+parser.add_argument('filename', nargs = '?', default = Path.cwd())
 args = parser.parse_args()
 filename = Path(args.filename)
 to_print = f'`{str(filename)}` contains the following Registers:\n\n'
