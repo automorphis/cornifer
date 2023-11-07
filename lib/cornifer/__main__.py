@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 
+from .errors import CannotLoadError
 from .regloader import load_ident
 
 parser = argparse.ArgumentParser(
@@ -17,7 +18,7 @@ for d in filename.iterdir():
     try:
         reg = load_ident(d)
 
-    except (FileNotFoundError, ValueError):
+    except CannotLoadError:
         pass
 
     else:

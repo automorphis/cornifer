@@ -14,7 +14,7 @@
 """
 from pathlib import Path
 
-from cornifer.errors import NOT_ABSOLUTE_ERROR_MESSAGE
+from cornifer.errors import NOT_ABSOLUTE_ERROR_MESSAGE, CannotLoadError
 from cornifer._utilities import BASE52
 
 REG_FILENAME           = Path("register")
@@ -40,7 +40,7 @@ def check_reg_structure(local_dir):
     """
 
     if not local_dir.is_absolute():
-        raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(local_dir)))
+        raise CannotLoadError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(local_dir)))
 
     problems = []
 
@@ -56,7 +56,7 @@ def check_reg_structure(local_dir):
             problems.append(str(local_dir / path))
 
     if len(problems) > 0:
-        raise FileNotFoundError(
+        raise CannotLoadError(
             "Could not find the following files or directories: "
             ", ".join(problems)
         )

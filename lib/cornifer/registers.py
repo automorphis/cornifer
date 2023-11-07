@@ -433,7 +433,7 @@ class Register(ABC):
         self._hard_reset_timeout = None
 
     @staticmethod
-    def _from_local_dir(local_dir):
+    def _from_local_dir(local_dir, abstract = False):
         """Return a `Register` instance from a `local_dir` with the correct concrete subclass.
 
         This static method does not open the LMDB database at any point.
@@ -458,20 +458,25 @@ class Register(ABC):
 
             cls_name = read_txt_file(local_dir / CLS_FILEPATH)
 
-            if cls_name == "Register":
+            if cls_name == "Register" and not abstract:
                 raise TypeError(
                     "`Register` is an abstract class, meaning that `Register` itself cannot be instantiated, " +
                     "only its concrete subclasses."
                 )
 
-            con = Register._constructors.get(cls_name, None)
+            elif abstract:
+                con = Register
 
-            if con is None:
-                raise TypeError(
-                    f"Cornifer is not aware of a `Register` subclass called `{cls_name}`. Please be sure that "
-                    f"`{cls_name}` properly subclasses `Register` and that `{cls_name}` is in the namespace by "
-                    f"importing it."
-                )
+            else:
+
+                con = Register._constructors.get(cls_name, None)
+
+                if con is None:
+                    raise TypeError(
+                        f"Cornifer is not aware of a `Register` subclass called `{cls_name}`. Please be sure that "
+                        f"`{cls_name}` properly subclasses `Register` and that `{cls_name}` is in the namespace by "
+                        f"importing it."
+                    )
 
             shorthand = read_txt_file(local_dir / SHORTHAND_FILEPATH)
             msg = read_txt_file(local_dir / MSG_FILEPATH)
@@ -968,6 +973,14 @@ class Register(ABC):
 
             await asyncio.sleep(0.1)
 
+    @staticmethod
+    def _summary(local_dir):
+
+        check_reg_structure(local_dir)
+        reg = Register._from_local_dir(local_dir, True)
+
+        with reg.open(readonly = True) as reg:
+            print(reg.summary())
 
     def _digest(self):
 
