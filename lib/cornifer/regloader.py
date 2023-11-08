@@ -456,7 +456,7 @@ def _wait_for_latency(ident, reg, timeout):
 
     else:
 
-        for d in Path(ident).iterdir():
+        for d in Path(ident / 'register').iterdir():
             print(d)
 
         raise TimeoutError
