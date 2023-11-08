@@ -28,6 +28,7 @@ def parallelize(
 ):
 
     start = time.time()
+    file = Path.home() / "parallelize.txt"
     num_procs = check_return_int(num_procs, "num_procs")
 
     if not callable(target):
@@ -70,6 +71,9 @@ def parallelize(
 
     regs = tuple(arg for arg in args if isinstance(arg, Register))
 
+    with file.open('a') as fh:
+        fh.write(f"{os.getpid()} {regs} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
     for reg in regs:
 
         if reg._opened:
@@ -91,7 +95,6 @@ def parallelize(
         for reg_ in regs:
             await reg_._update_perm_db(update_timeout)
 
-    file = Path.home() / "parallelize.txt"
     mp_ctx = multiprocessing.get_context("spawn")
     num_alive_procs = mp_ctx.Value('i', 0)
     procs = []
