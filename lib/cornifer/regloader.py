@@ -18,7 +18,7 @@ import time
 import warnings
 from pathlib import Path
 
-from .errors import RegisterError, DataExistsError, DataNotFoundError
+from .errors import RegisterError, DataExistsError, DataNotFoundError, CannotLoadError
 from .registers import Register
 from .regfilestructure import LOCAL_DIR_CHARS, check_reg_structure, DIGEST_FILEPATH
 from ._utilities import resolve_path, read_txt_file
@@ -118,7 +118,7 @@ def load_shorthand(shorthand, saves_dir = None, wait_for_latency = False, timeou
                 try:
                     check_reg_structure(d)
 
-                except FileNotFoundError:
+                except CannotLoadError:
                     pass
 
                 else:
@@ -229,7 +229,7 @@ def search(apri = None, saves_directory = None, **kwargs):
         try:
             check_reg_structure(local_dir)
 
-        except FileNotFoundError:
+        except CannotLoadError:
             is_register = False
 
         else:

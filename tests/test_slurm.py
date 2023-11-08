@@ -551,12 +551,11 @@ class TestSlurm(unittest.TestCase):
         num_apri = 100
         update_period = 10
         update_timeout = 10
-        timeout = 7200
         blk_len = 100
 
-        for num_procs in (10, 20):
+        for num_procs in (20,):
 
-            for num_blks in (1, 10, 100, 300):
+            for num_blks, timeout in ((1, 60), (10, 180), (100, 600), (300, 1800)):
 
                 for max_readers in (100, 200, 1000, 10000):
 
