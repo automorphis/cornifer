@@ -455,7 +455,11 @@ def _wait_for_latency(ident, reg, timeout):
             time.sleep(digest_file_wait_int)
 
     else:
-        raise TimeoutError(Path(ident).exists())
+
+        for d in Path(ident).iterdir():
+            print(d)
+
+        raise TimeoutError
 
     while time.time() - start < timeout:
 
