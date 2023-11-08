@@ -455,7 +455,7 @@ def _wait_for_latency(ident, reg, timeout):
             time.sleep(digest_file_wait_int)
 
     else:
-        raise TimeoutError
+        raise TimeoutError(ident.exists())
 
     while time.time() - start < timeout:
 
