@@ -35,7 +35,7 @@ def parallelize(
 
     check_type(args, "args", tuple)
     timeout = check_return_int(timeout, "timeout")
-    check_Path_None_default(tmp_dir, "tmp_dir", None)
+    tmp_dir = check_Path_None_default(tmp_dir, "tmp_dir", None)
     update_period = check_return_int_None_default(update_period, "update_period", None)
     update_timeout = check_return_int(update_timeout, "update_timeout")
 
