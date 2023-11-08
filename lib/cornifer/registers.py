@@ -660,7 +660,7 @@ class Register(ABC):
                     else:
                         txn = stack.enter_context(ReversibleWriter(self._db).begin())
 
-                except (lmdb.ReadersFullError, lmdb.InvalidParameterError):
+                except (lmdb.ReadersFullError, lmdb.InvalidParameterError, lmdb.BadRslotError):
 
                     if i == 2 or (i == 1 and not self._do_hard_reset):
                         raise
@@ -943,7 +943,6 @@ class Register(ABC):
     async def _update_perm_db(self, timeout):
 
         start = time.time()
-        file = Path.home() / 'parallelize.txt'
 
         if not self._do_update_perm_db:
             raise ValueError
@@ -953,8 +952,6 @@ class Register(ABC):
 
             if self._num_active_txns.value == 0:
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} updating perm db {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
 
                 try:
@@ -969,11 +966,7 @@ class Register(ABC):
                     raise
 
                 tmp_filename.rename(self._perm_db_filepath / DATA_FILEPATH.name)
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} writing digest {self._digest_filepath} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 write_txt_file(self._digest(), self._digest_filepath, True)
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} wrote digest {self._digest_filepath} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._update_perm_db_event.set()
                 return
 
