@@ -15,7 +15,7 @@ def get_pid(line):
 
 if __name__ == '__main__':
 
-    if len(sys.argv) == 2:
+    if len(sys.argv) >= 2:
         memory = int(sys.argv[1])
 
     else:
