@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
     else:
 
-        memory = 10
+        memory = -10
         pids = None
 
     if len(sys.argv) >= 3:
@@ -29,7 +29,6 @@ if __name__ == '__main__':
 
     last_lines = {}
     file = Path.home() / 'parallelize.txt'
-    num_succeeded = 0
 
     with file.open('r') as fh:
 
@@ -41,18 +40,20 @@ if __name__ == '__main__':
 
                 if pid in last_lines.keys():
 
-                    lines = last_lines[pid]
+                    if memory > 0 and len(lines) < memory:
+                        lines.append((i, line))
 
-                    if len(lines) == memory:
-                        del lines[0]
+                    elif memory < 0:
 
-                    lines.append((i, line))
+                        lines = last_lines[pid]
+
+                        if len(lines) == -memory:
+                            del lines[0]
+
+                        lines.append((i, line))
 
                 else:
                     last_lines[pid] = [(i,line)]
-
-                if 'succeeded' in line:
-                    num_succeeded += 1
 
     for pid in last_lines.keys():
 
@@ -62,6 +63,3 @@ if __name__ == '__main__':
 
             for val in last_lines[pid]:
                 print(f"\t{val}")
-
-    print(num_succeeded)
-    print(num_succeeded // (len(last_lines) - 1))
