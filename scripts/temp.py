@@ -19,13 +19,13 @@ if __name__ == '__main__':
         memory = int(sys.argv[1])
 
     else:
-
         memory = -10
-        pids = None
 
     if len(sys.argv) >= 3:
         pids = sys.argv[2:]
 
+    else:
+        pids = None
 
     last_lines = {}
     file = Path.home() / 'parallelize.txt'
