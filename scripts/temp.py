@@ -1,4 +1,5 @@
 import re
+import sys
 from collections import OrderedDict
 from pathlib import Path
 
@@ -13,6 +14,17 @@ def get_pid(line):
 
 
 if __name__ == '__main__':
+
+    if len(sys.argv) == 2:
+        num_lines = int(sys.argv[1])
+
+    elif len(sys.argv) >= 3:
+        pids = map(int, sys.argv[2:])
+
+    else:
+
+        num_lines = 10
+        pids = None
 
     num_procs = 10
     last_lines = {}
@@ -45,10 +57,12 @@ if __name__ == '__main__':
 
     for pid in last_lines.keys():
 
-        print(pid)
+        if pids is None or pid in pids:
 
-        for val in last_lines[pid]:
-            print(f"\t{val}")
+            print(pid)
+
+            for val in last_lines[pid]:
+                print(f"\t{val}")
 
     print(num_succeeded)
     print(num_succeeded // (len(last_lines) - 1))

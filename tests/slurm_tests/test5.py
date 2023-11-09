@@ -15,20 +15,29 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
     file = Path.home() / 'parallelize.txt'
     newline = '\n'
 
-    with reg.open() as reg:
+    try:
 
-        for i in range(proc_index, num_apri, num_procs):
+        with reg.open() as reg:
 
-            apri = ApriInfo(i = i)
-            reg.set_apos(apri, AposInfo(i = i + 1))
+            for i in range(proc_index, num_apri, num_procs):
 
-            for j in range(num_blks):
+                apri = ApriInfo(i = i)
+                reg.set_apos(apri, AposInfo(i = i + 1))
 
-                with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
-                    reg.append_disk_blk(blk)
+                for j in range(num_blks):
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} {i} {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
+                        reg.append_disk_blk(blk)
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} {i} {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+    except BaseException as e:
+
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} test5 error {repr(e)} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+        raise
 
 
 
