@@ -695,7 +695,7 @@ class Register(ABC):
             if self._do_update_perm_db:
 
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 with self._num_active_txns.get_lock():
                     self._num_active_txns.value -= 1
@@ -1070,14 +1070,28 @@ class Register(ABC):
     async def _update_perm_db(self, timeout):
 
         start = time.time()
+        file = Path.home() / 'parallelize.txt'
 
         if not self._do_update_perm_db:
             raise ValueError
+
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} _update_perm_db callee {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
         self._update_perm_db_event.clear() # block future transactions
+
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} blocked transactions {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         while timeout is None or time.time() - start < timeout:
 
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} _update_perm_db timeout loop {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             if self._num_active_txns.value == 0:
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} doing copy {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
 
@@ -1087,14 +1101,24 @@ class Register(ABC):
                         timeout + start - time.time() if timeout is not None else None
                     )
 
-                except (asyncio.exceptions.TimeoutError, TimeoutError):
+                except (asyncio.exceptions.TimeoutError, TimeoutError) as e:
+
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} error {str(e)} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     tmp_filename.unlink(missing_ok = True)
                     raise
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} renaming {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 tmp_filename.rename(self._perm_db_filepath / DATA_FILEPATH.name)
                 write_txt_file(self._digest(), self._digest_filepath, True)
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} setting event {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._update_perm_db_event.set()
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} _update_perm_db callee returning {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 return
 
             await asyncio.sleep(0.1)
