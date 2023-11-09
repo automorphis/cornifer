@@ -613,16 +613,16 @@ class Register(ABC):
                         self._num_waiting_procs.value += 1
 
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} incremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} incremented {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     if self._num_waiting_procs.value >= self._num_alive_procs.value:
                         # race condition guard
                         with file.open('a') as fh:
-                            fh.write(f"{os.getpid()} race condition guard {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                            fh.write(f"{os.getpid()} race condition guard {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                         with self._num_waiting_procs.get_lock():
                             self._num_waiting_procs.value -= 1
                         with file.open('a') as fh:
-                            fh.write(f"{os.getpid()} decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                            fh.write(f"{os.getpid()} decremented {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                         continue
 
                     try:
