@@ -607,7 +607,7 @@ class Register(ABC):
                 if self._num_waiting_procs.value < self._num_alive_procs.value - 1:
 
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} not last {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} not last {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     with self._num_waiting_procs.get_lock():
                         self._num_waiting_procs.value += 1
@@ -649,17 +649,17 @@ class Register(ABC):
                 else:
                     # last process to arrive performs hard reset and notifies remaining processes to proceed
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} last {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} last {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} deleted lockfile {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} deleted lockfile  {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     self._db = open_lmdb(self._write_db_filepath, self._readonly)
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} opened handle {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} opened handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     self._opened = True
                     self._hard_reset_event.set() # notify waiting processes
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} set event {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} set event  {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} finished hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
@@ -667,22 +667,22 @@ class Register(ABC):
         if self._do_update_perm_db:
 
             with file.open('a') as fh:
-                fh.write(f"{os.getpid()} waiting on update_perm_db 1 {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                fh.write(f"{os.getpid()} waiting on update_perm_db 1  {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             self._update_perm_db_event.wait(self._update_perm_db_timeout)
 
             with file.open('a') as fh:
-                fh.write(f"{os.getpid()} waiting on update_perm_db 2 {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                fh.write(f"{os.getpid()} waiting on update_perm_db 2  {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             with self._num_active_txns.get_lock():
                 self._num_active_txns.value += 1
 
             with file.open('a') as fh:
-                fh.write(f"{os.getpid()} incremented {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                fh.write(f"{os.getpid()} incremented  {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         try:
             with file.open('a') as fh:
-                fh.write(f"{os.getpid()} _manage_txn yielding {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                fh.write(f"{os.getpid()} _manage_txn yielding  {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             yield
 
