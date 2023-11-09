@@ -661,6 +661,8 @@ class Register(ABC):
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} set event  {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
+                break
+
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} finished hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
