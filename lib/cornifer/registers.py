@@ -580,7 +580,6 @@ class Register(ABC):
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} _manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-
         if self._do_hard_reset and not self._hard_reset_event.is_set(): # If not set, must do hard reset
 
             with file.open('a') as fh:
@@ -690,15 +689,19 @@ class Register(ABC):
         finally:
 
             with file.open('a') as fh:
-                fh.write(f"{os.getpid()} _manage_txn finally {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                fh.write(f"{os.getpid()} _manage_txn finally {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
 
             if self._do_update_perm_db:
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 with self._num_active_txns.get_lock():
                     self._num_active_txns.value -= 1
 
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} _manage_txn decremented {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} _manage_txn decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
     @contextmanager
     def _txn(self, kind):
