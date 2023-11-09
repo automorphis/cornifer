@@ -570,8 +570,16 @@ class Register(ABC):
 
         file = Path.home() / "parallelize.txt"
 
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} _manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db}, _hard_reset_event.is_set() = {self._hard_reset_event.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+        if self._hard_reset_event is not None:
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} _manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db}, _hard_reset_event.is_set() = {self._hard_reset_event.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+        else:
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} _manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
 
         if self._do_hard_reset and not self._hard_reset_event.is_set(): # If not set, must do hard reset
 
