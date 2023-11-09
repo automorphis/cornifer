@@ -570,130 +570,246 @@ class Register(ABC):
 
         file = Path.home() / "parallelize.txt"
 
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} _manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db}, _hard_reset_event.is_set() = {self._hard_reset_event.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
         if self._do_hard_reset and not self._hard_reset_event.is_set(): # If not set, must do hard reset
 
             with file.open('a') as fh:
-                fh.write(f"{os.getpid()} hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                fh.write(f"{os.getpid()} doing hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             if self._opened: # a soft reset could fail on `open_lmdb`
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} closing handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 self._db.close()
                 self._opened = False
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} handle closed {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+
             for _ in range(2):
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} _ = {_} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 # when the last process arrives, the lockfile is reset and the db for the last process is opened, then
                 # the wait releases and the remaining processes opens their db's.
                 if self._num_waiting_procs.value < self._num_alive_procs.value - 1:
 
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} waiting 1 {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} not last {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     with self._num_waiting_procs.get_lock():
                         self._num_waiting_procs.value += 1
 
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} incremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                     if self._num_waiting_procs.value >= self._num_alive_procs.value:
                         # race condition guard
+                        with file.open('a') as fh:
+                            fh.write(f"{os.getpid()} race condition guard {datetime.now().strftime('%H:%M:%S.%f')}\n")
                         with self._num_waiting_procs.get_lock():
                             self._num_waiting_procs.value -= 1
-
+                        with file.open('a') as fh:
+                            fh.write(f"{os.getpid()} decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
                         continue
 
                     try:
+                        with file.open('a') as fh:
+                            fh.write(f"{os.getpid()} waiting 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
                         self._hard_reset_event.wait(self._hard_reset_timeout)
+                        with file.open('a') as fh:
+                            fh.write(f"{os.getpid()} waiting 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     finally:
 
                         with self._num_waiting_procs.get_lock():
                             self._num_waiting_procs.value -= 1
 
+                        with file.open('a') as fh:
+                            fh.write(f"{os.getpid()} decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+
                     self._db = open_lmdb(self._write_db_filepath, self._readonly)
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} handle opened {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     self._opened = True
 
                 else:
                     # last process to arrive performs hard reset and notifies remaining processes to proceed
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} waiting 2 {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} last {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} deleted lockfile {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     self._db = open_lmdb(self._write_db_filepath, self._readonly)
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} opened handle {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
                     self._opened = True
                     self._hard_reset_event.set() # notify waiting processes
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} set event {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} finished hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         if self._do_update_perm_db:
 
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} waiting on update_perm_db 1 {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             self._update_perm_db_event.wait(self._update_perm_db_timeout)
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} waiting on update_perm_db 2 {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             with self._num_active_txns.get_lock():
                 self._num_active_txns.value += 1
 
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} incremented {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
         try:
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} _manage_txn yielding {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
             yield
 
         finally:
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} _manage_txn finally {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             if self._do_update_perm_db:
 
                 with self._num_active_txns.get_lock():
                     self._num_active_txns.value -= 1
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} _manage_txn decremented {self._num_waiting_procs.value} {self._num_alive_procs.value - 1} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
     @contextmanager
     def _txn(self, kind):
+
+        file = Path.home() / 'parallelize.txt'
+
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} _txn callee 1 kind = {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         if kind not in ("reader", "writer", "reversible"):
             raise ValueError
 
+        with file.open('a') as fh:
+            fh.write(f"{os.getpid()} _txn callee 2 kind = {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
         for i in range(3):
+
+            with file.open('a') as fh:
+                fh.write(f"{os.getpid()} i = {i} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             with ExitStack() as stack:
 
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} _manage_txn caller 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 stack.enter_context(self._manage_txn())
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} _manage_txn caller 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 try:
 
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} begin caller 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                     if kind == "reader":
+
                         txn = stack.enter_context(self._db.begin())
+
                     elif kind == "writer":
                         txn = stack.enter_context(self._db.begin(write = True))
+
                     else:
                         txn = stack.enter_context(ReversibleWriter(self._db).begin())
 
-                except (lmdb.ReadersFullError, lmdb.InvalidParameterError, lmdb.BadRslotError):
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} begin caller 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+
+                except (lmdb.ReadersFullError, lmdb.InvalidParameterError, lmdb.BadRslotError) as e:
+
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} error 1 {str(e)} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     if i == 2 or (i == 1 and not self._do_hard_reset):
+
+                        with file.open('a') as fh:
+                            fh.write(f"{os.getpid()} error 2 {str(e)} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                         raise
 
                 else:
 
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} _txn callee yielding {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                     yield txn
+
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} _txn callee returning {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                     return
 
             if i == 0:
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} doing soft reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 # perform soft reset on first failure, closing database handle and reopening for this process only
                 self._db.close()
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} closed db handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                 self._opened = False
 
                 try:
                     self._db = open_lmdb(self._write_db_filepath, self._readonly)
 
-                except lmdb.ReadersFullError:
+                except lmdb.ReadersFullError as e:
+
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} error 1, _do_hard_reset = {self._do_hard_reset}, {str(e)} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     if self._do_hard_reset:
                         self._hard_reset_event.clear()
+                        with file.open('a') as fh:
+                            fh.write(f"{os.getpid()} error 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     else:
                         raise
 
                 else:
+
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} opened db handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                     self._opened = True
 
             elif i == 1: # hence `self._do_hard_reset is True`
                 # perform hard reset, closing database handles for all processes, deleting the lockfile,
                 # and reopening database handles, which creates a new lockfile (this code is found in
                 # `Register._manage_txn`).
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} clearing _hard_reset_event 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
                 self._hard_reset_event.clear()
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} clearing _hard_reset_event 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
 
     def _create_update_perm_db_shared_data(self, mp_ctx, timeout):
 
