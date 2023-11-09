@@ -597,71 +597,58 @@ class Register(ABC):
                     fh.write(f"{os.getpid()} handle closed {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
 
-            for _ in range(2):
+            with self._num_waiting_procs.get_lock():
+
+                last = self._num_waiting_procs.value >= self._num_alive_procs.value - 1
+
+                if not last:
+                    self._num_waiting_procs.value += 1
+
+            # when the last process arrives, the lockfile is reset and the db for the last process is opened, then
+            # the wait releases and the remaining processes opens their db's.
+            if not last:
 
                 with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} _ = {_} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    fh.write(f"{os.getpid()} not last {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-                # when the last process arrives, the lockfile is reset and the db for the last process is opened, then
-                # the wait releases and the remaining processes opens their db's.
-                if self._num_waiting_procs.value < self._num_alive_procs.value - 1:
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} incremented {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
+                try:
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} not last {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} waiting 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    self._hard_reset_event.wait(self._hard_reset_timeout)
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} waiting 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+                finally:
 
                     with self._num_waiting_procs.get_lock():
-                        self._num_waiting_procs.value += 1
+                        self._num_waiting_procs.value -= 1
 
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} incremented {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                    if self._num_waiting_procs.value >= self._num_alive_procs.value:
-                        # race condition guard
-                        with file.open('a') as fh:
-                            fh.write(f"{os.getpid()} race condition guard {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                        with self._num_waiting_procs.get_lock():
-                            self._num_waiting_procs.value -= 1
-                        with file.open('a') as fh:
-                            fh.write(f"{os.getpid()} decremented {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                        continue
-
-                    try:
-                        with file.open('a') as fh:
-                            fh.write(f"{os.getpid()} waiting 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                        self._hard_reset_event.wait(self._hard_reset_timeout)
-                        with file.open('a') as fh:
-                            fh.write(f"{os.getpid()} waiting 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                    finally:
-
-                        with self._num_waiting_procs.get_lock():
-                            self._num_waiting_procs.value -= 1
-
-                        with file.open('a') as fh:
-                            fh.write(f"{os.getpid()} decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
 
-                    self._db = open_lmdb(self._write_db_filepath, self._readonly)
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} handle opened {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                    self._opened = True
+                self._db = open_lmdb(self._write_db_filepath, self._readonly)
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} handle opened {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                self._opened = True
 
-                else:
-                    # last process to arrive performs hard reset and notifies remaining processes to proceed
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} last {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                    (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} deleted lockfile  {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                    self._db = open_lmdb(self._write_db_filepath, self._readonly)
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} opened handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                    self._opened = True
-                    self._hard_reset_event.set() # notify waiting processes
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} set event  {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                break
+            else:
+                # last process to arrive performs hard reset and notifies remaining processes to proceed
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} last {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} deleted lockfile  {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                self._db = open_lmdb(self._write_db_filepath, self._readonly)
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} opened handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                self._opened = True
+                self._hard_reset_event.set() # notify waiting processes
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} set event  {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
             with file.open('a') as fh:
                 fh.write(f"{os.getpid()} finished hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
