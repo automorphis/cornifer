@@ -24,7 +24,7 @@ if __name__ == '__main__':
         pids = None
 
     if len(sys.argv) >= 3:
-        pids = map(int, sys.argv[2:])
+        pids = sys.argv[2:]
 
 
     last_lines = {}
