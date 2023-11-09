@@ -16,21 +16,19 @@ def get_pid(line):
 if __name__ == '__main__':
 
     if len(sys.argv) == 2:
-        num_lines = int(sys.argv[1])
+        memory = int(sys.argv[1])
 
     elif len(sys.argv) >= 3:
         pids = map(int, sys.argv[2:])
 
     else:
 
-        num_lines = 10
+        memory = 10
         pids = None
 
-    num_procs = 10
     last_lines = {}
     file = Path.home() / 'parallelize.txt'
     num_succeeded = 0
-    memory = 25
 
     with file.open('r') as fh:
 
