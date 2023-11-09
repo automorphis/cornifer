@@ -40,12 +40,12 @@ if __name__ == '__main__':
 
                 if pid in last_lines.keys():
 
+                    lines = last_lines[pid]
+
                     if memory > 0 and len(lines) < memory:
                         lines.append((i, line))
 
                     elif memory < 0:
-
-                        lines = last_lines[pid]
 
                         if len(lines) == -memory:
                             del lines[0]
