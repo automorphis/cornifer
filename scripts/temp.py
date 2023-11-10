@@ -51,7 +51,7 @@ if __name__ == '__main__':
     memory = args.memory
 
     if args.pids is not None:
-        pids = args.pids.split(' ')
+        pids = args.pids.split(',')
 
     else:
         pids = None
@@ -65,7 +65,7 @@ if __name__ == '__main__':
     else:
         d1 = d2 = None
 
-    print(d1, d2)
+    print(d1, d2, pids)
 
     file = Path.home() / 'parallelize.txt'
 
