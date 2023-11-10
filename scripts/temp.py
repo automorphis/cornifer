@@ -65,6 +65,8 @@ if __name__ == '__main__':
     else:
         d1 = d2 = None
 
+    print(d1, d2)
+
     file = Path.home() / 'parallelize.txt'
 
     if d1 is None:
