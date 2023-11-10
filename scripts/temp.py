@@ -68,6 +68,10 @@ if __name__ == '__main__':
     print(d1, d2, pids)
 
     file = Path.home() / 'parallelize.txt'
+    print(file)
+
+    with file.open('r') as fh:
+        print(f"first line of file: {fh.readline()}")
 
     if d1 is None:
 
