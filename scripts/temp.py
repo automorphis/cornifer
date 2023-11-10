@@ -4,7 +4,7 @@ import re
 import sys
 from collections import OrderedDict
 from pathlib import Path
-from statistics import median, quantiles
+from statistics import median, quantiles, stdev
 
 
 def get_pid(line):
@@ -139,5 +139,7 @@ if __name__ == '__main__':
 
         for pid in stats.keys():
 
-            if (pids is None or pid in pids) and len(stats[pid]) > 0:
-                print(pid, min(stats[pid]), [str(t) for t in quantiles(stats[pid], n = 8)], max(stats[pid]))
+            stats_ = stats[pid]
+
+            if (pids is None or pid in pids) and len(stats_) > 0:
+                print(pid, sum(stats_), stdev(stats_), min(stats[pid]), [str(t) for t in quantiles(stats[pid], n = 8)], max(stats[pid]))
