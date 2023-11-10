@@ -139,5 +139,5 @@ if __name__ == '__main__':
 
         for pid in stats.keys():
 
-            if pids is None or pid in pids:
+            if pids is None or pid in pids and len(stats[pid]) > 0:
                 print(pid, min(stats[pid]), [str(t) for t in quantiles(stats[pid], n = 8)], max(stats[pid]))
