@@ -724,7 +724,7 @@ class Register(ABC):
                 try:
 
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} begin caller 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} begin caller 1 {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                     if kind == "reader":
 
@@ -737,7 +737,7 @@ class Register(ABC):
                         txn = stack.enter_context(ReversibleWriter(self._db).begin())
 
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} begin caller 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} begin caller 2 {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
 
                 except (lmdb.ReadersFullError, lmdb.InvalidParameterError, lmdb.BadRslotError) as e:
