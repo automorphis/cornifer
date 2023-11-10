@@ -1,65 +1,139 @@
+import argparse
+import datetime
 import re
 import sys
 from collections import OrderedDict
 from pathlib import Path
+from statistics import median
+
 
 def get_pid(line):
 
     pid_re = r'\d+\s'
     match = re.match(pid_re, line)
+
     if match is not None:
         return match[0][:-1]
+
     else:
         return None
 
+def get_time(line):
+
+    time_re = r'\d{2}:\d{2}:\d{2}.\d{6}'
+    match = re.match(time_re, line)
+
+    if match is not None:
+        return match[0][:-1], datetime.datetime.strptime(match[0][:-1], '%H:%M:%S.%f')
+
+    else:
+        return None, None
+
+def separate(line):
+
+    pid = get_pid(line)
+    time_str, t = get_time(line)
+
+    if pid is not None and time_str is not None:
+        return pid, line[len(pid) : -len(time_str)].strip(), t
+
+    else:
+        return None, None, None
 
 if __name__ == '__main__':
 
-    if len(sys.argv) >= 2:
-        memory = int(sys.argv[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-m', '--memory', default = -10, type = int)
+    parser.add_argument('-p', '--pids')
+    parser.add_argument('-d1', '--diff1')
+    parser.add_argument('-d2', '--diff2')
+    args = parser.parse_args()
+    memory = args.memory
 
-    else:
-        memory = -10
-
-    if len(sys.argv) >= 3:
-        pids = sys.argv[2:]
+    if args.pids is not None:
+        pids = args.pids.split(' ')
 
     else:
         pids = None
 
-    last_lines = {}
+    if (args.diff1 is None) != (args.diff2 is None):
+        raise ValueError
+
+    if args.diff1 is not None:
+        d1, d2 = args.diff1, args.diff2
+
+    else:
+        d1 = d2 = None
+
     file = Path.home() / 'parallelize.txt'
 
-    with file.open('r') as fh:
+    if d1 is None:
 
-        for i, line in enumerate(fh.readlines()):
+        print_lines = {}
 
-            pid = get_pid(line)
+        with file.open('r') as fh:
 
-            if pid is not None:
+            for i, line in enumerate(fh.readlines()):
 
-                if pid in last_lines.keys():
+                pid = get_pid(line)
 
-                    lines = last_lines[pid]
+                if pid is not None:
 
-                    if memory > 0 and len(lines) < memory:
-                        lines.append((i, line))
+                    if pid in print_lines.keys():
 
-                    elif memory < 0:
+                        lines = print_lines[pid]
 
-                        if len(lines) == -memory:
-                            del lines[0]
+                        if memory > 0 and len(lines) < memory:
+                            lines.append((i, line))
 
-                        lines.append((i, line))
+                        elif memory < 0:
 
-                else:
-                    last_lines[pid] = [(i,line)]
+                            if len(lines) == -memory:
+                                del lines[0]
 
-    for pid in last_lines.keys():
+                            lines.append((i, line))
 
-        if pids is None or pid in pids:
+                    else:
+                        print_lines[pid] = [(i, line)]
 
-            print(pid)
+        for pid in print_lines.keys():
 
-            for val in last_lines[pid]:
-                print(f"\t{val}")
+            if pids is None or pid in pids:
+
+                print(pid)
+
+                for val in print_lines[pid]:
+                    print(f"\t{val}")
+
+    else:
+
+        stats = {}
+        start_times = {}
+
+        with file.open('r') as fh:
+
+            for i, line in enumerate(fh.readlines()):
+
+                pid, middle, t = separate(line)
+
+                if pid is not None:
+
+                    if pid not in stats.keys():
+
+                        stats[pid] = []
+                        start_times[pid] = None
+
+                    start_time = start_times[pid]
+
+                    if middle == d1 and start_time is None:
+                        start_times[pid] = t
+
+                    elif middle == d2 and start_time is not None:
+
+                        stats[pid].append(t - start_time)
+                        start_times[pid] = None
+
+        for pid in stats.keys():
+
+            if pids is None or pid in pids:
+                print(pid, min(stats[pid]), median(stats[pid]), max(stats[pid]))
