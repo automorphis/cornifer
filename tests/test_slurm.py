@@ -569,17 +569,14 @@ class TestSlurm(unittest.TestCase):
                         self.wait_till_not_running(timeout, running_query_sec)
 
                     finally:
-
-                        num_hard_resets = 0
-
-                        with file.open('r') as fh:
-
-                            for line in fh.readlines():
-
-                                if 'finished hard reset' in line:
-                                    num_hard_resets += 1
-
-                        print(f'Successful hard resets: {num_hard_resets // num_procs}')
+                        subprocess.run([
+                            'sage', '-python', '-u', '~/cornifer/scripts/temp.py', '-d1', 'begin caller 1 reader',
+                            '-d2', 'begin caller 2 reader'
+                        ])
+                        subprocess.run([
+                            'sage', '-python', '-u', '~/cornifer/scripts/temp.py', '-d1', 'begin caller 1 reversible',
+                            '-d2', 'begin caller 2 reversible'
+                        ])
 
                     print(f'Checking test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
                     self.check_empty_error_file()
