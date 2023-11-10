@@ -142,4 +142,9 @@ if __name__ == '__main__':
             stats_ = stats[pid]
 
             if (pids is None or pid in pids) and len(stats_) > 0:
-                print(pid, sum(stats_), stdev(stats_), min(stats[pid]), [str(t) for t in quantiles(stats[pid], n = 8)], max(stats[pid]))
+
+                try:
+                    print(pid, sum(stats_), stdev(stats_), min(stats_), [str(t) for t in quantiles(stats[pid], n = 8)], max(stats_))
+
+                except TypeError:
+                    print(stats_)
