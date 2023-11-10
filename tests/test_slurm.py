@@ -569,14 +569,19 @@ class TestSlurm(unittest.TestCase):
                         self.wait_till_not_running(timeout, running_query_sec)
 
                     finally:
-                        print(subprocess.run([
+                        captured = subprocess.run([
                             'sage', '-python', '-u', '~/cornifer/scripts/temp.py', '-d1', 'begin caller 1 reader',
                             '-d2', 'begin caller 2 reader'
-                        ], capture_output = True, text = True).stdout)
-                        print(subprocess.run([
+                        ], capture_output = True, text = True)
+                        print(captured.stdout)
+                        print(captured.stderr)
+                        captured = subprocess.run([
                             'sage', '-python', '-u', '~/cornifer/scripts/temp.py', '-d1', 'begin caller 1 reversible',
                             '-d2', 'begin caller 2 reversible'
-                        ], capture_output = True, text = True).stdout)
+                        ], capture_output = True, text = True)
+                        print(captured.stdout)
+                        print(captured.stderr)
+
 
                     print(f'Checking test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
                     self.check_empty_error_file()
