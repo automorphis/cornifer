@@ -9,22 +9,22 @@ from statistics import median
 
 def get_pid(line):
 
-    pid_re = r'\d+\s'
+    pid_re = r'\d+'
     match = re.match(pid_re, line)
 
     if match is not None:
-        return match[0][:-1]
+        return match[0]
 
     else:
         return None
 
 def get_time(line):
 
-    time_re = r'\d{2}:\d{2}:\d{2}.\d{6}'
-    match = re.match(time_re, line)
+    time_re = r'\d{2}:\d{2}:\d{2}\.\d{6}'
+    match = re.search(time_re, line)
 
     if match is not None:
-        return match[0][:-1], datetime.datetime.strptime(match[0][:-1], '%H:%M:%S.%f')
+        return match[0], datetime.datetime.strptime(match[0], '%H:%M:%S.%f')
 
     else:
         return None, None
@@ -77,6 +77,7 @@ if __name__ == '__main__':
 
             for i, line in enumerate(fh.readlines()):
 
+                line = line.strip()
                 pid = get_pid(line)
 
                 if pid is not None:
@@ -116,6 +117,7 @@ if __name__ == '__main__':
 
             for i, line in enumerate(fh.readlines()):
 
+                line = line.strip()
                 pid, middle, t = separate(line)
 
                 if pid is not None:
