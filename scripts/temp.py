@@ -134,7 +134,7 @@ if __name__ == '__main__':
 
                     elif middle == d2 and start_time is not None:
 
-                        stats[pid].append(t - start_time)
+                        stats[pid].append((t - start_time).total_seconds())
                         start_times[pid] = None
 
         for pid in stats.keys():
@@ -142,4 +142,4 @@ if __name__ == '__main__':
             stats_ = stats[pid]
 
             if (pids is None or pid in pids) and len(stats_) > 0:
-                print(pid, sum(stats_, start = datetime.timedelta(seconds = 0)), stdev(stats_), min(stats_), [str(t) for t in quantiles(stats[pid], n = 8)], max(stats_))
+                print(pid, sum(stats_), stdev(stats_), min(stats_), [str(t) for t in quantiles(stats[pid], n = 8)], max(stats_))
