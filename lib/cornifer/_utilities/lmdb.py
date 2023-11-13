@@ -43,7 +43,9 @@ class ReversibleWriter:
         self.committed = True
 
     def begin_no_cm(self):
+
         self.txn = self.db.begin(write = True)
+        return self
 
     def commit(self):
 
