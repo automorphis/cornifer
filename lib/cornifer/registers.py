@@ -29,6 +29,7 @@ import time
 import lmdb
 import numpy as np
 import aioshutil
+import stopit
 
 from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, CompressionError, \
     DecompressionError, NOT_ABSOLUTE_ERROR_MESSAGE, RegisterRecoveryError, BlockNotOpenError, DataExistsError, \
@@ -41,7 +42,7 @@ from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_d
     write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int, hash_file, \
     function_with_timeout
 from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter, num_open_readers_accurate, \
-    r_txn_prefix_iter, r_txn_count_keys, create_lmdb, txn_with_timeout
+    r_txn_prefix_iter, r_txn_count_keys, create_lmdb
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
     REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, WRITE_DB_FILEPATH, DATA_FILEPATH, DIGEST_FILEPATH, \
@@ -50,7 +51,6 @@ from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _NO_DEBUG = 0
 _debug = _NO_DEBUG
-OS_IS_WINDOWS = os.name == 'nt'
 
 #################################
 #            LMDB KEYS          #
@@ -421,6 +421,7 @@ class Register(ABC):
         self.compress_elapsed = 0
         self.decompress_elapsed = 0
         # TRANSACTIONS #
+        self._txn_timeout = 30 # seconds
         self._do_update_perm_db = False
         self._update_perm_db_event = None
         self._num_active_txns = None
@@ -718,6 +719,7 @@ class Register(ABC):
                     fh.write(f"{os.getpid()} _manage_txn caller 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 stack.enter_context(self._manage_txn())
+                stack.enter_context(stopit.ThreadingTimeout(self._txn_timeout, False))
 
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} _manage_txn caller 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
@@ -727,19 +729,14 @@ class Register(ABC):
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} begin caller 1 {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-                    if OS_IS_WINDOWS:
+                    if kind == "reader":
+                        txn = stack.enter_context(self._db.begin())
 
-                        if kind == "reader":
-                            txn = stack.enter_context(self._db.begin())
-
-                        elif kind == "writer":
-                            txn = stack.enter_context(self._db.begin(write = True))
-
-                        else:
-                            txn = stack.enter_context(ReversibleWriter(self._db).begin())
+                    elif kind == "writer":
+                        txn = stack.enter_context(self._db.begin(write = True))
 
                     else:
-                        txn = stack.enter_context(txn_with_timeout(self._db, kind, 30))
+                        txn = stack.enter_context(ReversibleWriter(self._db).begin())
 
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} begin caller 2 {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
@@ -1232,7 +1229,6 @@ class Register(ABC):
         self._opened = False
         self._db.close()
 
-
     @contextmanager
     def _recursive_open(self, readonly):
 
@@ -1325,7 +1321,6 @@ class Register(ABC):
             yield
 
         finally:
-
             self.__dict__[elapsed_name] += time.time() - start_time
 
     #################################
@@ -2344,9 +2339,18 @@ class Register(ABC):
         except FileNotFoundError as e:
             raise DataNotFoundError from e
 
-    def add_disk_blk(self, blk, exists_ok = False, dups_ok = True, ret_metadata = False, **kwargs):
+    def add_disk_blk(self, blk, exists_ok = False, dups_ok = True, ret_metadata = False, timeout = None, **kwargs):
 
-        with self._time("add_elapsed"):
+        with ExitStack() as stack:
+
+            stack.enter_context(self._time("add_elapsed"))
+            timeout = check_return_int_None_default(timeout, 'timeout', None)
+
+            if timeout is not None and timeout <= 0:
+                raise ValueError("`timeout` must be positive.")
+
+            if timeout is not None:
+                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
 
             self._check_open_raise("add_disk_blk")
             self._check_readwrite_raise("add_disk_blk")
@@ -2399,9 +2403,18 @@ class Register(ABC):
                 else:
                     raise
 
-    def append_disk_blk(self, blk, ret_metadata = False, **kwargs):
+    def append_disk_blk(self, blk, ret_metadata = False, timeout = None, **kwargs):
 
-        with self._time("add_elapsed"):
+        with ExitStack() as stack:
+
+            stack.enter_context(self._time("add_elapsed"))
+            timeout = check_return_int_None_default(timeout, 'timeout', None)
+
+            if timeout is not None and timeout <= 0:
+                raise ValueError("`timeout` must be positive.")
+
+            if timeout is not None:
+                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
 
             file = Path.home() / 'parallelize.txt'
             self._check_open_raise("append_disk_blk")
@@ -2452,9 +2465,18 @@ class Register(ABC):
                 else:
                     raise
 
-    def rmv_disk_blk(self, apri, startn = None, length = None, missing_ok = False, **kwargs):
+    def rmv_disk_blk(self, apri, startn = None, length = None, missing_ok = False, timeout = None, **kwargs):
 
-        with self._time("rmv_elapsed"):
+        with ExitStack() as stack:
+
+            stack.enter_context(self._time("rmv_elapsed"))
+            timeout = check_return_int_None_default(timeout, 'timeout', None)
+
+            if timeout is not None and timeout <= 0:
+                raise ValueError("`timeout` must be positive.")
+
+            if timeout is not None:
+                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
 
             self._check_open_raise("rmv_disk_blk")
             self._check_readwrite_raise("rmv_disk_blk")
@@ -2504,46 +2526,66 @@ class Register(ABC):
                 else:
                     raise
 
-    def blk_metadata(self, apri, startn = None, length = None, recursively = False):
+    def blk_metadata(self, apri, startn = None, length = None, recursively = False, timeout = None):
 
-        self._check_open_raise("blk_metadata")
-        check_type(apri, "apri", ApriInfo)
-        startn = check_return_int_None_default(startn, "startn", None)
-        length = check_return_int_None_default(length, "length", None)
-        check_type(recursively, "recursively", bool)
+        with ExitStack() as stack:
 
-        if startn is not None and startn < 0:
-            raise ValueError("`startn` must be non-negative.")
+            stack.enter_context(self._time("rmv_elapsed"))
+            timeout = check_return_int_None_default(timeout, 'timeout', None)
 
-        if length is not None and length < 0:
-            raise ValueError("`length` must be non-negative.")
+            if timeout is not None and timeout <= 0:
+                raise ValueError("`timeout` must be positive.")
 
-        with self._txn("reader") as ro_txn:
+            if timeout is not None:
+                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
 
-            try:
-                blk_filename, compressed_filename = self._blk_metadata_pre(apri, None, True, startn, length, ro_txn)
+            self._check_open_raise("blk_metadata")
+            check_type(apri, "apri", ApriInfo)
+            startn = check_return_int_None_default(startn, "startn", None)
+            length = check_return_int_None_default(length, "length", None)
+            check_type(recursively, "recursively", bool)
 
-            except DataNotFoundError:
-                pass
+            if startn is not None and startn < 0:
+                raise ValueError("`startn` must be non-negative.")
 
-            else:
-                return Register._blk_metadata_disk(blk_filename, compressed_filename)
+            if length is not None and length < 0:
+                raise ValueError("`length` must be non-negative.")
 
-            if recursively:
+            with self._txn("reader") as ro_txn:
 
                 try:
-                    return self._blk_metadata_recursive(apri, startn, length, ro_txn)
+                    blk_filename, compressed_filename = self._blk_metadata_pre(apri, None, True, startn, length, ro_txn)
 
                 except DataNotFoundError:
                     pass
 
-            raise DataNotFoundError(self._blk_not_found_err_msg(
-                False, True, recursively, apri, startn, length, None
-            ))
+                else:
+                    return Register._blk_metadata_disk(blk_filename, compressed_filename)
 
-    def compress(self, apri, startn = None, length = None, compression_level = 6, ret_metadata = False):
+                if recursively:
 
-        with self._time("compress_elapsed"):
+                    try:
+                        return self._blk_metadata_recursive(apri, startn, length, ro_txn)
+
+                    except DataNotFoundError:
+                        pass
+
+                raise DataNotFoundError(self._blk_not_found_err_msg(
+                    False, True, recursively, apri, startn, length, None
+                ))
+
+    def compress(self, apri, startn = None, length = None, compression_level = 6, ret_metadata = False, timeout = None):
+
+        with ExitStack() as stack:
+
+            stack.enter_context(self._time("compress_elapsed"))
+            timeout = check_return_int_None_default(timeout, 'timeout', None)
+
+            if timeout is not None and timeout <= 0:
+                raise ValueError("`timeout` must be positive.")
+
+            if timeout is not None:
+                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
 
             _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not recover successfully from a failed disk `Block` compress!"
             self._check_open_raise("compress")
@@ -2589,9 +2631,18 @@ class Register(ABC):
                 else:
                     raise
 
-    def decompress(self, apri, startn = None, length = None, ret_metadata = False):
+    def decompress(self, apri, startn = None, length = None, ret_metadata = False, timeout = None):
 
-        with self._time("decompress_elapsed"):
+        with ExitStack() as stack:
+
+            stack.enter_context(self._time("decompress_elapsed"))
+            timeout = check_return_int_None_default(timeout, 'timeout', None)
+
+            if timeout is not None and timeout <= 0:
+                raise ValueError("`timeout` must be positive.")
+
+            if timeout is not None:
+                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
 
             _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not recover successfully from a failed disk `Block` decompress!"
             self._check_open_raise("decompress")
@@ -3456,7 +3507,7 @@ class Register(ABC):
     # PUBLIC RAM & DISK BLK METHODS #
 
     @contextmanager
-    def blk_by_n(self, apri, n, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
+    def blk_by_n(self, apri, n, diskonly = False, recursively = False, ret_metadata = False, timeout = None, **kwargs):
 
         with ExitStack() as post_yield: # see pattern VIII.1
 
@@ -3528,7 +3579,8 @@ class Register(ABC):
 
     @contextmanager
     def blk(
-        self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs
+        self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False,
+        timeout = None, **kwargs
     ):
 
         with ExitStack() as post_yield: # see pattern VIII.1
@@ -3599,7 +3651,7 @@ class Register(ABC):
                 else:
                     yield post_yield.enter_context(yield_)
 
-    def blks(self, apri, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
+    def blks(self, apri, diskonly = False, recursively = False, ret_metadata = False, timeout = None, **kwargs):
 
         self._check_open_raise("blks")
         check_type(apri, "apri", ApriInfo)

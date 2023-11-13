@@ -43,7 +43,9 @@ setup(
     install_requires = [
         'numpy>=1.20.0',
         'lmdb>=1.2.1',
-        'aiofiles>=23.2.0'
+        'aiofiles>=23.2.0',
+        'aioshutil>=1.3',
+        'stopit>=1.1.2'
     ],
 
     classifiers = [

@@ -13,7 +13,7 @@ from cornifer import NumpyRegister, Register, Block, load_ident, openblks, openr
 from cornifer.info import ApriInfo, AposInfo
 from cornifer._utilities import random_unique_filename, intervals_overlap
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
-    DecompressionError, RegisterRecoveryError, DataExistsError, RegisterNotOpenError
+    DecompressionError, RegisterRecoveryError, DataExistsError, RegisterNotOpenError, CannotLoadError
 from cornifer.regfilestructure import REG_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
     DATABASE_FILEPATH, MAP_SIZE_FILEPATH, WRITE_DB_FILEPATH
 from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, \
@@ -289,7 +289,7 @@ class Test_Register(TestCase):
         # tests that error is raised when `Register` has not been created
         local_dir = SAVES_DIR / "test_local_dir"
         reg = Testy_Register(SAVES_DIR, "sh", "sup")
-        with self.assertRaisesRegex(FileNotFoundError, "database"):
+        with self.assertRaisesRegex(CannotLoadError, "database"):
             reg._set_local_dir(local_dir)
 
         # tests that newly created register has the correct filestructure and instance attributes
