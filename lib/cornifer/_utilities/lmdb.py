@@ -19,7 +19,7 @@ from pathlib import Path
 
 import lmdb
 
-from .._utilities import check_type, check_return_int
+from .._utilities import check_type, check_return_int, function_with_timeout
 
 
 class ReversibleWriter:
@@ -41,6 +41,19 @@ class ReversibleWriter:
             yield self
 
         self.committed = True
+
+    def begin_no_cm(self):
+        self.txn = self.db.begin(write = True)
+
+    def commit(self):
+
+        self.txn.commit()
+        self.committed = True
+
+    def abort(self):
+
+        self.txn.abort()
+        self.committed = False
 
     def cursor(self):
         return self.txn.cursor()
@@ -73,6 +86,40 @@ class ReversibleWriter:
             self.undo[key] = self.txn.get(key, default = None)
 
         self.txn.delete(key)
+
+@contextmanager
+def txn_with_timeout(db, kind, timeout):
+
+    if kind == 'reader':
+        txn = function_with_timeout(db.begin, (None, None, False), timeout)
+
+    elif kind == 'writer':
+        txn = function_with_timeout(db.begin, (None, None, True), timeout)
+
+    elif kind == 'reversible':
+        txn = function_with_timeout(ReversibleWriter(db).begin_no_cm, (), timeout)
+
+    else:
+        raise ValueError
+
+    try:
+        yield txn
+
+    except:
+
+        errored_out = True
+        raise
+
+    else:
+        errored_out = False
+
+    finally:
+
+        if errored_out:
+            function_with_timeout(txn.abort, (), timeout)
+
+        else:
+            function_with_timeout(txn.commit, (), timeout)
 
 def create_lmdb(filepath, mapsize, max_readers):
 

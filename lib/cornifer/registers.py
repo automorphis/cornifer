@@ -41,7 +41,7 @@ from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_d
     write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int, hash_file, \
     function_with_timeout
 from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter, num_open_readers_accurate, \
-    r_txn_prefix_iter, r_txn_count_keys, create_lmdb
+    r_txn_prefix_iter, r_txn_count_keys, create_lmdb, txn_with_timeout
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     COMPRESSED_FILE_SUFFIX, MSG_FILEPATH, CLS_FILEPATH, check_reg_structure, DATABASE_FILEPATH, \
     REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, WRITE_DB_FILEPATH, DATA_FILEPATH, DIGEST_FILEPATH, \
@@ -50,6 +50,7 @@ from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _NO_DEBUG = 0
 _debug = _NO_DEBUG
+OS_IS_WINDOWS = os.name == 'nt'
 
 #################################
 #            LMDB KEYS          #
@@ -726,15 +727,19 @@ class Register(ABC):
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} begin caller 1 {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-                    if kind == "reader":
+                    if OS_IS_WINDOWS:
 
-                        txn = stack.enter_context(self._db.begin())
+                        if kind == "reader":
+                            txn = stack.enter_context(self._db.begin())
 
-                    elif kind == "writer":
-                        txn = stack.enter_context(self._db.begin(write = True))
+                        elif kind == "writer":
+                            txn = stack.enter_context(self._db.begin(write = True))
+
+                        else:
+                            txn = stack.enter_context(ReversibleWriter(self._db).begin())
 
                     else:
-                        txn = stack.enter_context(ReversibleWriter(self._db).begin())
+                        txn = stack.enter_context(txn_with_timeout(self._db, kind, 30))
 
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} begin caller 2 {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
@@ -809,7 +814,6 @@ class Register(ABC):
                 self._hard_reset_event.clear()
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} clearing _hard_reset_event 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
 
     def _create_update_perm_db_shared_data(self, mp_ctx, timeout):
 
