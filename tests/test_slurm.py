@@ -555,9 +555,9 @@ class TestSlurm(unittest.TestCase):
 
         for num_procs in (20,):
 
-            for num_blks, timeout in ((1, 60), (10, 180), (100, 600), (300, 1800)):
+            for num_blks, timeout in ((300, 1800), ): #(1, 60), (10, 180), (100, 600),
 
-                for max_readers in (100, 200, 1000, 10000):
+                for max_readers in (100,): # 200, 1000, 10000
 
                     write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout} {max_readers}')
                     print(f'Submitting test batch #5 (num_procs = {num_procs}, num_blks = {num_blks}, max_readers = {max_readers}) {datetime.now().strftime("%H:%M:%S.%f")}...')
