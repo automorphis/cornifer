@@ -10,7 +10,7 @@ import time
 import lmdb
 import numpy as np
 
-from cornifer import NumpyRegister, ApriInfo, AposInfo, load_shorthand, Block, DataNotFoundError
+from cornifer import NumpyRegister, ApriInfo, AposInfo, load_shorthand, Block, DataNotFoundError, _utilities
 from cornifer._utilities import random_unique_filename
 from cornifer._utilities.lmdb import open_lmdb, r_txn_prefix_iter
 
@@ -559,8 +559,9 @@ class TestSlurm(unittest.TestCase):
 
                 for max_readers in (100, 200, 1000, 10000): # 200, 1000, 10000
 
-                    debug_dir = f'debug-{datetime.now().strftime("%H-%M-%S-%f")}'
-                    (Path.home() / debug_dir).mkdir()
+                    debug_dir = Path.home() / 'debugs' / f'debug-{datetime.now().strftime("%H-%M-%S-%f")}'
+                    _utilities.debug_dir = debug_dir
+                    (Path.home() / debug_dir).mkdir(parents = True)
                     write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout} {max_readers} {debug_dir}')
                     print(f'Submitting test batch #5 (num_procs = {num_procs}, num_blks = {num_blks}, max_readers = {max_readers}) {datetime.now().strftime("%H:%M:%S.%f")}...')
                     self.submit_batch()
