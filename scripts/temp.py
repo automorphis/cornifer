@@ -78,12 +78,12 @@ if __name__ == '__main__':
 
     print(f'm = {memory}, pids = {pids}, d1 = {d1}, d2 = {d2}, f = {f}, t = {t}, file = {file}')
 
-    for pid in pids:
-
-        with (file / f'debug{pid}.txt').open('r') as fh:
-
-            print(file / f'debug{pid}.txt')
-            print(fh.readline())
+    # for pid in pids:
+    #
+    #     with (file / f'debug{pid}.txt').open('r') as fh:
+    #
+    #         print(file / f'debug{pid}.txt')
+    #         print(fh.readline())
 
     if d1 is None:
 

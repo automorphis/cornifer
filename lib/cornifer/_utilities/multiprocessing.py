@@ -96,7 +96,6 @@ def wait_for_value(value, expected, timeout, query_period):
 @contextmanager
 def process_wrapper(num_alive_procs, start_conditions, end_conditions):
 
-    file = Path.home() / 'parallelize.txt'
     print_debug(f'process_wrapper enter')
 
     with num_alive_procs.get_lock():
