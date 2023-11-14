@@ -14,11 +14,11 @@ from ._utilities import check_return_int, check_type, check_Path_None_default, c
 from .registers import Register
 from .errors import RegisterOpenError
 
-def _wrap_target(target, num_procs, proc_index, args, num_alive_procs):
+def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_reset_conditions):
 
     make_sigterm_raise_KeyboardInterrupt()
 
-    with process_wrapper(num_alive_procs):
+    with process_wrapper(num_alive_procs, [], hard_reset_conditions):
         target(num_procs, proc_index, *args)
 
 
@@ -125,7 +125,7 @@ def parallelize(
         for proc_index in range(num_procs):
             procs.append(mp_ctx.Process(
                 target = _wrap_target,
-                args = (target, num_procs, proc_index, args, num_alive_procs)
+                args = (target, num_procs, proc_index, args, num_alive_procs, [reg._hard_reset_condition for reg in regs])
             ))
 
         with file.open('a') as fh:
