@@ -89,15 +89,26 @@ def wait_for_value(value, expected, timeout, query_period):
     raise TimeoutError
 
 @contextmanager
-def process_wrapper(num_alive_procs):
+def process_wrapper(num_alive_procs, start_conditions, end_conditions):
 
     with num_alive_procs.get_lock():
         num_alive_procs.value += 1
+
+    for cond in start_conditions:
+
+        with cond:
+            cond.notify()
 
     try:
         yield
 
     finally:
 
+
         with num_alive_procs.get_lock():
             num_alive_procs.value -= 1
+
+        for cond in end_conditions:
+
+            with cond:
+                cond.notify()

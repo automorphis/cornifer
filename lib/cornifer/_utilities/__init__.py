@@ -19,10 +19,13 @@ import re
 import signal
 import string
 from collections import OrderedDict
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
+import stopit
+
 
 class FinalYield(Exception): pass
 
@@ -336,33 +339,19 @@ def is_deletable(path):
 def _raise_TimeoutError(*_):
     raise TimeoutError
 
-def function_with_timeout(func, args, timeout):
-    # doesn't work on Windows
-    timeout = check_return_int(timeout,  "timeout")
-    signal.signal(signal.SIGALRM, _raise_TimeoutError)
-    file = Path.home() / 'parallelize.txt'
+@contextmanager
+def timeout_cm(timeout):
 
-    try:
+    if timeout is not None:
 
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} function_with_timeout setting signal {datetime.now().strftime('%H:%M:%S.%f')}\n")
-        signal.alarm(timeout)
-        return func(*args)
+        with stopit.ThreadingTimeout(timeout, True) as cm:
+            yield
 
-    except TimeoutError:
+        if cm.state == cm.TIMED_OUT:
+            raise TimeoutError
 
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} function_with_timeout caught timeout error {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-        raise
-
-    finally:
-
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} function_with_timeout finally {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, signal.SIG_DFL)
+    else:
+        yield
 
 # def get_leftmost_layer(s, begin = 0):
 #

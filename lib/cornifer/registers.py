@@ -29,7 +29,6 @@ import time
 import lmdb
 import numpy as np
 import aioshutil
-import stopit
 
 from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, CompressionError, \
     DecompressionError, NOT_ABSOLUTE_ERROR_MESSAGE, RegisterRecoveryError, BlockNotOpenError, DataExistsError, \
@@ -40,7 +39,7 @@ from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
     write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int, hash_file, \
-    function_with_timeout
+    timeout_cm
 from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter, num_open_readers_accurate, \
     r_txn_prefix_iter, r_txn_count_keys, create_lmdb
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
@@ -428,6 +427,7 @@ class Register(ABC):
         self._update_perm_db_timeout = None
         self._do_hard_reset = False
         self._hard_reset_event = None
+        self._hard_reset_condition = None
         self._num_alive_procs = None
         self._num_waiting_procs = None
         self._hard_reset_timeout = None
@@ -536,6 +536,7 @@ class Register(ABC):
             'update_perm_db_timeout' : self._update_perm_db_timeout,
             'do_hard_reset' : self._do_hard_reset,
             'hard_reset_event' : self._hard_reset_event,
+            'hard_reset_condition' : self._hard_reset_condition,
             'num_alive_procs' : self._num_alive_procs,
             'num_waiting_procs' : self._num_waiting_procs,
             'hard_reset_timeout' : self._hard_reset_timeout
@@ -557,6 +558,7 @@ class Register(ABC):
             self._update_perm_db_timeout = state['update_perm_db_timeout']
             self._do_hard_reset = state['do_hard_reset']
             self._hard_reset_event = state['hard_reset_event']
+            self._hard_reset_condition = state['hard_reset_condition']
             self._num_alive_procs = state['num_alive_procs']
             self._num_waiting_procs = state['num_waiting_procs']
             self._hard_reset_timeout = state['hard_reset_timeout']
@@ -601,59 +603,64 @@ class Register(ABC):
 
             with self._num_waiting_procs.get_lock():
 
-                last = self._num_waiting_procs.value >= self._num_alive_procs.value - 1
+                first = self._num_waiting_procs.value == 0
+                self._num_waiting_procs.value += 1
 
-                if not last:
-                    self._num_waiting_procs.value += 1
+            with self._hard_reset_condition:
+                self._hard_reset_condition.notify()
 
-            # when the last process arrives, the lockfile is reset and the db for the last process is opened, then
-            # the wait releases and the remaining processes opens their db's.
-            if not last:
+            try:
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} not last {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                if not first:
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} incremented {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} not first {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-                try:
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} incremented {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} waiting 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                    self._hard_reset_event.wait(self._hard_reset_timeout)
+
+                        self._hard_reset_event.wait(self._hard_reset_timeout)
+
                     with file.open('a') as fh:
                         fh.write(f"{os.getpid()} waiting 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
-                finally:
-
-                    with self._num_waiting_procs.get_lock():
-                        self._num_waiting_procs.value -= 1
-
+                    self._db = open_lmdb(self._write_db_filepath, self._readonly)
                     with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        fh.write(f"{os.getpid()} handle opened {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    self._opened = True
 
+                else:
+                    # first process to arrive performs hard reset and notifies remaining processes to proceed
 
-                self._db = open_lmdb(self._write_db_filepath, self._readonly)
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} handle opened {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                self._opened = True
+                    with self._hard_reset_condition:
 
-            else:
-                # last process to arrive performs hard reset and notifies remaining processes to proceed
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} last {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} deleted lockfile  {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                self._db = open_lmdb(self._write_db_filepath, self._readonly)
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} opened handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
-                self._opened = True
-                self._hard_reset_event.set() # notify waiting processes
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} set event  {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        while self._num_waiting_procs.value < self._num_alive_procs.value:
+                            self._hard_reset_condition.wait(self._hard_reset_timeout)
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} finished hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} deleted lockfile  {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    self._db = open_lmdb(self._write_db_filepath, self._readonly)
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} opened handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    self._opened = True
+                    self._hard_reset_event.set() # notify waiting processes
+                    with file.open('a') as fh:
+                        fh.write(f"{os.getpid()} set event  {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} finished hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+            finally:
+
+                with self._num_waiting_procs.get_lock():
+                    self._num_waiting_procs.value -= 1
+
+                with file.open('a') as fh:
+                    fh.write(f"{os.getpid()} decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
         if self._do_update_perm_db:
 
@@ -719,7 +726,7 @@ class Register(ABC):
                     fh.write(f"{os.getpid()} _manage_txn caller 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
                 stack.enter_context(self._manage_txn())
-                stack.enter_context(stopit.ThreadingTimeout(self._txn_timeout, False))
+                stack.enter_context(timeout_cm(self._txn_timeout))
 
                 with file.open('a') as fh:
                     fh.write(f"{os.getpid()} _manage_txn caller 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
@@ -825,6 +832,7 @@ class Register(ABC):
         self._do_hard_reset = True
         self._hard_reset_event = mp_ctx.Event()
         self._hard_reset_event.set()
+        self._hard_reset_condition = mp_ctx.Condition()
         self._num_alive_procs = num_alive_procs
         self._num_waiting_procs = mp_ctx.Value('i', 0)
         self._hard_reset_timeout = timeout
@@ -2349,9 +2357,7 @@ class Register(ABC):
             if timeout is not None and timeout <= 0:
                 raise ValueError("`timeout` must be positive.")
 
-            if timeout is not None:
-                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
-
+            stack.enter_context(timeout_cm(timeout))
             self._check_open_raise("add_disk_blk")
             self._check_readwrite_raise("add_disk_blk")
             self._check_blk_open_raise(blk, "add_disk_blk")
@@ -2413,9 +2419,7 @@ class Register(ABC):
             if timeout is not None and timeout <= 0:
                 raise ValueError("`timeout` must be positive.")
 
-            if timeout is not None:
-                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
-
+            stack.enter_context(timeout_cm(timeout))
             file = Path.home() / 'parallelize.txt'
             self._check_open_raise("append_disk_blk")
             self._check_readwrite_raise("append_disk_blk")
@@ -2475,9 +2479,7 @@ class Register(ABC):
             if timeout is not None and timeout <= 0:
                 raise ValueError("`timeout` must be positive.")
 
-            if timeout is not None:
-                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
-
+            stack.enter_context(timeout_cm(timeout))
             self._check_open_raise("rmv_disk_blk")
             self._check_readwrite_raise("rmv_disk_blk")
             check_type(apri, "apri", ApriInfo)
@@ -2536,9 +2538,7 @@ class Register(ABC):
             if timeout is not None and timeout <= 0:
                 raise ValueError("`timeout` must be positive.")
 
-            if timeout is not None:
-                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
-
+            stack.enter_context(timeout_cm(timeout))
             self._check_open_raise("blk_metadata")
             check_type(apri, "apri", ApriInfo)
             startn = check_return_int_None_default(startn, "startn", None)
@@ -2584,9 +2584,7 @@ class Register(ABC):
             if timeout is not None and timeout <= 0:
                 raise ValueError("`timeout` must be positive.")
 
-            if timeout is not None:
-                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
-
+            stack.enter_context(timeout_cm(timeout))
             _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not recover successfully from a failed disk `Block` compress!"
             self._check_open_raise("compress")
             self._check_readwrite_raise("compress")
@@ -2641,9 +2639,7 @@ class Register(ABC):
             if timeout is not None and timeout <= 0:
                 raise ValueError("`timeout` must be positive.")
 
-            if timeout is not None:
-                stack.enter_context(stopit.ThreadingTimeout(timeout, False))
-
+            stack.enter_context(timeout_cm(timeout))
             _FAIL_NO_RECOVER_ERROR_MESSAGE = "Could not recover successfully from a failed disk `Block` decompress!"
             self._check_open_raise("decompress")
             self._check_readwrite_raise("decompress")
