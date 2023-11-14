@@ -56,7 +56,7 @@ if __name__ == '__main__':
                 else:
                     dts.append(dt)
 
-        t = min(dts)
+        t = max(dts)
 
     file = f / f'debug-{t.strftime(file_datetime_format)}'
 
