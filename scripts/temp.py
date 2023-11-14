@@ -8,6 +8,7 @@ from statistics import median, quantiles, stdev, mean
 
 file_datetime_format = '%m-%d-%Y-%H-%M-%S-%f'
 pid_file_datetime_format = '%H-%M-%S-%f'
+line_datetime_format = '%H:%M:%S.%f'
 
 def separate(line):
     return line[15], datetime.datetime.strptime(line[:15], pid_file_datetime_format), line[16:].strip()
