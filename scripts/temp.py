@@ -11,7 +11,7 @@ pid_file_datetime_format = '%H-%M-%S-%f'
 line_datetime_format = '%H:%M:%S.%f'
 
 def separate(line):
-    return line[15], datetime.datetime.strptime(line[:15], pid_file_datetime_format), line[16:].strip()
+    return line[15], datetime.datetime.strptime(line[:15], line_datetime_format), line[16:].strip()
 
 if __name__ == '__main__':
 
