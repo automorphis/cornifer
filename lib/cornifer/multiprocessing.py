@@ -14,6 +14,8 @@ from .errors import RegisterOpenError
 
 def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_reset_conditions, debug_dir):
 
+    from . import _utilities
+
     make_sigterm_raise_KeyboardInterrupt()
     _utilities.debug_dir = debug_dir
 
@@ -26,7 +28,6 @@ def parallelize(
     sec_per_block_upper_bound = 60, debug_dir = None
 ):
 
-    _utilities.debug_dir = debug_dir
     start = time.time()
     num_procs = check_return_int(num_procs, "num_procs")
 
