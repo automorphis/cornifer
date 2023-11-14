@@ -80,9 +80,9 @@ if __name__ == '__main__':
 
     for pid in pids:
 
-        with (f / f'debug{pid}.txt').open('r') as fh:
+        with (file / f'debug{pid}.txt').open('r') as fh:
 
-            print(f / f'debug{pid}.txt')
+            print(file / f'debug{pid}.txt')
             print(fh.readline())
 
     if d1 is None:
