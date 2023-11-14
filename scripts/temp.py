@@ -34,7 +34,7 @@ if __name__ == '__main__':
         f = Path(args.file)
 
     else:
-        f = Path.home() / 'debug'
+        f = Path.home() / 'debugs'
 
     if args.time is not None:
         t = datetime.datetime.strptime(args.time, file_datetime_format)
