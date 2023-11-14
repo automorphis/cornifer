@@ -359,7 +359,7 @@ def print_debug(message):
 
     with timeout_cm(2):
 
-        with (Path.home() / f'debug{os.getpid()}.txt').open('a') as fh:
+        with (debug_dir / f'debug{os.getpid()}.txt').open('a') as fh:
             fh.write(f'{datetime.now().strftime("%H:%M:%S.%f")} {message} ')
 
 # def get_leftmost_layer(s, begin = 0):
