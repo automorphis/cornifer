@@ -49,7 +49,7 @@ if __name__ == "__main__":
     update_timeout = int(sys.argv[7])
     timeout = int(sys.argv[8])
     max_readers = int(sys.argv[9])
-    debug_dir = int(sys.argv[10])
+    debug_dir = sys.argv[10]
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = NumpyRegister(test_home_dir, "sh", "msg", 2 ** 40, None, max_readers)
 
