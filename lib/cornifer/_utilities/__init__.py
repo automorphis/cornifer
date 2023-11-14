@@ -46,6 +46,8 @@ try:
 except RuntimeError:
     LOCAL_TIMEZONE = timezone.utc
 
+debug_dir = None
+
 def intervals_overlap(int1, int2):
     """Check if the half-open interval [int1[0], int1[0] + int1[1]) has a non-empty intersection with
     [int2[0], int2[0] + int2[1])"""
@@ -336,9 +338,6 @@ def is_deletable(path):
     except Exception as e:
         raise e
 
-def _raise_TimeoutError(*_):
-    raise TimeoutError
-
 @contextmanager
 def timeout_cm(timeout):
 
@@ -352,6 +351,16 @@ def timeout_cm(timeout):
 
     else:
         yield
+
+def print_debug(message):
+
+    if debug_dir is None:
+        raise ValueError
+
+    with timeout_cm(2):
+
+        with (Path.home() / f'debug{os.getpid()}.txt').open('a') as fh:
+            fh.write(f'{datetime.now().strftime("%H:%M:%S.%f")} {message} ')
 
 # def get_leftmost_layer(s, begin = 0):
 #

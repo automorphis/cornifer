@@ -559,7 +559,8 @@ class TestSlurm(unittest.TestCase):
 
                 for max_readers in (100, 200, 1000, 10000): # 200, 1000, 10000
 
-                    write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout} {max_readers}')
+                    debug_dir = f'debug {datetime.now().strftime("%H-%M-%S-%f")}'
+                    write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout} {max_readers} {debug_dir}')
                     print(f'Submitting test batch #5 (num_procs = {num_procs}, num_blks = {num_blks}, max_readers = {max_readers}) {datetime.now().strftime("%H:%M:%S.%f")}...')
                     self.submit_batch()
                     self.wait_till_running(allocation_max_sec, allocation_query_sec)

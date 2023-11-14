@@ -7,12 +7,12 @@ from pathlib import Path
 import numpy as np
 
 from cornifer import NumpyRegister, ApriInfo, AposInfo, Block
+from cornifer._utilities import print_debug
 from cornifer.multiprocessing import parallelize
 
 
 def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
 
-    file = Path.home() / 'parallelize.txt'
     newline = '\n'
 
     try:
@@ -29,17 +29,12 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
                     with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
                         reg.append_disk_blk(blk, timeout = 10)
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {i} {reg.summary().replace(newline, ' ')} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'{i} {reg.summary().replace(newline, " ")}')
 
     except BaseException as e:
 
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} test5 error {repr(e)} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+        print_debug(f'test5 error {repr(e)}')
         raise
-
-
 
 if __name__ == "__main__":
 
@@ -54,10 +49,11 @@ if __name__ == "__main__":
     update_timeout = int(sys.argv[7])
     timeout = int(sys.argv[8])
     max_readers = int(sys.argv[9])
+    debug_dir = int(sys.argv[10])
     tmp_filename = Path(os.environ['TMPDIR'])
     reg = NumpyRegister(test_home_dir, "sh", "msg", 2 ** 40, None, max_readers)
 
     with file.open('w') as fh:
         fh.write('')
 
-    parallelize(num_procs, f, (reg, num_apri, num_blks, blk_len), timeout - 5, tmp_filename, update_period, update_timeout, 10)
+    parallelize(num_procs, f, (reg, num_apri, num_blks, blk_len), timeout - 5, tmp_filename, update_period, update_timeout, 10, debug_dir)

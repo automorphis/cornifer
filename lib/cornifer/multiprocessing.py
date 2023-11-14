@@ -1,22 +1,21 @@
 import asyncio
 import inspect
 import multiprocessing
-import os
 import time
 import warnings
 from contextlib import ExitStack
-from datetime import datetime
-from pathlib import Path
 
+from . import _utilities
 from ._utilities.multiprocessing import make_sigterm_raise_KeyboardInterrupt, process_wrapper
 from ._utilities import check_return_int, check_type, check_Path_None_default, check_return_int_None_default, \
-    resolve_path
+    resolve_path, print_debug
 from .registers import Register
 from .errors import RegisterOpenError
 
-def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_reset_conditions):
+def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_reset_conditions, debug_dir):
 
     make_sigterm_raise_KeyboardInterrupt()
+    _utilities.debug_dir = debug_dir
 
     with process_wrapper(num_alive_procs, [], hard_reset_conditions):
         target(num_procs, proc_index, *args)
@@ -24,11 +23,11 @@ def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_rese
 
 def parallelize(
     num_procs, target, args = (), timeout = 600, tmp_dir = None, update_period = None, update_timeout = 60,
-    sec_per_block_upper_bound = 60
+    sec_per_block_upper_bound = 60, debug_dir = None
 ):
 
+    _utilities.debug_dir = debug_dir
     start = time.time()
-    file = Path.home() / "parallelize.txt"
     num_procs = check_return_int(num_procs, "num_procs")
 
     if not callable(target):
@@ -71,8 +70,7 @@ def parallelize(
 
     regs = tuple(arg for arg in args if isinstance(arg, Register))
 
-    with file.open('a') as fh:
-        fh.write(f"{os.getpid()} {regs} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+    print_debug(f'{regs}')
 
     for reg in regs:
 
@@ -103,14 +101,10 @@ def parallelize(
 
         if tmp_dir is not None:
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} creating update data {reg.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+            print_debug(f'creating update data {reg.shorthand()}')
             reg._create_update_perm_db_shared_data(mp_ctx, update_timeout)
 
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} creating hard reset data {reg.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+        print_debug(f'creating hard reset data {reg.shorthand()}')
         reg._create_hard_reset_shared_data(mp_ctx, num_alive_procs, 2 * sec_per_block_upper_bound)
 
     with ExitStack() as stack:
@@ -118,18 +112,17 @@ def parallelize(
         if tmp_dir is not None:
 
             for reg in regs:
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} entering tmp_db {reg.shorthand()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+
+                print_debug(f'entering tmp_db {reg.shorthand()}')
                 stack.enter_context(reg.tmp_db(tmp_dir, update_timeout))
 
         for proc_index in range(num_procs):
             procs.append(mp_ctx.Process(
                 target = _wrap_target,
-                args = (target, num_procs, proc_index, args, num_alive_procs, [reg._hard_reset_condition for reg in regs])
+                args = (target, num_procs, proc_index, args, num_alive_procs, [reg._hard_reset_condition for reg in regs], debug_dir)
             ))
 
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} starting procs {datetime.now().strftime('%H:%M:%S.%f')}\n")
+        print_debug(f'starting procs')
 
         for proc in procs:
             proc.start()
@@ -138,27 +131,16 @@ def parallelize(
 
         while True: # timeout loop
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} timeout loop {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            print_debug(f'timeout loop')
 
             if time.time() - start >= timeout:
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} terminating procs {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {regs[0]._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'terminating procs')
 
                 for p in procs:
                     p.terminate()
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} procs terminated {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {regs[0]._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-
+                print_debug(f'procs terminated')
                 break # timeout loop
 
             elif all(not proc.is_alive() for proc in procs):
@@ -166,9 +148,7 @@ def parallelize(
 
             elif update_period is not None and tmp_dir is not None and time.time() - last_update_end >= update_period:
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} update block in timeout loop {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                print_debug(f'update block in timeout loop')
                 asyncio.run(update_all_perm_dbs())
                 last_update_end = time.time()
 

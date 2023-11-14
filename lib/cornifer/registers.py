@@ -15,13 +15,11 @@
 import asyncio
 import itertools
 import json
-import os
 import pickle
 import shutil
 import warnings
 import zipfile
 from contextlib import contextmanager, ExitStack
-from datetime import datetime
 from pathlib import Path
 from abc import ABC, abstractmethod
 import time
@@ -39,7 +37,7 @@ from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
     write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int, hash_file, \
-    timeout_cm
+    timeout_cm, print_debug
 from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter, num_open_readers_accurate, \
     r_txn_prefix_iter, r_txn_count_keys, create_lmdb
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
@@ -572,33 +570,23 @@ class Register(ABC):
     @contextmanager
     def _manage_txn(self):
 
-        file = Path.home() / "parallelize.txt"
 
         if self._hard_reset_event is not None:
-
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} _manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db}, _hard_reset_event.is_set() = {self._hard_reset_event.is_set()} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            print_debug(f'_manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db}, _hard_reset_event.is_set() = {self._hard_reset_event.is_set()}')
 
         else:
-
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} _manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            print_debug(f'_manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db}')
 
         if self._do_hard_reset and not self._hard_reset_event.is_set(): # If not set, must do hard reset
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} doing hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            print_debug(f'doing hard reset')
 
             if self._opened: # a soft reset could fail on `open_lmdb`
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} closing handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                print_debug(f'closing handle')
                 self._db.close()
                 self._opened = False
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} handle closed {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'handle closed')
 
 
             with self._num_waiting_procs.get_lock():
@@ -613,23 +601,11 @@ class Register(ABC):
 
                 if not first:
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} not first {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} incremented {self._num_waiting_procs.value} {self._num_alive_procs.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} waiting 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
-                        self._hard_reset_event.wait(self._hard_reset_timeout)
-
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} waiting 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                    print_debug(f'not first {self._num_waiting_procs.value} {self._num_alive_procs.value}')
+                    self._hard_reset_event.wait(self._hard_reset_timeout)
+                    print_debug(f'done waiting')
                     self._db = open_lmdb(self._write_db_filepath, self._readonly)
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} handle opened {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    print_debug(f'handle opened')
                     self._opened = True
 
                 else:
@@ -641,100 +617,75 @@ class Register(ABC):
                             self._hard_reset_condition.wait(self._hard_reset_timeout)
 
                     (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} deleted lockfile  {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    print_debug(f'deleted lockfile')
                     self._db = open_lmdb(self._write_db_filepath, self._readonly)
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} opened handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    print_debug(f'opened handle')
                     self._opened = True
                     self._hard_reset_event.set() # notify waiting processes
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} set event  {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    print_debug(f'set event')
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} finished hard reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'finished hard reset')
 
             finally:
 
                 with self._num_waiting_procs.get_lock():
                     self._num_waiting_procs.value -= 1
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'decremented')
 
         if self._do_update_perm_db:
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} waiting on update_perm_db 1  {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+            print_debug(f'waiting on update_perm_db')
             self._update_perm_db_event.wait(self._update_perm_db_timeout)
-
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} waiting on update_perm_db 2  {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            print_debug(f'done waiting on update_perm_db')
 
             with self._num_active_txns.get_lock():
                 self._num_active_txns.value += 1
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} incremented  {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            print_debug(f'incremented')
 
         try:
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} _manage_txn yielding  {datetime.now().strftime('%H:%M:%S.%f')}\n")
 
+            print_debug(f'_manage_txn yielding')
             yield
 
         finally:
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} _manage_txn finally {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+            print_debug(f'_manage_txn finally')
 
             if self._do_update_perm_db:
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'self._num_active_txns = {self._num_active_txns.value}')
 
                 with self._num_active_txns.get_lock():
                     self._num_active_txns.value -= 1
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} _manage_txn decremented {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'_manage_txn decremented')
 
     @contextmanager
     def _txn(self, kind):
 
-        file = Path.home() / 'parallelize.txt'
-
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} _txn callee 1 kind = {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+        print_debug(f'_txn callee 1 kind = {kind}')
 
         if kind not in ("reader", "writer", "reversible"):
             raise ValueError
 
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} _txn callee 2 kind = {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+        print_debug(f'_txn callee 2 kind = {kind}')
 
         for i in range(3):
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} i = {i} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            print_debug(f'i = {i}')
 
             with ExitStack() as stack:
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} _manage_txn caller 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                print_debug(f'_manage_txn caller 1')
                 stack.enter_context(self._manage_txn())
                 stack.enter_context(timeout_cm(self._txn_timeout))
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} _manage_txn caller 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'_manage_txn caller 2')
 
                 try:
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} begin caller 1 {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    print_debug(f'begin caller 1')
 
                     if kind == "reader":
                         txn = stack.enter_context(self._db.begin())
@@ -745,45 +696,33 @@ class Register(ABC):
                     else:
                         txn = stack.enter_context(ReversibleWriter(self._db).begin())
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} begin caller 2 {kind} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    print_debug(f'begin caller 2')
 
 
                 except (lmdb.ReadersFullError, lmdb.InvalidParameterError, lmdb.BadRslotError) as e:
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} error 1 {str(e)} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    print_debug(f'error 1 {str(e)}')
 
                     if i == 2 or (i == 1 and not self._do_hard_reset):
 
-                        with file.open('a') as fh:
-                            fh.write(f"{os.getpid()} error 2 {str(e)} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        print_debug(f'error 2 {str(e)}')
 
                         raise
 
                 else:
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} _txn callee yielding {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                    print_debug(f'_txn callee yielding')
                     yield txn
-
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} _txn callee returning {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                    print_debug(f'_txn callee returning')
                     return
 
             if i == 0:
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} doing soft reset {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'doing soft reset')
 
                 # perform soft reset on first failure, closing database handle and reopening for this process only
                 self._db.close()
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} closed db handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                print_debug(f'closed db handle')
                 self._opened = False
 
                 try:
@@ -791,33 +730,28 @@ class Register(ABC):
 
                 except lmdb.ReadersFullError as e:
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} error 1, _do_hard_reset = {self._do_hard_reset}, {str(e)} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                    print_debug(f'error 1, _do_hard_reset = {self._do_hard_reset}, {str(e)}')
 
                     if self._do_hard_reset:
+
                         self._hard_reset_event.clear()
-                        with file.open('a') as fh:
-                            fh.write(f"{os.getpid()} error 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                        print_debug(f'error 2')
 
                     else:
                         raise
 
                 else:
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} opened db handle {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                    print_debug(f'opened db handle')
                     self._opened = True
 
             elif i == 1: # hence `self._do_hard_reset is True`
                 # perform hard reset, closing database handles for all processes, deleting the lockfile,
                 # and reopening database handles, which creates a new lockfile (this code is found in
                 # `Register._manage_txn`).
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} clearing _hard_reset_event 1 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'clearing _hard_reset_event 1')
                 self._hard_reset_event.clear()
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} clearing _hard_reset_event 2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'clearing _hard_reset_event 2')
 
     def _create_update_perm_db_shared_data(self, mp_ctx, timeout):
 
@@ -1029,7 +963,6 @@ class Register(ABC):
     @contextmanager
     def tmp_db(self, tmp_dir, timeout = None):
 
-        file = Path.home() / 'parallelize.txt'
         self._check_not_open_raise("tmp_db")
         new_write_db_filepath = random_unique_filename(tmp_dir)
         self._write_db_filepath = new_write_db_filepath
@@ -1068,28 +1001,21 @@ class Register(ABC):
     async def _update_perm_db(self, timeout):
 
         start = time.time()
-        file = Path.home() / 'parallelize.txt'
 
         if not self._do_update_perm_db:
             raise ValueError
 
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} _update_perm_db callee {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+        print_debug(f'_update_perm_db callee')
         self._update_perm_db_event.clear() # block future transactions
-
-        with file.open('a') as fh:
-            fh.write(f"{os.getpid()} blocked transactions {datetime.now().strftime('%H:%M:%S.%f')}\n")
+        print_debug(f'blocked transactions')
 
         while timeout is None or time.time() - start < timeout:
 
-            with file.open('a') as fh:
-                fh.write(f"{os.getpid()} _update_perm_db timeout loop {self._num_active_txns.value} {datetime.now().strftime('%H:%M:%S.%f')}\n")
+            print_debug(f'_update_perm_db timeout loop')
 
             if self._num_active_txns.value == 0:
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} doing copy {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'doing copy')
 
                 tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
 
@@ -1101,22 +1027,16 @@ class Register(ABC):
 
                 except (asyncio.exceptions.TimeoutError, TimeoutError) as e:
 
-                    with file.open('a') as fh:
-                        fh.write(f"{os.getpid()} error {str(e)} {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                    print_debug(f'error {str(e)}')
                     tmp_filename.unlink(missing_ok = True)
                     raise
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} renaming {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                print_debug(f'renaming')
                 tmp_filename.rename(self._perm_db_filepath / DATA_FILEPATH.name)
                 write_txt_file(self._digest(), self._digest_filepath, True)
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} setting event {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'setting event')
                 self._update_perm_db_event.set()
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} _update_perm_db callee returning {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'_update_perm_db callee returning')
                 return
 
             await asyncio.sleep(0.1)
@@ -2420,7 +2340,6 @@ class Register(ABC):
                 raise ValueError("`timeout` must be positive.")
 
             stack.enter_context(timeout_cm(timeout))
-            file = Path.home() / 'parallelize.txt'
             self._check_open_raise("append_disk_blk")
             self._check_readwrite_raise("append_disk_blk")
             self._check_blk_open_raise(blk, "append_disk_blk")
@@ -2443,13 +2362,9 @@ class Register(ABC):
                         blk.apri(), blk.startn(), len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
                     )
 
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} append_disk_blk calling disk2 {datetime.now().strftime('%H:%M:%S.%f')}\n")
-
+                print_debug(f'append_disk_blk calling disk2')
                 file_metadata = type(self)._add_disk_blk_disk2(blk.segment(), filename, ret_metadata, kwargs)
-
-                with file.open('a') as fh:
-                    fh.write(f"{os.getpid()} append_disk_blk calling disk2 returned {datetime.now().strftime('%H:%M:%S.%f')}\n")
+                print_debug(f'append_disk_blk calling disk2 returned')
 
                 if ret_metadata:
                     return startn, file_metadata
