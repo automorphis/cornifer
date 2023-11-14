@@ -98,7 +98,7 @@ if __name__ == '__main__':
                 for i, line in enumerate(fh.readlines()):
 
                     if memory > 0 and len(to_print) < memory:
-                        to_print.append(f'\t{i + 1 : 08d}, {line}')
+                        to_print.append(f'\t{i + 1 : 08d}, {line.strip()}')
 
                     elif memory > 0:
                         break
@@ -108,7 +108,7 @@ if __name__ == '__main__':
                         if len(to_print) == -memory:
                             del to_print[0]
 
-                        to_print.append(f'\t{i + 1 : 08d}, {line}')
+                        to_print.append(f'\t{i + 1 : 08d}, {line.strip()}')
 
             for line in to_print:
                 print(line)
