@@ -6,39 +6,11 @@ from collections import OrderedDict
 from pathlib import Path
 from statistics import median, quantiles, stdev, mean
 
-
-def get_pid(line):
-
-    pid_re = r'\d+'
-    match = re.match(pid_re, line)
-
-    if match is not None:
-        return match[0]
-
-    else:
-        return None
-
-def get_time(line):
-
-    time_re = r'\d{2}:\d{2}:\d{2}\.\d{6}'
-    match = re.search(time_re, line)
-
-    if match is not None:
-        return match[0], datetime.datetime.strptime(match[0], '%H:%M:%S.%f')
-
-    else:
-        return None, None
+file_datetime_format = '%m-%d-%Y-%H-%M-%S-%f'
+pid_file_datetime_format = '%H-%M-%S-%f'
 
 def separate(line):
-
-    pid = get_pid(line)
-    time_str, t = get_time(line)
-
-    if pid is not None and time_str is not None:
-        return pid, line[len(pid) : -len(time_str)].strip(), t
-
-    else:
-        return None, None, None
+    return line[15], datetime.datetime.strptime(line[:15], pid_file_datetime_format), line[16:].strip()
 
 if __name__ == '__main__':
 
@@ -47,17 +19,10 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--pids')
     parser.add_argument('-d1', '--diff1')
     parser.add_argument('-d2', '--diff2')
+    parser.add_argument('-f', '--file')
+    parser.add_argument('-t', '--time')
     args = parser.parse_args()
     memory = args.memory
-
-    if args.pids is not None:
-        pids = args.pids.split(',')
-
-    else:
-        pids = None
-
-    if (args.diff1 is None) != (args.diff2 is None):
-        raise ValueError
 
     if args.diff1 is not None:
         d1, d2 = args.diff1, args.diff2
@@ -65,85 +30,108 @@ if __name__ == '__main__':
     else:
         d1 = d2 = None
 
-    print(d1, d2, pids)
+    if args.file is not None:
+        f = Path(args.file)
 
-    file = Path.home() / 'parallelize.txt'
-    print(file)
+    else:
+        f = Path.home() / 'debug'
+
+    if args.time is not None:
+        t = datetime.datetime.strptime(args.time, file_datetime_format)
+
+    else:
+
+        dts = []
+
+        for file in f.iterdir():
+
+            if file.name[:6] == 'debug-':
+
+                try:
+                    dt = datetime.datetime.strptime(file.name[6:], file_datetime_format)
+
+                except ValueError:
+                    pass
+
+                else:
+                    dts.append(dt)
+
+        t = min(dts)
+
+    file = f / f'debug-{t.strftime(file_datetime_format)}'
+
+    if args.pids is not None:
+        pids = args.pids.split(',')
+
+    else:
+
+        pids = []
+
+        for pid_file in file.iterdir():
+
+            if re.match(r'^debug\d+\.txt$', pid_file.name) is not None:
+                pids.append(pid_file.name[5:-4])
+
+
+    if (args.diff1 is None) != (args.diff2 is None):
+        raise ValueError
+
+    print(f'm = {memory}, pids = {pids}, d1 = {d1}, d2 = {d2}, f = {f}, t = {t}, file = {file}')
 
     with file.open('r') as fh:
         print(f"first line of file: {fh.readline()}")
 
     if d1 is None:
 
-        print_lines = {}
+        for pid in pids:
 
-        with file.open('r') as fh:
+            print(pid)
+            pid_file = file / f'debug{pid}.txt'
+            to_print = []
 
-            for i, line in enumerate(fh.readlines()):
+            with pid_file.open('r') as fh:
 
-                line = line.strip()
-                pid = get_pid(line)
+                for i, line in enumerate(fh.readlines()):
 
-                if pid is not None:
+                    if memory > 0 and len(to_print) < memory:
+                        to_print.append(f'\t{i + 1 : 08d}, {line}')
 
-                    if pid in print_lines.keys():
+                    elif memory > 0:
+                        break
 
-                        lines = print_lines[pid]
+                    elif memory < 0:
 
-                        if memory > 0 and len(lines) < memory:
-                            lines.append((i, line))
+                        if len(to_print) == -memory:
+                            del to_print[0]
 
-                        elif memory < 0:
+                        to_print.append(f'\t{i + 1 : 08d}, {line}')
 
-                            if len(lines) == -memory:
-                                del lines[0]
-
-                            lines.append((i, line))
-
-                    else:
-                        print_lines[pid] = [(i, line)]
-
-        for pid in print_lines.keys():
-
-            if pids is None or pid in pids:
-
-                print(pid)
-
-                for val in print_lines[pid]:
-                    print(f"\t{val}")
+            for line in to_print:
+                print(line)
 
     else:
 
-        stats = {}
-        start_times = {}
+        for pid in pids:
 
-        with file.open('r') as fh:
+            print(pid)
+            pid_file = file / f'debug{pid}.txt'
+            to_print = []
+            stats = []
+            start_time = None
 
-            for i, line in enumerate(fh.readlines()):
+            with pid_file.open('r') as fh:
 
-                line = line.strip()
-                pid, middle, t = separate(line)
+                for i, line in enumerate(fh.readlines()):
 
-                if pid is not None:
+                    _, dt, msg = separate(line)
 
-                    if pid not in stats.keys():
+                    if msg == d1 and start_time is None:
+                        start_time = dt
 
-                        stats[pid] = []
-                        start_times[pid] = None
+                    elif msg == d2 and start_time is not None:
 
-                    start_time = start_times[pid]
+                        stats.append((t - start_time).total_seconds())
+                        start_time = None
 
-                    if middle == d1 and start_time is None:
-                        start_times[pid] = t
-
-                    elif middle == d2 and start_time is not None:
-
-                        stats[pid].append((t - start_time).total_seconds())
-                        start_times[pid] = None
-
-        for pid in stats.keys():
-
-            stats_ = stats[pid]
-
-            if (pids is None or pid in pids) and len(stats_) > 0:
-                print(pid, mean(stats_), len(stats_), sum(stats_), stdev(stats_), min(stats_), [str(t) for t in quantiles(stats[pid], n = 8)], max(stats_))
+            if len(stats) > 0:
+                print(pid, mean(stats), len(stats), sum(stats), stdev(stats), min(stats), [str(t) for t in quantiles(stats, n = 8)], max(stats))

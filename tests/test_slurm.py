@@ -559,7 +559,7 @@ class TestSlurm(unittest.TestCase):
 
                 for max_readers in (100, 200, 1000, 10000): # 200, 1000, 10000
 
-                    debug_dir = Path.home() / 'debugs' / f'debug-{datetime.now().strftime("%H-%M-%S-%f")}'
+                    debug_dir = Path.home() / 'debugs' / f'debug-{datetime.now().strftime("%m-%d-%Y-%H-%M-%S-%f")}'
                     _utilities.debug_dir = debug_dir
                     (Path.home() / debug_dir).mkdir(parents = True)
                     write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout} {max_readers} {debug_dir}')
