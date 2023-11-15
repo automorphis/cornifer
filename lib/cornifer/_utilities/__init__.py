@@ -19,15 +19,24 @@ import re
 import signal
 import string
 from collections import OrderedDict
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
 import stopit
 
+class BreakableExitStack(ExitStack):
 
-class FinalYield(Exception): pass
+    def __exit__(self, exc_type, exc_val, exc_tb):
+
+        if exc_type is None or issubclass(exc_type, BreakExitStack):
+            super().__exit__(None, None, None)
+
+        else:
+            super().__exit__(exc_type, exc_val, exc_tb)
+
+class BreakExitStack(Exception): pass
 
 BYTES_PER_KB = 1024
 BYTES_PER_MB = 1024**2

@@ -36,8 +36,8 @@ from .blocks import Block, MemmapBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
     check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
-    write_txt_file, read_txt_file, intervals_subset, FinalYield, combine_intervals, sort_intervals, is_int, hash_file, \
-    timeout_cm, print_debug
+    write_txt_file, read_txt_file, intervals_subset, combine_intervals, sort_intervals, is_int, hash_file, \
+    timeout_cm, print_debug, BreakableExitStack, BreakExitStack
 from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter, num_open_readers_accurate, \
     r_txn_prefix_iter, r_txn_count_keys, create_lmdb
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
@@ -270,10 +270,6 @@ class Register(ABC):
     #    of the root self, third RAM `Block`s of subreg A, fourth disk `Block`s of subreg A, fifth RAM `Block`s of
     #    subreg B, etc.
     #
-    #
-    # VIII. CONTEXTMANAGER PATTERNS
-    # 1. Some contextmanagers may need to be `__exit__`ed in an order that is not opposite to the order they were
-    #    `__enter__`ed. To accomplish this we use an `ExitStack`.
 
     #################################
     #     PUBLIC INITIALIZATION     #
@@ -3420,73 +3416,69 @@ class Register(ABC):
     @contextmanager
     def blk_by_n(self, apri, n, diskonly = False, recursively = False, ret_metadata = False, timeout = None, **kwargs):
 
-        with ExitStack() as post_yield: # see pattern VIII.1
+        with ExitStack() as post_yield:
 
-            try:
+            with BreakableExitStack() as prior_yield:
 
-                with ExitStack() as prior_yield:
+                prior_yield.enter_context(self._time("load_elapsed"))
+                self._check_open_raise("blk_by_n")
+                check_type(apri, "apri", ApriInfo)
+                n = check_return_int(n, "n")
+                check_type(diskonly, "diskonly", bool)
+                check_type(recursively, "recursively", bool)
+                check_type(ret_metadata, "ret_metadata", bool)
 
-                    prior_yield.enter_context(self._time("load_elapsed"))
-                    self._check_open_raise("blk_by_n")
-                    check_type(apri, "apri", ApriInfo)
-                    n = check_return_int(n, "n")
-                    check_type(diskonly, "diskonly", bool)
-                    check_type(recursively, "recursively", bool)
-                    check_type(ret_metadata, "ret_metadata", bool)
+                if n < 0:
+                    raise IndexError("`n` must be non-negative.")
 
-                    if n < 0:
-                        raise IndexError("`n` must be non-negative.")
-
-                    if not diskonly:
-
-                        try:
-                            yield_ = self._blk_by_n_ram(apri, n)
-
-                        except DataNotFoundError:
-                            pass
-
-                        else:
-
-                            if ret_metadata:
-                                yield_ = (yield_, None)
-
-                            raise FinalYield
-
-                    ro_txn = prior_yield.enter_context(self._txn("reader"))
+                if not diskonly:
 
                     try:
-                        blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
+                        yield_ = self._blk_by_n_ram(apri, n)
 
                     except DataNotFoundError:
                         pass
 
                     else:
 
-                        yield_ = type(self)._blk_disk(blk_filename, apri, startn, ret_metadata, kwargs)
-                        raise FinalYield
+                        if ret_metadata:
+                            yield_ = (yield_, None)
 
-                    if recursively:
+                        raise BreakExitStack
 
-                        try:
-                            yield_ = self._blk_by_n_recursive(apri, n, diskonly, ret_metadata, kwargs, ro_txn)
+                ro_txn = prior_yield.enter_context(self._txn("reader"))
 
-                        except DataNotFoundError:
-                            pass
+                try:
+                    blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
 
-                        else:
-                            raise FinalYield
-
-                    raise DataNotFoundError(self._blk_not_found_err_msg(
-                        not diskonly, True, recursively, apri, None, None, n
-                    ))
-
-            except FinalYield:
-
-                if ret_metadata:
-                    yield post_yield.enter_context(yield_[0]), yield_[1]
+                except DataNotFoundError:
+                    pass
 
                 else:
-                    yield post_yield.enter_context(yield_)
+
+                    yield_ = type(self)._blk_disk(blk_filename, apri, startn, ret_metadata, kwargs)
+                    raise BreakExitStack
+
+                if recursively:
+
+                    try:
+                        yield_ = self._blk_by_n_recursive(apri, n, diskonly, ret_metadata, kwargs, ro_txn)
+
+                    except DataNotFoundError:
+                        pass
+
+                    else:
+                        raise BreakExitStack
+
+                raise DataNotFoundError(self._blk_not_found_err_msg(
+                    not diskonly, True, recursively, apri, None, None, n
+                ))
+
+            if ret_metadata:
+                yield post_yield.enter_context(yield_[0]), yield_[1]
+
+            else:
+                yield post_yield.enter_context(yield_)
 
     @contextmanager
     def blk(
@@ -3494,73 +3486,70 @@ class Register(ABC):
         timeout = None, **kwargs
     ):
 
-        with ExitStack() as post_yield: # see pattern VIII.1
+        with ExitStack() as post_yield:
 
-            try:
+            with BreakableExitStack() as pre_yield:
 
-                with ExitStack() as pre_yield:
+                pre_yield.enter_context(self._time("load_elapsed"))
+                self._check_open_raise("blk")
+                check_type(apri, "apri", ApriInfo)
+                startn = check_return_int_None_default(startn, "startn", None)
+                length = check_return_int_None_default(length, "length", None)
+                check_type(diskonly, "diskonly", bool)
+                check_type(recursively, "recursively", bool)
+                check_type(ret_metadata, "ret_metadata", bool)
 
-                    pre_yield.enter_context(self._time("load_elapsed"))
-                    self._check_open_raise("blk")
-                    check_type(apri, "apri", ApriInfo)
-                    startn = check_return_int_None_default(startn, "startn", None)
-                    length = check_return_int_None_default(length, "length", None)
-                    check_type(diskonly, "diskonly", bool)
-                    check_type(recursively, "recursively", bool)
-                    check_type(ret_metadata, "ret_metadata", bool)
+                if startn is not None and startn < 0:
+                    raise ValueError("`startn` must be non-negative.")
 
-                    if startn is not None and startn < 0:
-                        raise ValueError("`startn` must be non-negative.")
+                if length is not None and length < 0:
+                    raise ValueError("`length` must be non-negative.")
 
-                    if length is not None and length < 0:
-                        raise ValueError("`length` must be non-negative.")
-
-                    if not diskonly:
-
-                        try:
-                            yield_ = self._blk_ram(apri, startn, length, ret_metadata)
-
-                        except DataNotFoundError:
-                            pass
-
-                        else:
-                            raise FinalYield
-
-                    ro_txn = pre_yield.enter_context(self._txn("reader"))
+                if not diskonly:
 
                     try:
-                        blk_filename, startn_ = self._blk_pre(apri, None, True, startn, length, ro_txn)
+                        yield_ = self._blk_ram(apri, startn, length, ret_metadata)
 
                     except DataNotFoundError:
                         pass
 
                     else:
+                        raise BreakExitStack
 
-                        yield_ = type(self)._blk_disk(blk_filename, apri, startn_, ret_metadata, kwargs)
-                        raise FinalYield
+                ro_txn = pre_yield.enter_context(self._txn("reader"))
 
-                    if recursively:
+                try:
+                    blk_filename, startn_ = self._blk_pre(apri, None, True, startn, length, ro_txn)
 
-                        try:
-                            yield_ = self._blk_recursive(apri, startn, length, diskonly, ret_metadata, kwargs, ro_txn)
-
-                        except DataNotFoundError:
-                            pass
-
-                        else:
-                            raise FinalYield
-
-                    raise DataNotFoundError(self._blk_not_found_err_msg(
-                        not diskonly, True, recursively, apri, startn, length, None
-                    ))
-
-            except FinalYield:
-
-                if ret_metadata:
-                    yield post_yield.enter_context(yield_[0]), yield_[1]
+                except DataNotFoundError:
+                    pass
 
                 else:
-                    yield post_yield.enter_context(yield_)
+
+                    yield_ = type(self)._blk_disk(blk_filename, apri, startn_, ret_metadata, kwargs)
+                    raise BreakExitStack
+
+                if recursively:
+
+                    try:
+                        yield_ = self._blk_recursive(apri, startn, length, diskonly, ret_metadata, kwargs, ro_txn)
+
+                    except DataNotFoundError:
+                        pass
+
+                    else:
+                        raise BreakExitStack
+
+                raise DataNotFoundError(self._blk_not_found_err_msg(
+                    not diskonly, True, recursively, apri, startn, length, None
+                ))
+
+
+            if ret_metadata:
+                yield post_yield.enter_context(yield_[0]), yield_[1]
+
+            else:
+                yield post_yield.enter_context(yield_)
 
     def blks(self, apri, diskonly = False, recursively = False, ret_metadata = False, timeout = None, **kwargs):
 
