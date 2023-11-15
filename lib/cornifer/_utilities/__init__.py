@@ -31,10 +31,12 @@ class BreakableExitStack(ExitStack):
     def __exit__(self, exc_type, exc_val, exc_tb):
 
         if exc_type is None or issubclass(exc_type, BreakExitStack):
+
             super().__exit__(None, None, None)
+            return True
 
         else:
-            super().__exit__(exc_type, exc_val, exc_tb)
+            return super().__exit__(exc_type, exc_val, exc_tb)
 
 class BreakExitStack(Exception): pass
 
