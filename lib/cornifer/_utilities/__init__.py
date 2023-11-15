@@ -367,10 +367,8 @@ def print_debug(message):
 
     if debug_dir is not None:
 
-        with timeout_cm(2):
-
-            with (debug_dir / f'debug{os.getpid()}.txt').open('a') as fh:
-                fh.write(f'{datetime.now().strftime("%H:%M:%S.%f")} {message}\n')
+        with (debug_dir / f'debug{os.getpid()}.txt').open('a') as fh:
+            fh.write(f'{datetime.now().strftime("%H:%M:%S.%f")} {message}\n')
 
 # def get_leftmost_layer(s, begin = 0):
 #

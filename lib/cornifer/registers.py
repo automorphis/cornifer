@@ -650,7 +650,7 @@ class Register(ABC):
                         else:
                             txn = stack.enter_context(ReversibleWriter(self._db).begin())
 
-                    except (lmdb.ReadersFullError, lmdb.InvalidParameterError, lmdb.BadRslotError) as e:
+                    except (lmdb.ReadersFullError, lmdb.InvalidParameterError, lmdb.BadRslotError):
 
                         if i == 2 or (i == 1 and not self._do_hard_reset):
                             raise
