@@ -566,24 +566,12 @@ class Register(ABC):
     @contextmanager
     def _manage_txn(self):
 
-
-        if self._hard_reset_event is not None:
-            print_debug(f'_manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db}, _hard_reset_event.is_set() = {self._hard_reset_event.is_set()}')
-
-        else:
-            print_debug(f'_manage_txn callee, _do_hard_reset = {self._do_hard_reset}, _do_update_perm_db = {self._do_update_perm_db}')
-
         if self._do_hard_reset and not self._hard_reset_event.is_set(): # If not set, must do hard reset
-
-            print_debug(f'doing hard reset')
 
             if self._opened: # a soft reset could fail on `open_lmdb`
 
-                print_debug(f'closing handle')
                 self._db.close()
                 self._opened = False
-                print_debug(f'handle closed')
-
 
             with self._num_waiting_procs.get_lock():
 
@@ -597,128 +585,84 @@ class Register(ABC):
 
                 if not first:
 
-                    print_debug(f'not first {self._num_waiting_procs.value} {self._num_alive_procs.value}')
                     self._hard_reset_event.wait(self._hard_reset_timeout)
-                    print_debug(f'done waiting')
                     self._db = open_lmdb(self._write_db_filepath, self._readonly)
-                    print_debug(f'handle opened')
                     self._opened = True
 
                 else:
                     # first process to arrive performs hard reset and notifies remaining processes to proceed
-
                     with self._hard_reset_condition:
 
                         while self._num_waiting_procs.value < self._num_alive_procs.value:
                             self._hard_reset_condition.wait(self._hard_reset_timeout)
 
                     (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-                    print_debug(f'deleted lockfile')
                     self._db = open_lmdb(self._write_db_filepath, self._readonly)
-                    print_debug(f'opened handle')
                     self._opened = True
                     self._hard_reset_event.set() # notify waiting processes
-                    print_debug(f'set event')
-
-                print_debug(f'finished hard reset')
 
             finally:
 
                 with self._num_waiting_procs.get_lock():
                     self._num_waiting_procs.value -= 1
 
-                print_debug(f'decremented')
-
         if self._do_update_perm_db:
 
-            print_debug(f'waiting on update_perm_db')
             self._update_perm_db_event.wait(self._update_perm_db_timeout)
-            print_debug(f'done waiting on update_perm_db')
 
             with self._num_active_txns.get_lock():
                 self._num_active_txns.value += 1
 
-            print_debug(f'incremented')
-
         try:
-
-            print_debug(f'_manage_txn yielding')
             yield
 
         finally:
 
-            print_debug(f'_manage_txn finally')
-
             if self._do_update_perm_db:
-
-                print_debug(f'self._num_active_txns = {self._num_active_txns.value}')
 
                 with self._num_active_txns.get_lock():
                     self._num_active_txns.value -= 1
 
-                print_debug(f'_manage_txn decremented')
-
     @contextmanager
     def _txn(self, kind):
-
-        print_debug(f'_txn callee 1 kind = {kind}')
 
         if kind not in ("reader", "writer", "reversible"):
             raise ValueError
 
-        print_debug(f'_txn callee 2 kind = {kind}')
-
         for i in range(3):
-
-            print_debug(f'i = {i}')
 
             with ExitStack() as stack:
 
-                print_debug(f'_manage_txn caller 1')
-                stack.enter_context(self._manage_txn())
-                stack.enter_context(timeout_cm(self._txn_timeout))
-                print_debug(f'_manage_txn caller 2')
+                txn = None
 
-                try:
+                with timeout_cm(self._txn_timeout):
 
-                    print_debug(f'begin caller 1')
+                    stack.enter_context(self._manage_txn())
 
-                    if kind == "reader":
-                        txn = stack.enter_context(self._db.begin())
+                    try:
 
-                    elif kind == "writer":
-                        txn = stack.enter_context(self._db.begin(write = True))
+                        if kind == "reader":
+                            txn = stack.enter_context(self._db.begin())
 
-                    else:
-                        txn = stack.enter_context(ReversibleWriter(self._db).begin())
+                        elif kind == "writer":
+                            txn = stack.enter_context(self._db.begin(write = True))
 
-                    print_debug(f'begin caller 2')
+                        else:
+                            txn = stack.enter_context(ReversibleWriter(self._db).begin())
 
+                    except (lmdb.ReadersFullError, lmdb.InvalidParameterError, lmdb.BadRslotError) as e:
 
-                except (lmdb.ReadersFullError, lmdb.InvalidParameterError, lmdb.BadRslotError) as e:
+                        if i == 2 or (i == 1 and not self._do_hard_reset):
+                            raise
 
-                    print_debug(f'error 1 {str(e)}')
+                if txn is not None:
 
-                    if i == 2 or (i == 1 and not self._do_hard_reset):
-
-                        print_debug(f'error 2 {str(e)}')
-
-                        raise
-
-                else:
-
-                    print_debug(f'_txn callee yielding')
                     yield txn
-                    print_debug(f'_txn callee returning')
                     return
 
             if i == 0:
-
-                print_debug(f'doing soft reset')
-
                 # perform soft reset on first failure, closing database handle and reopening for this process only
                 self._db.close()
-                print_debug(f'closed db handle')
                 self._opened = False
 
                 try:
@@ -726,28 +670,20 @@ class Register(ABC):
 
                 except lmdb.ReadersFullError as e:
 
-                    print_debug(f'error 1, _do_hard_reset = {self._do_hard_reset}, {str(e)}')
-
                     if self._do_hard_reset:
-
                         self._hard_reset_event.clear()
-                        print_debug(f'error 2')
 
                     else:
                         raise
 
                 else:
-
-                    print_debug(f'opened db handle')
                     self._opened = True
 
             elif i == 1: # hence `self._do_hard_reset is True`
                 # perform hard reset, closing database handles for all processes, deleting the lockfile,
                 # and reopening database handles, which creates a new lockfile (this code is found in
                 # `Register._manage_txn`).
-                print_debug(f'clearing _hard_reset_event 1')
                 self._hard_reset_event.clear()
-                print_debug(f'clearing _hard_reset_event 2')
 
     def _create_update_perm_db_shared_data(self, mp_ctx, timeout):
 
@@ -1001,17 +937,11 @@ class Register(ABC):
         if not self._do_update_perm_db:
             raise ValueError
 
-        print_debug(f'_update_perm_db callee')
         self._update_perm_db_event.clear() # block future transactions
-        print_debug(f'blocked transactions')
 
         while timeout is None or time.time() - start < timeout:
 
-            print_debug(f'_update_perm_db timeout loop')
-
             if self._num_active_txns.value == 0:
-
-                print_debug(f'doing copy')
 
                 tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
 
@@ -1023,16 +953,12 @@ class Register(ABC):
 
                 except (asyncio.exceptions.TimeoutError, TimeoutError) as e:
 
-                    print_debug(f'error {str(e)}')
                     tmp_filename.unlink(missing_ok = True)
                     raise
 
-                print_debug(f'renaming')
                 tmp_filename.rename(self._perm_db_filepath / DATA_FILEPATH.name)
                 write_txt_file(self._digest(), self._digest_filepath, True)
-                print_debug(f'setting event')
                 self._update_perm_db_event.set()
-                print_debug(f'_update_perm_db callee returning')
                 return
 
             await asyncio.sleep(0.1)
@@ -2353,14 +2279,13 @@ class Register(ABC):
             rrw_txn = None
 
             try:
+
                 with self._txn("reversible") as rrw_txn:
                     self._add_disk_blk_disk(
                         blk.apri(), blk.startn(), len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
                     )
 
-                print_debug(f'append_disk_blk calling disk2')
                 file_metadata = type(self)._add_disk_blk_disk2(blk.segment(), filename, ret_metadata, kwargs)
-                print_debug(f'append_disk_blk calling disk2 returned')
 
                 if ret_metadata:
                     return startn, file_metadata

@@ -1,12 +1,10 @@
 import multiprocessing
-import os
 import shutil
-from datetime import timedelta, datetime
+from datetime import timedelta
 import time
 from contextlib import contextmanager
-from pathlib import Path
 
-from .._utilities import timeout_cm, print_debug
+from .._utilities import print_debug
 
 
 def start_with_timeout(procs, timeout, query_wait = 1.0):
