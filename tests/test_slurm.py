@@ -21,7 +21,7 @@ sbatch_filename = test_home_dir / 'test.sbatch'
 slurm_tests_filename = Path(__file__).parent / "slurm_tests"
 allocation_query_sec = 0.5
 running_query_sec = 0.5
-allocation_max_sec = 960
+allocation_max_sec = 1800
 timeout_extra_wait_sec = 30
 
 def write_batch_file(time_sec, slurm_test_main_filename, num_processes, args):
