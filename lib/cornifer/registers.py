@@ -634,10 +634,9 @@ class Register(ABC):
             with ExitStack() as stack:
 
                 txn = None
+                stack.enter_context(self._manage_txn())
 
                 with timeout_cm(self._txn_timeout):
-
-                    stack.enter_context(self._manage_txn())
 
                     try:
 
