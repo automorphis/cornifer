@@ -13,10 +13,8 @@
     GNU General Public License for more details.
 """
 import hashlib
-import os
 import random
 import re
-import signal
 import string
 from collections import OrderedDict
 from contextlib import contextmanager, ExitStack
@@ -57,7 +55,6 @@ try:
 except RuntimeError:
     LOCAL_TIMEZONE = timezone.utc
 
-debug_dir = None
 
 def intervals_overlap(int1, int2):
     """Check if the half-open interval [int1[0], int1[0] + int1[1]) has a non-empty intersection with
@@ -292,18 +289,24 @@ def check_return_int_None_default(obj, name, default):
     else:
         return default
 
-def check_Path(obj, name):
+def check_return_Path(obj, name):
 
     if not isinstance(obj, (str, Path)):
         raise TypeError(f"`{name}` must be either of type `str` or `pathlib.Path`, not `{type(obj).__name__}`.")
 
-def check_Path_None_default(obj, name, default):
+    else:
+        return Path(obj)
+
+def check_return_Path_None_default(obj, name, default):
 
     if obj is None:
         return default
 
     elif not isinstance(obj, (str, Path)):
         raise TypeError(f"`{name}` must be either of type `str` or `pathlib.Path`, not `{type(obj).__name__}`.")
+
+    else:
+        return Path(obj)
 
 def resolve_path(path):
     """
@@ -362,13 +365,6 @@ def timeout_cm(timeout):
 
     else:
         yield
-
-def print_debug(message):
-
-    if debug_dir is not None:
-
-        with (debug_dir / f'debug{os.getpid()}.txt').open('a') as fh:
-            fh.write(f'{datetime.now().strftime("%H:%M:%S.%f")} {message}\n')
 
 # def get_leftmost_layer(s, begin = 0):
 #

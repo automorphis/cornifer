@@ -6,8 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
+import cornifer.debug
 from cornifer import NumpyRegister, ApriInfo, AposInfo, Block, _utilities
-from cornifer._utilities import print_debug
+from cornifer.debug import log
 from cornifer.multiprocessing import parallelize
 
 
@@ -29,11 +30,11 @@ def f(num_procs, proc_index, reg, num_apri, num_blks, blk_len):
                     with Block(np.arange(j * blk_len, (j + 1) * blk_len), apri) as blk:
                         reg.append_disk_blk(blk, timeout = 10)
 
-                print_debug(f'{i} {reg.summary().replace(newline, " ")}')
+                log(f'{i} {reg.summary().replace(newline, " ")}')
 
     except BaseException as e:
 
-        print_debug(f'test5 error {repr(e)}')
+        log(f'test5 error {repr(e)}')
         raise
 
 if __name__ == "__main__":
@@ -51,7 +52,7 @@ if __name__ == "__main__":
     max_readers = int(sys.argv[9])
     debug_dir = Path.home() / sys.argv[10]
     tmp_filename = Path(os.environ['TMPDIR'])
-    _utilities.debug_dir = debug_dir
+    cornifer.debug.debug_dir = debug_dir
     reg = NumpyRegister(test_home_dir, "sh", "msg", 2 ** 40, None, max_readers)
 
     with file.open('w') as fh:

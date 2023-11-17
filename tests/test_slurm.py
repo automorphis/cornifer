@@ -9,20 +9,16 @@ import time
 
 import lmdb
 import numpy as np
+from testslurm import TestSlurm
 
+import cornifer.debug
 from cornifer import NumpyRegister, ApriInfo, AposInfo, load_shorthand, Block, DataNotFoundError, _utilities
 from cornifer._utilities import random_unique_filename
 from cornifer._utilities.lmdb import open_lmdb, r_txn_prefix_iter
 
-test_home_dir = Path.home() / "cornifer_slurm_testcases"
-python_command = "sage -python"
-error_filename = test_home_dir / 'test_slurm_error.txt'
-sbatch_filename = test_home_dir / 'test.sbatch'
+error_file = 'error.txt'
+sbatch_file = 'test.sbatch'
 slurm_tests_filename = Path(__file__).parent / "slurm_tests"
-allocation_query_sec = 0.5
-running_query_sec = 0.5
-allocation_max_sec = 1800
-timeout_extra_wait_sec = 30
 
 def write_batch_file(time_sec, slurm_test_main_filename, num_processes, args):
 
@@ -44,142 +40,28 @@ f"""#!/usr/bin/env bash
 #SBATCH --mail-user=lane.662@osu.edu
 #SBATCH --mail-type=all
 
-class TestSlurm(unittest.TestCase):
-
-    def setUp(self):
-        self.job_id = None
-
-    def tearDown(self):
-
-        subprocess.run(["scancel", self.job_id])
-        time.sleep(2)
-
-    @classmethod
-    def setUpClass(cls):
-
-        if test_home_dir.exists():
-            shutil.rmtree(test_home_dir)
-
-        test_home_dir.mkdir(parents = True, exist_ok = False)
-
-    @classmethod
-    def tearDownClass(cls):
-
-        if test_home_dir.exists():
-            shutil.rmtree(test_home_dir)
-
-    def check_empty_error_file(self):
-
-        try:
-            self.assertTrue(error_filename.exists())
-
-        except AssertionError:
-
-            print(error_filename)
-
-            for d in error_filename.parent.iterdir():
-                print(d)
-
-            raise
-
-        with error_filename.open("r") as fh:
-
-            contents = ""
-
-            for line in fh:
-                contents += line
-
-        if len(contents) > 0:
-            self.fail(f"Must be empty error file! Contents: {contents}")
-
-    def check_timeout_error_file(self):
-
-        error_filename.exists()
-
-        with error_filename.open("r") as fh:
-
-            contents = ""
-
-            for line in fh:
-                contents += line
-
-        if re.match(r"^slurmstepd: error: \*\*\* JOB.*ON.*CANCELLED AT.*DUE TO TIME LIMIT \*\*\*$", contents) is None:
-            self.fail(f"Invalid error file. Contents: {contents}")
-
-    def wait_till_running(self, max_sec, query_sec):
-
-        querying = True
-        start = time.time()
-
-        while querying:
-
-            if time.time() - start >= max_sec + timeout_extra_wait_sec:
-                raise Exception("Ran out of time!")
-
-            time.sleep(query_sec)
-            squeue_process = subprocess.run(
-                ["squeue", "-h", "-j", self.job_id, "-o", "%.2t"], capture_output = True, text = True
-            )
-            querying = "PD" in squeue_process.stdout
-
-        squeue_process = subprocess.run(
-            ["squeue", "-j", self.job_id], capture_output = True, text = True
-        )
-        print(squeue_process.stdout)
-
-    def wait_till_not_running(self, max_sec, query_sec):
-
-        querying = True
-        start = time.time()
-
-        while querying:
-
-            if time.time() - start >= max_sec:
-
-                with error_filename.open("r") as fh:
-
-                    contents = ""
-
-                    for line in fh:
-                        contents += line
-
-                raise Exception(f"Ran out of time! Error file contents: {contents}")
-
-            time.sleep(query_sec)
-            squeue_process = subprocess.run(
-                ["squeue", "-h", "-j", self.job_id, "-o", "%.2t"], capture_output = True, text = True
-            )
-            querying = squeue_process.stdout.strip() != ""
-
-        time.sleep(query_sec)
-
-    def submit_batch(self):
-
-        sbatch_process = subprocess.run(
-            ["sbatch", str(sbatch_filename)], capture_output = True, text = True
-        )
-        self.job_id = sbatch_process.stdout[20:-1]
-        print(sbatch_process.stdout.replace('\n', ''))
-        print(sbatch_process.stderr.replace('\n', ''))
+class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_testcases'):
 
     def test_slurm_1(self):
 
+        test_dir = type(self).test_dir
         slurm_test_main_filename = slurm_tests_filename / 'test1.py'
         num_entries = 10000
         running_max_sec = 100
         slurm_time = running_max_sec + 1
         num_processes = 10
         db_filename = "lmdb"
-        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{db_filename} {num_entries}")
-        print("Submitting test batch #1...")
+        self.write_batch(
+            test_dir / sbatch_file,
+            f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {db_filename} {num_entries}',
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+        )
         self.submit_batch()
-        self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print(f"Running test #1 (running_max_sec = {running_max_sec})...")
-        self.wait_till_not_running(running_max_sec, running_query_sec)
-        print("Checking test #1...")
-        self.check_empty_error_file()
-        self.assertTrue((test_home_dir / db_filename).exists())
-        db = lmdb.open(str(test_home_dir / db_filename))
+        self.wait_till_not_state(TestSlurm.PENDING, verbose = True)
+        self.wait_till_not_state(TestSlurm.RUNNING, max_sec = running_max_sec, verbose = True)
+        self.check_error_file()
+        self.assertTrue((test_dir / db_filename).exists())
+        db = lmdb.open(str(test_dir / db_filename))
 
         try:
 
@@ -204,10 +86,11 @@ class TestSlurm(unittest.TestCase):
         finally:
 
             db.close()
-            shutil.rmtree(test_home_dir / db_filename)
+            shutil.rmtree(test_dir / db_filename)
 
     def test_slurm_2(self):
 
+        test_dir = type(self).test_dir
         slurm_test_main_filename = slurm_tests_filename / 'test2.py'
         running_max_sec = 100
         slurm_time = running_max_sec + 1
@@ -216,22 +99,22 @@ class TestSlurm(unittest.TestCase):
 
         for num_entries in [1, 5, 10, 50, 100, 500, 1000]:
 
-            write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{db_filename} {num_entries}")
-            print(f"Submitting test batch #2 (num_entries = {num_entries})...")
+            self.write_batch(
+                test_dir / sbatch_file,
+                f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {db_filename} {num_entries}',
+                'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+            )
             self.submit_batch()
-            self.wait_till_running(allocation_max_sec, allocation_query_sec)
-            print(f"Running test #2 (running_max_sec = {running_max_sec}) (num_entries = {num_entries})...")
-            self.wait_till_not_running(running_max_sec, running_query_sec)
-            print(f"Checking test #2 (num_entries = {num_entries})...")
-            self.check_empty_error_file()
-            self.assertTrue(test_home_dir.exists())
+            self.wait_till_not_state(TestSlurm.PENDING, verbose = True)
+            self.wait_till_not_state(TestSlurm.RUNNING, max_sec = running_max_sec, verbose = True)
+            self.check_error_file()
             start = time.time()
             max_num_queries = 100
 
             for _ in range(max_num_queries):
 
                 try:
-                    self.assertTrue((test_home_dir / db_filename).exists())
+                    self.assertTrue((test_dir / db_filename).exists())
 
                 except AssertionError:
                     time.sleep(0.5)
@@ -243,7 +126,7 @@ class TestSlurm(unittest.TestCase):
                 raise AssertionError
 
             print(time.time() - start)
-            db = lmdb.open(str(test_home_dir / db_filename))
+            db = lmdb.open(str(test_dir / db_filename))
 
             try:
 
@@ -271,10 +154,11 @@ class TestSlurm(unittest.TestCase):
             finally:
 
                 db.close()
-                shutil.rmtree(test_home_dir / db_filename)
+                shutil.rmtree(test_dir / db_filename)
 
     def test_slurm_3(self):
 
+        test_dir = type(self).test_dir
         slurm_test_main_filename = slurm_tests_filename / 'test3a.py'
         running_max_sec = 40
         blk_size = 100
@@ -282,16 +166,17 @@ class TestSlurm(unittest.TestCase):
         apri = ApriInfo(hi = "hello")
         num_processes = 10
         total_indices = 10050
-        reg = NumpyRegister(test_home_dir, "reg", "hi")
-        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{blk_size} {total_indices} {slurm_time - 10}")
-        print("Submitting test batch #3a...")
+        reg = NumpyRegister(test_dir, "reg", "hi")
+        self.write_batch(
+            test_dir / sbatch_file,
+            f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {blk_size} {total_indices} {slurm_time - 10}',
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+        )
         self.submit_batch()
-        self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print(f"Running test #3a (running_max_sec = {running_max_sec})...")
-        self.wait_till_not_running(running_max_sec, running_query_sec)
-        print("Checking test #3a...")
-        self.check_empty_error_file()
-        reg = load_shorthand("reg", test_home_dir, True)
+        self.wait_till_not_state(TestSlurm.PENDING, verbose = True)
+        self.wait_till_not_state(TestSlurm.RUNNING, max_sec = running_max_sec, verbose = True)
+        self.check_error_file()
+        reg = load_shorthand("reg", test_dir, True)
 
         with reg.open(readonly = True):
 
@@ -317,15 +202,16 @@ class TestSlurm(unittest.TestCase):
         slurm_time = running_max_sec + 1
         num_processes = 2
         num_apri = 100
-        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{num_apri} {slurm_time - 10}")
-        print("Submitting test batch #3b...")
+        self.write_batch(
+            test_dir / sbatch_file,
+            f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {num_apri} {slurm_time - 10}',
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+        )
         self.submit_batch()
-        self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print(f"Running test #3b (running_max_sec = {running_max_sec})...")
-        self.wait_till_not_running(running_max_sec, running_query_sec)
-        print("Checking test #3b...")
-        self.check_empty_error_file()
-        reg = load_shorthand("reg", test_home_dir, True)
+        self.wait_till_not_state(TestSlurm.PENDING, verbose = True)
+        self.wait_till_not_state(TestSlurm.RUNNING, max_sec = running_max_sec, verbose = True)
+        self.check_error_file()
+        reg = load_shorthand("reg", test_dir, True)
 
         with reg.open(readonly = True):
 
@@ -367,17 +253,20 @@ class TestSlurm(unittest.TestCase):
         running_max_sec = 15
         slurm_time = running_max_sec + 1
         num_processes = 7
-        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{num_apri} {slurm_time - 10}")
-        print("Submitting test batch #3c...")
+
+        self.write_batch(
+            test_dir / sbatch_file,
+            f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {num_apri} {slurm_time - 10}',
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+        )
         self.submit_batch()
-        self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print(f"Running test #3c (running_max_sec = {running_max_sec})...")
-        time.sleep(slurm_time + timeout_extra_wait_sec + 10)
-        print("Checking test #3c...")
-        self.check_empty_error_file()
+        self.wait_till_not_state(TestSlurm.PENDING, verbose = True)
+        self.wait_till_not_state(TestSlurm.RUNNING, max_sec = running_max_sec, verbose = True)
+        self.check_error_file()
+        time.sleep(slurm_time + 30)
         stall_indices = [None] * num_processes
         stall_indices[1] = 2 * num_processes + 1
-        reg = load_shorthand("reg", test_home_dir, True)
+        reg = load_shorthand("reg", test_dir, True)
 
         with reg.open(readonly = True):
 
@@ -443,15 +332,16 @@ class TestSlurm(unittest.TestCase):
         running_max_sec = 15
         slurm_time = running_max_sec + 1
         num_processes = 7
-        write_batch_file(slurm_time, slurm_test_main_filename, num_processes, f"{num_apri} {slurm_time - 10}")
-        print("Submitting test batch #3d...")
+        self.write_batch(
+            test_dir / sbatch_file,
+            f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {num_apri} {slurm_time - 10}',
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+        )
         self.submit_batch()
-        self.wait_till_running(allocation_max_sec, allocation_query_sec)
-        print(f"Running test #3d (running_max_sec = {running_max_sec})...")
-        time.sleep(slurm_time + timeout_extra_wait_sec)
-        print("Checking test #3d...")
-        self.check_empty_error_file()
-        reg = load_shorthand("reg", test_home_dir, True)
+        self.wait_till_not_state(TestSlurm.PENDING, verbose = True)
+        self.wait_till_not_state(TestSlurm.RUNNING, max_sec = running_max_sec, verbose = True)
+        self.check_error_file()
+        reg = load_shorthand("reg", test_dir, True)
 
         with reg.open(readonly = True):
 
@@ -498,6 +388,7 @@ class TestSlurm(unittest.TestCase):
 
     def test_slurm_4(self):
 
+        test_dir = type(self).test_dir
         slurm_test_main_filename = slurm_tests_filename / 'test4.py'
         num_apri = 100
         num_blks = 100
@@ -509,20 +400,16 @@ class TestSlurm(unittest.TestCase):
             with (Path.home() / "parallelize.txt").open("w") as fh:
                 fh.write("")
 
-            write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len}')
-            print(f'Submitting test batch #4 (num_procs = {num_procs}) {datetime.now().strftime("%H:%M:%S.%f")}...')
-            self.submit_batch()
-            self.wait_till_running(allocation_max_sec, allocation_query_sec)
-            print(f'Running test #4 {datetime.now().strftime("%H:%M:%S.%f")}...')
-            self.wait_till_not_running(timeout, running_query_sec)
-            print(f'Checking test #4 {datetime.now().strftime("%H:%M:%S.%f")}...')
-            self.check_empty_error_file()
-            reg = load_shorthand('sh', test_home_dir, True)
-            print(f'Register loaded. {datetime.now().strftime("%H:%M:%S.%f")}')
-            self.assertEqual(
-                reg._write_db_filepath,
-                reg._perm_db_filepath
+            self.write_batch(
+                test_dir / sbatch_file,
+                f'sage -python {slurm_test_main_filename} {num_procs} {test_dir} {num_apri} {num_blks} {blk_len}',
+                'CorniferSlurmTests', 1, num_procs, timeout, test_dir / error_file, None, True
             )
+            self.submit_batch()
+            self.wait_till_not_state(TestSlurm.PENDING, verbose = True)
+            self.wait_till_not_state(TestSlurm.RUNNING, max_sec = timeout, verbose=True)
+            self.check_error_file()
+            reg = load_shorthand('sh', test_dir, True)
 
             with reg.open(readonly = True) as reg:
 
@@ -546,8 +433,8 @@ class TestSlurm(unittest.TestCase):
 
     def test_parallelize(self):
 
+        test_dir = type(self).test_dir
         slurm_test_main_filename = slurm_tests_filename / 'test5.py'
-        file = Path.home() / 'parallelize.txt'
         num_apri = 100
         update_period = 10
         update_timeout = 10
@@ -559,19 +446,19 @@ class TestSlurm(unittest.TestCase):
 
                 for max_readers in (100, 200, 1000, 10000): # 200, 1000, 10000
 
-                    debug_dir = Path.home() / 'debugs' / f'debug-{datetime.now().strftime("%m-%d-%Y-%H-%M-%S-%f")}'
-                    _utilities.debug_dir = debug_dir
-                    (Path.home() / debug_dir).mkdir(parents = True)
-                    write_batch_file(timeout, slurm_test_main_filename, num_procs, f'{num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout} {max_readers} {debug_dir}')
-                    print(f'Submitting test batch #5 (num_procs = {num_procs}, num_blks = {num_blks}, max_readers = {max_readers}) {datetime.now().strftime("%H:%M:%S.%f")}...')
+                    self.write_batch(
+                        test_dir / sbatch_file,
+                        f'sage -python {slurm_test_main_filename} {num_procs} {test_dir} {num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout} {max_readers}',
+                        'CorniferSlurmTests', 1, num_procs, timeout, test_dir / error_file, None, True
+                    )
                     self.submit_batch()
-                    self.wait_till_running(allocation_max_sec, allocation_query_sec)
-                    print(f'Running test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
+                    self.wait_till_not_state(TestSlurm.PENDING, verbose = True)
 
                     try:
-                        self.wait_till_not_running(timeout, running_query_sec)
+                        self.wait_till_not_state(TestSlurm.RUNNING, max_sec = timeout, verbose = True)
 
                     finally:
+
                         captured = subprocess.run([
                             'sage', '-python', '-u', 'scripts/temp.py', '-d1', 'begin caller 1 reader',
                             '-d2', 'begin caller 2 reader'
@@ -585,15 +472,8 @@ class TestSlurm(unittest.TestCase):
                         print(captured.stdout)
                         print(captured.stderr)
 
-
-                    print(f'Checking test #5 {datetime.now().strftime("%H:%M:%S.%f")}...')
-                    self.check_empty_error_file()
-                    reg = load_shorthand('sh', test_home_dir, True)
-                    print(f'Register loaded {datetime.now().strftime("%H:%M:%S.%f")}... ')
-                    self.assertEqual(
-                        reg._write_db_filepath,
-                        reg._perm_db_filepath
-                    )
+                    self.check_error_file()
+                    reg = load_shorthand('sh', test_dir, True)
 
                     with reg.open(readonly = True) as reg:
 

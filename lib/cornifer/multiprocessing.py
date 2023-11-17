@@ -5,10 +5,12 @@ import time
 import warnings
 from contextlib import ExitStack
 
+import cornifer.debug
 from . import _utilities
 from ._utilities.multiprocessing import make_sigterm_raise_KeyboardInterrupt, process_wrapper
-from ._utilities import check_return_int, check_type, check_Path_None_default, check_return_int_None_default, \
-    resolve_path, print_debug
+from ._utilities import check_return_int, check_type, check_return_Path_None_default, check_return_int_None_default, \
+    resolve_path
+from .debug import log
 from .registers import Register
 from .errors import RegisterOpenError
 
@@ -17,7 +19,7 @@ def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_rese
     from . import _utilities
 
     make_sigterm_raise_KeyboardInterrupt()
-    _utilities.debug_dir = debug_dir
+    cornifer.debug.debug_dir = debug_dir
 
     with process_wrapper(num_alive_procs, [], hard_reset_conditions):
         target(num_procs, proc_index, *args)
@@ -36,7 +38,7 @@ def parallelize(
 
     check_type(args, "args", tuple)
     timeout = check_return_int(timeout, "timeout")
-    check_Path_None_default(tmp_dir, "tmp_dir", None)
+    check_return_Path_None_default(tmp_dir, "tmp_dir", None)
     update_period = check_return_int_None_default(update_period, "update_period", None)
     update_timeout = check_return_int(update_timeout, "update_timeout")
 
@@ -71,7 +73,7 @@ def parallelize(
 
     regs = tuple(arg for arg in args if isinstance(arg, Register))
 
-    print_debug(f'{regs}')
+    log(f'{regs}')
 
     for reg in regs:
 
@@ -102,10 +104,10 @@ def parallelize(
 
         if tmp_dir is not None:
 
-            print_debug(f'creating update data {reg.shorthand()}')
+            log(f'creating update data {reg.shorthand()}')
             reg._create_update_perm_db_shared_data(mp_ctx, update_timeout)
 
-        print_debug(f'creating hard reset data {reg.shorthand()}')
+        log(f'creating hard reset data {reg.shorthand()}')
         reg._create_hard_reset_shared_data(mp_ctx, num_alive_procs, 2 * sec_per_block_upper_bound)
 
     with ExitStack() as stack:
@@ -114,7 +116,7 @@ def parallelize(
 
             for reg in regs:
 
-                print_debug(f'entering tmp_db {reg.shorthand()}')
+                log(f'entering tmp_db {reg.shorthand()}')
                 stack.enter_context(reg.tmp_db(tmp_dir, update_timeout))
 
         for proc_index in range(num_procs):
@@ -123,7 +125,7 @@ def parallelize(
                 args = (target, num_procs, proc_index, args, num_alive_procs, [reg._hard_reset_condition for reg in regs], debug_dir)
             ))
 
-        print_debug(f'starting procs')
+        log(f'starting procs')
 
         for proc in procs:
             proc.start()
@@ -132,16 +134,16 @@ def parallelize(
 
         while True: # timeout loop
 
-            print_debug(f'timeout loop')
+            log(f'timeout loop')
 
             if time.time() - start >= timeout:
 
-                print_debug(f'terminating procs')
+                log(f'terminating procs')
 
                 for p in procs:
                     p.terminate()
 
-                print_debug(f'procs terminated')
+                log(f'procs terminated')
                 break # timeout loop
 
             elif all(not proc.is_alive() for proc in procs):
@@ -149,7 +151,7 @@ def parallelize(
 
             elif update_period is not None and tmp_dir is not None and time.time() - last_update_end >= update_period:
 
-                print_debug(f'update block in timeout loop')
+                log(f'update block in timeout loop')
                 asyncio.run(update_all_perm_dbs())
                 last_update_end = time.time()
 

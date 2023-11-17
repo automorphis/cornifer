@@ -35,9 +35,10 @@ from .info import ApriInfo, AposInfo, _InfoJsonEncoder
 from .blocks import Block, MemmapBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_deletable, check_type, \
-    check_return_int_None_default, check_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
+    check_return_int_None_default, check_return_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
     write_txt_file, read_txt_file, intervals_subset, combine_intervals, sort_intervals, is_int, hash_file, \
-    timeout_cm, print_debug, BreakableExitStack, BreakExitStack
+    timeout_cm, BreakableExitStack, BreakExitStack
+from .debug import log
 from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter, num_open_readers_accurate, \
     r_txn_prefix_iter, r_txn_count_keys, create_lmdb
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
@@ -361,7 +362,7 @@ class Register(ABC):
 
     def _set_attributes(self, dir, shorthand, msg, initial_reg_size):
 
-        check_Path(dir, "dir")
+        check_return_Path(dir, "dir")
         check_type(shorthand, "shorthand", str)
         check_type(msg, "msg", str)
         initial_reg_size = check_return_int_None_default(
