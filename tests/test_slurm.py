@@ -407,7 +407,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
             )
             self.submit_batch()
             self.wait_till_not_state(TestSlurm.PENDING, verbose = True)
-            self.wait_till_not_state(TestSlurm.RUNNING, max_sec = timeout, verbose=True)
+            self.wait_till_not_state(TestSlurm.RUNNING, max_sec = timeout, verbose = True)
             self.check_error_file()
             reg = load_shorthand('sh', test_dir, True)
 
