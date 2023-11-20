@@ -13,7 +13,7 @@ __all__ = [
     'log'
 ]
 _log_file = None
-_file_datetime_format = '%H-%M-%S-%f'
+_file_datetime_format = '%Y-%m-%d-%H-%M-%S-%f'
 _line_datetime_format = '%H:%M:%S.%f'
 _line_datetime_len = 2 + 1 + 2 + 1 + 2 + 1 + 6
 
