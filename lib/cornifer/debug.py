@@ -12,7 +12,6 @@ __all__ = [
     'set_dir',
     'log'
 ]
-
 _log_file = None
 _file_datetime_format = '%H-%M-%S-%f'
 _line_datetime_format = '%H:%M:%S.%f'
