@@ -5,8 +5,6 @@ import time
 import warnings
 from contextlib import ExitStack
 
-import cornifer.debug
-from . import _utilities
 from ._utilities.multiprocessing import make_sigterm_raise_KeyboardInterrupt, process_wrapper
 from ._utilities import check_return_int, check_type, check_return_Path_None_default, check_return_int_None_default, \
     resolve_path
@@ -14,12 +12,9 @@ from .debug import log
 from .registers import Register
 from .errors import RegisterOpenError
 
-def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_reset_conditions, debug_dir):
-
-    from . import _utilities
+def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_reset_conditions):
 
     make_sigterm_raise_KeyboardInterrupt()
-    cornifer.debug.debug_dir = debug_dir
 
     with process_wrapper(num_alive_procs, [], hard_reset_conditions):
         target(num_procs, proc_index, *args)
@@ -27,7 +22,7 @@ def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_rese
 
 def parallelize(
     num_procs, target, args = (), timeout = 600, tmp_dir = None, update_period = None, update_timeout = 60,
-    sec_per_block_upper_bound = 60, debug_dir = None
+    sec_per_block_upper_bound = 60
 ):
 
     start = time.time()
@@ -122,7 +117,7 @@ def parallelize(
         for proc_index in range(num_procs):
             procs.append(mp_ctx.Process(
                 target = _wrap_target,
-                args = (target, num_procs, proc_index, args, num_alive_procs, [reg._hard_reset_condition for reg in regs], debug_dir)
+                args = (target, num_procs, proc_index, args, num_alive_procs, [reg._hard_reset_condition for reg in regs])
             ))
 
         log(f'starting procs')
