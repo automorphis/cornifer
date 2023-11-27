@@ -53,6 +53,14 @@ class _Info(ABC):
         self._str = None
         self._memoize_json = False
 
+    def __getstate__(self):
+        return {'json' : self.to_json()}
+
+    def __setstate__(self, state):
+
+        apri = type(self).from_json(state['json'])
+        self.__dict__ = apri.__dict__
+
     @classmethod
     def _default_str_hook(cls, str_):
 
@@ -139,7 +147,6 @@ class _Info(ABC):
                     old_info_decoded_json = stack[old_index][3]
                     old_info_decoded_json[old_key] = current_cls(**current_info_decoded_json)
                     del stack[-1]
-
 
     def to_json(self, encoder = None):
 

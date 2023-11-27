@@ -13,9 +13,11 @@
     GNU General Public License for more details.
 """
 import hashlib
+import inspect
 import random
 import re
 import string
+import time
 from collections import OrderedDict
 from contextlib import contextmanager, ExitStack
 from datetime import datetime, timedelta, timezone
@@ -308,6 +310,15 @@ def check_return_Path_None_default(obj, name, default):
     else:
         return Path(obj)
 
+def has_variable_num_args(target):
+    return any(
+        param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        for param in inspect.signature(target).parameters.values()
+    )
+
+def num_params(target):
+    return inspect.signature(target).parameters
+
 def resolve_path(path):
     """
     :param path: (type `pathlib.Path`)
@@ -352,19 +363,52 @@ def is_deletable(path):
     except Exception as e:
         raise e
 
+class Stopwatch:
+
+    def __init__(self):
+
+        self.elapsed = 0
+        self._start = None
+
+    def start(self):
+        self._start = time.time()
+
+    def stop(self):
+
+        if self._start is None:
+            raise ValueError
+
+        else:
+            self.elapsed += time.time() - self._start
+
+    def __enter__(self):
+        self.start()
+
+    def __exit__(self, *_):
+        self.stop()
+
 @contextmanager
-def timeout_cm(timeout):
+def timeout_cm(timeout, stopwatch = None):
 
     if timeout is not None:
 
-        with stopit.ThreadingTimeout(timeout, True) as cm:
-            yield
+        if stopwatch is None:
+            stopwatch = Stopwatch()
 
-        if cm.state == cm.TIMED_OUT:
+        if stopwatch.elapsed >= timeout:
             raise TimeoutError
 
+        with stopwatch:
+
+            with stopit.ThreadingTimeout(timeout - stopwatch.elapsed, True) as cm:
+                yield cm, stopwatch
+
+            if cm.state == cm.TIMED_OUT:
+                raise TimeoutError
+
     else:
-        yield
+        yield None, None
+
 
 # def get_leftmost_layer(s, begin = 0):
 #

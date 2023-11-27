@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest import TestCase
 
 from cornifer._utilities import random_unique_filename
-from cornifer.regfilestructure import check_reg_structure, REG_FILENAME, VERSION_FILEPATH, \
+from cornifer._regfilestructure import check_reg_structure, REG_FILENAME, VERSION_FILEPATH, \
     MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH, MAP_SIZE_FILEPATH, WRITE_DB_FILEPATH
 
 SAVES_DIR = random_unique_filename(Path.home())

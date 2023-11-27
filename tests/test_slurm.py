@@ -22,10 +22,10 @@ slurm_tests_filename = Path(__file__).parent / "slurm_tests"
 
 class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_testcases'):
 
-    def test_slurm_1(self):
+    def test_txn_put_get_single_write(self):
 
         test_dir = type(self).test_dir
-        slurm_test_main_filename = slurm_tests_filename / 'test1.py'
+        slurm_test_main_filename = slurm_tests_filename / 'txn_put_get_single_write.py'
         num_entries = 10000
         running_max_sec = 100
         slurm_time = running_max_sec + 1
@@ -68,10 +68,10 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
             db.close()
             shutil.rmtree(test_dir / db_filename)
 
-    def test_slurm_2(self):
+    def test_txn_put_get_multiple_writes(self):
 
         test_dir = type(self).test_dir
-        slurm_test_main_filename = slurm_tests_filename / 'test2.py'
+        slurm_test_main_filename = slurm_tests_filename / 'txn_put_get_multiple_write.py'
         running_max_sec = 100
         slurm_time = running_max_sec + 1
         num_processes = 7
@@ -88,28 +88,9 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
             self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
             self.wait_till_not_state(SlurmStates.RUNNING, max_sec = running_max_sec, verbose = True)
             self.check_error_file()
-            start = time.time()
-            max_num_queries = 100
-
-            for _ in range(max_num_queries):
-
-                try:
-                    self.assertTrue((test_dir / db_filename).exists())
-
-                except AssertionError:
-                    time.sleep(0.5)
-
-                else:
-                    break
-
-            else:
-                raise AssertionError
-
-            print(time.time() - start)
             db = lmdb.open(str(test_dir / db_filename))
 
             try:
-
 
                 for i in range(num_entries):
 

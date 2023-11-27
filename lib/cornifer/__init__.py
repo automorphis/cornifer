@@ -14,8 +14,6 @@
 """
 
 from contextlib import contextmanager, ExitStack, AbstractContextManager
-import argparse
-from pathlib import Path
 
 from ._utilities import check_type, check_return_int, check_type_None_default, check_return_Path_None_default, \
     check_return_int_None_default, resolve_path, is_deletable

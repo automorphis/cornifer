@@ -14,15 +14,16 @@ from cornifer.info import ApriInfo, AposInfo
 from cornifer._utilities import random_unique_filename, intervals_overlap
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
     DecompressionError, RegisterRecoveryError, DataExistsError, RegisterNotOpenError, CannotLoadError
-from cornifer.regfilestructure import REG_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
+from cornifer._regfilestructure import REG_FILENAME, VERSION_FILEPATH, MSG_FILEPATH, CLS_FILEPATH, \
     DATABASE_FILEPATH, MAP_SIZE_FILEPATH, WRITE_DB_FILEPATH
-from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, \
-    _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
-    _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG, \
-    _START_N_TAIL_LENGTH_DEFAULT, _LENGTH_LENGTH_KEY, _LENGTH_LENGTH_DEFAULT, _CURR_ID_KEY, \
-    _INITIAL_REGISTER_SIZE_DEFAULT
-from cornifer._utilities.lmdb import db_has_key, db_prefix_iter, db_count_keys, open_lmdb, \
+from cornifer.registers import _NO_DEBUG
+from cornifer._regstatics import _KEY_SEP, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
+    _BLK_KEY_PREFIX, _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _CURR_ID_KEY, _APOS_KEY_PREFIX, _COMPRESSED_KEY_PREFIX, \
+    _LENGTH_LENGTH_KEY, _BLK_KEY_PREFIX_LEN, _IS_NOT_COMPRESSED_VAL, _SUB_VAL, _START_N_TAIL_LENGTH_DEFAULT, \
+    _LENGTH_LENGTH_DEFAULT, _INITIAL_REGISTER_SIZE_DEFAULT
+from cornifer._utilities.lmdb import open_lmdb, \
     num_open_readers_accurate, r_txn_count_keys, r_txn_has_key
+from cornifer._transactions import db_has_key, db_prefix_iter, db_count_keys
 from cornifer.version import CURRENT_VERSION
 
 """
@@ -4581,14 +4582,14 @@ class Test_Register(TestCase):
 
     def test_composite(self):
 
-        # add data to disk
+        # add data to disk1
         # compress it
         # remove some data
         # decompress it
-        # get disk data
+        # get disk1 data
         # set msg
         # remove some data
-        # combine disk blocks
+        # combine disk1 blocks
         # compress it
         # set_startn_info
         # increase register size
@@ -4596,7 +4597,7 @@ class Test_Register(TestCase):
         # change info info
         # compress one at a time
         # decompress half
-        # combine disk blocks
+        # combine disk1 blocks
         # increase register size
         # change info info back
 

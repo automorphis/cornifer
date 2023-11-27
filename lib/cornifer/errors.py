@@ -46,3 +46,5 @@ class DataNotFoundError(DataError):pass
 class DataExistsError(DataError):pass
 
 class CannotLoadError(RuntimeError):pass
+
+class ReturnNotReadyError(RuntimeError):pass

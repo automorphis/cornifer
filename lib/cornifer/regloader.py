@@ -20,7 +20,7 @@ from pathlib import Path
 
 from .errors import RegisterError, DataExistsError, DataNotFoundError, CannotLoadError
 from .registers import Register
-from .regfilestructure import LOCAL_DIR_CHARS, check_reg_structure, DIGEST_FILEPATH
+from ._regfilestructure import LOCAL_DIR_CHARS, check_reg_structure, DIGEST_FILEPATH
 from ._utilities import resolve_path, read_txt_file
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 

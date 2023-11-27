@@ -12,82 +12,11 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
-import os
-from contextlib import contextmanager
-from datetime import datetime
 from pathlib import Path
 
 import lmdb
 
 from .._utilities import check_type, check_return_int
-
-
-class ReversibleWriter:
-
-    def __init__(self, db):
-
-
-        self.db = db
-        self.txn = None
-        self.committed = False
-        self.undo = {}
-
-    @contextmanager
-    def begin(self):
-
-        with self.db.begin(write = True) as rw_txn:
-
-            self.txn = rw_txn
-            yield self
-
-        self.committed = True
-
-    def begin_no_cm(self):
-
-        self.txn = self.db.begin(write = True)
-        return self
-
-    def commit(self):
-
-        self.txn.commit()
-        self.committed = True
-
-    def abort(self):
-
-        self.txn.abort()
-        self.committed = False
-
-    def cursor(self):
-        return self.txn.cursor()
-
-    def reverse(self, txn):
-
-        if self.committed:
-
-            for key, val in self.undo.items():
-
-                if val is None:
-                    txn.delete(key)
-
-                else:
-                    txn.put(key, val)
-
-    def put(self, key, val):
-
-        if key not in self.undo.keys():
-            self.undo[key] = self.txn.get(key, default = None)
-
-        self.txn.put(key, val)
-
-    def get(self, key, default = None):
-        return self.txn.get(key, default = default)
-
-    def delete(self, key):
-
-        if key not in self.undo.keys():
-            self.undo[key] = self.txn.get(key, default = None)
-
-        self.txn.delete(key)
 
 def create_lmdb(filepath, mapsize, max_readers):
 
@@ -112,59 +41,6 @@ def open_lmdb(filepath, readonly):
         raise ValueError("`filepath` must be absolute.")
 
     return lmdb.open(str(filepath), readonly = readonly)
-
-def db_has_key(key, db):
-    """DEPRECATED, use `r_txn_has_key` instead."""
-    with db.begin() as r_txn:
-        return r_txn_has_key(key, r_txn)
-
-def r_txn_has_key(key, r_txn):
-    return r_txn.get(key, default = None) is not None
-
-def db_prefix_list(prefix, db):
-    """DEPRECATED, use `r_txn_prefix_list` instead."""
-    with db.begin() as r_txn:
-        return r_txn_prefix_list(prefix, r_txn)
-
-def r_txn_prefix_list(prefix, r_txn):
-
-    with r_txn_prefix_iter(r_txn, prefix) as it:
-        return list(it)
-
-@contextmanager
-def db_prefix_iter(prefix, db):
-    """DEPRECATED, use `r_txn_prefix_iter` instead."""
-    with db.begin() as r_txn:
-
-        with r_txn_prefix_iter(prefix, r_txn) as it:
-            yield it
-
-@contextmanager
-def r_txn_prefix_iter(prefix, r_txn):
-
-    it = _LmdbPrefixIter(prefix, r_txn)
-
-    try:
-        yield it
-
-    finally:
-        it.cursor.close()
-
-def db_count_keys(prefix, db):
-    """DEPRECATED, use `r_txn_count_keys` instead."""
-    with db.begin() as r_txn:
-        return r_txn_count_keys(prefix, r_txn)
-
-def r_txn_count_keys(prefix, r_txn):
-
-    count = 0
-
-    with r_txn_prefix_iter(prefix, r_txn) as it:
-
-        for _ in it:
-            count += 1
-
-    return count
 
 def num_open_readers_accurate(db):
 
@@ -201,31 +77,3 @@ def debug_lmdb_is_open(db):
 
     else:
         return True
-
-
-class _LmdbPrefixIter:
-
-    def __init__(self, prefix, txn):
-
-        self.prefix = prefix
-        self.prefix_len = len(prefix)
-        self.cursor = txn.cursor()
-        self.raise_stop_iteration = not self.cursor.set_range(prefix)
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-
-        if self.raise_stop_iteration:
-            raise StopIteration
-
-        key, val = self.cursor.item()
-
-        if key[ : self.prefix_len] != self.prefix:
-            raise StopIteration
-
-        else:
-            self.raise_stop_iteration = not self.cursor.next()
-
-        return key, val
