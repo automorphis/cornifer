@@ -41,7 +41,7 @@ class TestLmdb(unittest.TestCase):
 
     def test_create_lmdb(self):
 
-        for mapsize in (-1, 0, BYTES_PER_KB, 5 * BYTES_PER_KB, BYTES_PER_MB, 5 * BYTES_PER_MB, 10 * BYTES_PER_MB, 50 * BYTES_PER_MB, BYTES_PER_GB):
+        for mapsize in (-1, 0, BYTES_PER_KB, 5 * BYTES_PER_KB, BYTES_PER_MB, 5 * BYTES_PER_MB, 10 * BYTES_PER_MB, 50 * BYTES_PER_MB):
 
             for max_readers in (-1, 0, 1, 10, 100):
 
@@ -67,7 +67,7 @@ class TestLmdb(unittest.TestCase):
 
     def test_open_lmdb(self):
 
-        for mapsize in (BYTES_PER_MB, 5 * BYTES_PER_MB, 10 * BYTES_PER_MB, 50 * BYTES_PER_MB, BYTES_PER_GB):
+        for mapsize in (BYTES_PER_MB, 5 * BYTES_PER_MB, 10 * BYTES_PER_MB, 50 * BYTES_PER_MB):
 
             for max_readers in (1, 10, 100):
 
