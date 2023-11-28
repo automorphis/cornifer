@@ -75,5 +75,5 @@ class TestLmdb(unittest.TestCase):
                 dir_.mkdir()
                 db = create_lmdb(dir_, mapsize, max_readers)
                 db.close()
-                db = open_lmdb(dir_, False)
+                db = open_lmdb(dir_, mapsize, False)
                 self.stress(db, mapsize)

@@ -587,7 +587,7 @@ class Register(ABC):
                 if not first:
 
                     self._hard_reset_event.wait(self._hard_reset_timeout)
-                    self._db = open_lmdb(self._write_db_filepath, self._readonly)
+                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
                     self._opened = True
 
                 else:
@@ -598,7 +598,7 @@ class Register(ABC):
                             self._hard_reset_condition.wait(self._hard_reset_timeout)
 
                     (self._write_db_filepath / LOCK_FILEPATH.name).unlink()
-                    self._db = open_lmdb(self._write_db_filepath, self._readonly)
+                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
                     self._opened = True
                     self._hard_reset_event.set() # notify waiting processes
 
@@ -666,7 +666,7 @@ class Register(ABC):
                 self._opened = False
 
                 try:
-                    self._db = open_lmdb(self._write_db_filepath, self._readonly)
+                    self._db = open_lmdb(self._write_db_filepath, self._db_map_size, self._readonly)
 
                 except lmdb.ReadersFullError as e:
 
@@ -1053,7 +1053,7 @@ class Register(ABC):
             raise RegisterAlreadyOpenError(self)
 
         ret._readonly = readonly
-        ret._db = open_lmdb(ret._write_db_filepath, readonly)
+        ret._db = open_lmdb(ret._write_db_filepath, ret._db_map_size, readonly)
 
         with ret._txn("reader") as ro_txn:
             ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))

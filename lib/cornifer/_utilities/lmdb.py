@@ -109,7 +109,7 @@ def create_lmdb(filepath, mapsize, max_readers):
         max_readers = max_readers
     )
 
-def open_lmdb(filepath, readonly):
+def open_lmdb(filepath, mapsize, readonly):
 
     check_type(filepath, "filepath", Path)
     check_type(readonly, "readonly", bool)
@@ -117,7 +117,11 @@ def open_lmdb(filepath, readonly):
     if not filepath.is_absolute():
         raise ValueError("`filepath` must be absolute.")
 
-    return lmdb.open(str(filepath), readonly = readonly)
+    return lmdb.open(
+        str(filepath),
+        map_size = mapsize,
+        readonly = readonly
+    )
 
 def db_has_key(key, db):
     """DEPRECATED, use `r_txn_has_key` instead."""
