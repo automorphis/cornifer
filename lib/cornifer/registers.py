@@ -984,18 +984,6 @@ class Register(ABC):
             f"{(self._perm_db_filepath / DATA_FILEPATH.name).stat().st_size}"
         )
 
-    def _approx_memory(self):
-        # use only for debugging
-        stat = self._db.stat()
-        current_size = stat['psize'] * (stat['leaf_pages'] + stat['branch_pages'] + stat['overflow_pages'] )
-
-        with self._txn("reader") as ro_txn:
-
-            with r_txn_prefix_iter(b"", ro_txn) as it:
-                entry_size_bytes = sum(len(key) + len(value) for key, value in it) * 1
-
-        return current_size + entry_size_bytes
-
     def _set_startn_info_pre(self, head, tail_len, r_txn):
 
         new_mod = 10 ** tail_len

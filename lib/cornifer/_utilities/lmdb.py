@@ -95,6 +95,12 @@ def create_lmdb(filepath, mapsize, max_readers):
     mapsize = check_return_int(mapsize, 'mapsize')
     max_readers = check_return_int(max_readers, 'max_readers')
 
+    if mapsize <= 0:
+        raise ValueError
+
+    if max_readers <= 0:
+        raise ValueError
+
     return lmdb.open(
         str(filepath),
         map_size = mapsize,
@@ -202,6 +208,17 @@ def debug_lmdb_is_open(db):
     else:
         return True
 
+def approx_memory(db):
+    # use only for debugging
+    stat = db.stat()
+    current_size = stat['psize'] * (stat['leaf_pages'] + stat['branch_pages'] + stat['overflow_pages'] )
+
+    with db.begin() as ro_txn:
+
+        with r_txn_prefix_iter(b"", ro_txn) as it:
+            entry_size_bytes = sum(len(key) + len(value) for key, value in it) * 1
+
+    return current_size + entry_size_bytes
 
 class _LmdbPrefixIter:
 
