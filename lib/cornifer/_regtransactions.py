@@ -2,13 +2,15 @@ import functools
 import warnings
 from abc import ABC, abstractmethod
 from contextlib import ExitStack
+from pathlib import Path
 
-import lmdb
-
-from ._utilities import check_type, random_unique_filename, intervals_overlap, timeout_cm
+from .info import ApriInfo
+from .blocks import Block
+from ._utilities import check_type, random_unique_filename, intervals_overlap, timeout_cm, check_return_int, \
+    check_return_Path, check_return_int_None_default, check_return_Path_None_default, check_type_None_default
 from ._transactions import Writer, ReversibleWriter, StagingReader
-from cornifer._regstatics import get_apri_id_key
-from .errors import DataExistsError, RegisterRecoveryError, RegisterError, DataNotFoundError, ReturnNotReadyError
+from ._regstatics import get_apri_id_key, _IS_NOT_COMPRESSED_VAL
+from .errors import DataExistsError, RegisterRecoveryError, DataNotFoundError, ReturnNotReadyError
 from .filemetadata import FileMetadata
 
 _debug = 0
@@ -37,7 +39,7 @@ class Return:
 
 class _BaseRegisterMethod(ABC):
 
-    method_name = arg_names = num_required_args = default_args = recurable = generator = None
+    method_name = arg_names = arg_types = num_required_args = default_args = recurable = generator = None
 
     def __init__(self, reg, args, kwargs):
 
@@ -81,6 +83,7 @@ class _BaseRegisterMethod(ABC):
 
         cls.method_name = kwargs.pop('method_name')
         cls.arg_names = kwargs.pop('arg_names')
+        cls.arg_types = kwargs.pop('arg_types')
         cls.num_required_args = kwargs.pop('num_required_args')
         cls.default_args = kwargs.pop('default_args')
         cls.recurable = kwargs.pop('recurable')
@@ -105,7 +108,52 @@ class _BaseRegisterMethod(ABC):
 
     @abstractmethod
     def type_value(self):
+
         self._reg._check_open_raise(type(self).method_name)
+        cls = type(self)
+
+        for i, (name, type_, default) in enumerate(zip(cls.arg_names, cls.arg_types, cls.default_args)):
+
+            arg = getattr(self, name)
+
+            if i < cls.num_required_args:
+
+                if issubclass(type_, int):
+                    setattr(self, name, check_return_int(arg, name))
+
+                elif issubclass(type_, Path):
+                    setattr(self, name, check_return_Path(arg, name))
+
+                elif type_ is not None:
+                    check_type(arg, name, type_)
+
+            else:
+
+                default = cls.default_args[i - cls.num_required_args]
+
+                if issubclass(type_, int):
+
+                    if default is None:
+                        setattr(self, name, check_return_int_None_default(arg, name, default))
+
+                    else:
+                        setattr(self, name, check_return_int(arg, name))
+
+                elif issubclass(type_, Path):
+
+                    if default is None:
+                        setattr(self, name, check_return_Path_None_default(arg, name, default))
+
+                    else:
+                        setattr(self, name, check_return_Path(arg, name))
+
+                elif type_ is not None:
+
+                    if default is None:
+                        check_type_None_default(arg, name, type_, default)
+
+                    else:
+                        check_type(arg, name, type_)
 
     @abstractmethod
     def ram(self):
@@ -133,7 +181,7 @@ class _BaseRegisterMethod(ABC):
             method = type(self)(subreg, self._args, self._kwargs)
             method.recursively = False
             sro_txn = ro_txn.cast(StagingReader)
-            yield from method(None, sro_txn, None, None)
+            yield from method(sro_txn, None, None)
 
     def recursive_non_gen_shortcircuit(self, ret):
         return True
@@ -143,7 +191,7 @@ class _BaseRegisterMethod(ABC):
 
     def recursive_non_gen(self, r_txn):
 
-        if not type(self).recurable:
+        if type(self).recurable:
             raise TypeError
 
         ret = None
@@ -155,7 +203,7 @@ class _BaseRegisterMethod(ABC):
             sro_txn = ro_txn.cast(StagingReader)
 
             try:
-                new_ret = method(None, sro_txn, None, None)
+                new_ret = method(sro_txn, None, None)
 
             except DataNotFoundError:
                 pass
@@ -278,6 +326,7 @@ class AddDiskBlk(
     RegisterWriteMethod,
     method_name = 'add_disk_blk',
     arg_names = ('blk', 'exists_ok', 'dups_ok', 'ret_metadata', 'timeout'),
+    arg_types = (Block, bool, bool, bool, int),
     num_required_args = 1,
     default_args = (False, True, False, None)
 ):
@@ -290,10 +339,6 @@ class AddDiskBlk(
     def type_value(self):
 
         super().type_value()
-        self._reg._check_blk_open_raise(self.blk, type(self).method_name)
-        check_type(self.exists_ok, 'exists_ok', bool)
-        check_type(self.dups_ok, 'dups_ok', bool)
-        check_type(self.ret_metadata, 'ret_metadata', bool)
 
         if len(self.blk) > self._reg._max_length:
             raise ValueError
@@ -415,15 +460,7 @@ class AddDiskBlk(
             return eee
 
         else:
-
-            if isinstance(e, lmdb.MapFullError):
-
-                ee = RegisterError(_MEMORY_FULL_ERROR_MESSAGE.format(self._reg._db_map_size))
-                ee.__cause__ = e
-                return ee
-
-            else:
-                return e
+            return e
 
     def ret(self):
         pass
@@ -432,6 +469,7 @@ class AppendDiskBlk(
     AddDiskBlk,
     method_name = 'append_disk_blk',
     arg_names = ('blk', 'ret_metadata', 'timeout'),
+    arg_types = (Block, bool, int),
     num_required_args = 1,
     default_args = (False, None)
 ):
@@ -480,6 +518,7 @@ class RmvDiskBlk(
     RegisterWriteMethod,
     method_name = 'rmv_disk_blk',
     arg_names = ('apri', 'startn', 'length', 'missing_ok', 'timeout'),
+    arg_types = (ApriInfo, int, int, bool, int),
     num_required_args = 1,
     default_args = (None, None, False, None)
 ):

@@ -1519,9 +1519,6 @@ class Register(ABC):
         rw_txn.put(apri_id_key, id_)
         rw_txn.put(id_apri_key, apri_json)
 
-        if 8 + 6 + len(apri_id_key) > 4096:
-            warnings.warn(f"Long `ApriInfo` result in disk1 memory inefficiency. Long `ApriInfo`: {apri}.")
-
     def _rmv_apri_ram(self, apri, force):
 
         if self.___contains___ram(apri):
@@ -1833,9 +1830,6 @@ class Register(ABC):
                 raise RegisterError from e  # see pattern VI.4
 
         rw_txn.put(apos_key, apos_json)
-
-        if 6 + 8 + _APOS_KEY_PREFIX_LEN +  len(apos_json) > 4096:
-            warnings.warn(f"Long `AposInfo` result in disk1 memory inefficiency. Long `AposInfo`: {str(apos)}.")
 
     def _rmv_apos_pre(self, apri, apri_json, reencode, missing_ok, r_txn):
 
@@ -2522,7 +2516,7 @@ class Register(ABC):
             blk_key = compressed_key = None
 
         if length == 0:
-            warnings.warn(f"Added a length 0 disk1 `Block` to {self}.\n{apri}, startn = {startn}")
+            warnings.warn(f"Added a length 0 disk `Block` to {self}.\n{apri}, startn = {startn}")
 
         return blk_key, compressed_key, filename, add_apri
 

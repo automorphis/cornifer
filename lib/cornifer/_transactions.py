@@ -1,5 +1,5 @@
+import warnings
 from contextlib import contextmanager
-
 
 class _BaseTransaction:
 
@@ -27,6 +27,10 @@ class _BaseTransaction:
         self._committed = True
 
     def put(self, key, val):
+
+        if 8 + 6 + len(key) > 4096:
+            warnings.warn(f"Long database key results in disk memory ineffiency:\n{key}")
+
         self._rw_txn.put(key, val)
 
     def get(self, key, default = None):
@@ -81,7 +85,6 @@ class _BaseTransaction:
         self.__init__(self._db)
         return self
 
-
 class Reader(_BaseTransaction, write = False):
 
     def put(self, key, val):
@@ -90,10 +93,8 @@ class Reader(_BaseTransaction, write = False):
     def delete(self, key):
         raise NotImplementedError
 
-
 class Writer(_BaseTransaction, write = True):
     pass
-
 
 class ReversibleWriter(Writer):
 
@@ -127,7 +128,6 @@ class ReversibleWriter(Writer):
             self.undo[key] = self._rw_txn.get(key, default = None)
 
         super().delete(key)
-
 
 class StagingReader(Reader):
 
@@ -209,25 +209,21 @@ class StagingReader(Reader):
         else:
             yield from super().prefix_iter(prefix)
 
-
 def db_has_key(key, db):
     """DEPRECATED, use `_BaseTransaction.has_key` instead."""
     with db.begin() as r_txn:
         return r_txn.has_key(key)
-
 
 def db_prefix_list(prefix, db):
     """DEPRECATED, use list(_BaseTransaction.prefix_iter) instead."""
     with db.begin() as ro_txn:
         return list(ro_txn.prefix_iter(prefix))
 
-
 @contextmanager
 def db_prefix_iter(prefix, db):
     """DEPRECATED, use `_BaseTransaction.prefix_iter` instead."""
     with Reader(db).begin() as ro_txn:
         yield from ro_txn.prefix_iter(prefix)
-
 
 def db_count_keys(prefix, db):
     """DEPRECATED, use `_BaseTransaction.count_keys` instead."""
