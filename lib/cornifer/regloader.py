@@ -21,7 +21,7 @@ from pathlib import Path
 from .errors import RegisterError, DataExistsError, DataNotFoundError, CannotLoadError
 from .registers import Register
 from .regfilestructure import LOCAL_DIR_CHARS, check_reg_structure, DIGEST_FILEPATH
-from ._utilities import resolve_path, read_txt_file
+from ._utilities import resolve_path, read_txt_file, check_return_Path_None_default
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _ARGS_TYPES = {
@@ -91,16 +91,10 @@ def set_search_args(**kwargs):
 
 def load_shorthand(shorthand, saves_dir = None, wait_for_latency = False, timeout = 60):
 
-    if saves_dir is None:
-        saves_dir = Path.cwd()
+    saves_dir = check_return_Path_None_default(saves_dir, 'saves_dir', Path.cwd())
 
-    else:
-
-        if not isinstance(saves_dir, (str, Path)):
-            raise TypeError("`saves_dir` must be a string or a `pathlib.Path`.")
-
-        if not saves_dir.is_absolute():
-            saves_dir = Path.cwd() / saves_dir
+    if not saves_dir.is_absolute():
+        saves_dir = Path.cwd() / saves_dir
 
     start = time.time()
 
