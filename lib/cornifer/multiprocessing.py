@@ -14,10 +14,10 @@ from .errors import RegisterOpenError
 
 def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_reset_conditions):
 
-    make_sigterm_raise_KeyboardInterrupt()
+    with make_sigterm_raise_KeyboardInterrupt():
 
-    with process_wrapper(num_alive_procs, [], hard_reset_conditions):
-        target(num_procs, proc_index, *args)
+        with process_wrapper(num_alive_procs, [], hard_reset_conditions):
+            target(num_procs, proc_index, *args)
 
 
 def parallelize(

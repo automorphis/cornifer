@@ -724,7 +724,7 @@ class Register(ABC):
     def __repr__(self):
         return f'{self.__class__.__name__}("{str(self.dir)}", "{self._shorthand}", "{self._msg}", {self._db_map_size})'
 
-    def summary(self):
+    def summary(self, include_ram = True):
 
         self._check_open_raise("summary")
 
@@ -757,14 +757,23 @@ class Register(ABC):
                 prefix = self._intervals_pre(apri, apri_json, False, ro_txn)
                 total_disk_blk_len += self._total_len_disk(prefix, ro_txn)
 
-        return (
-            repr(self) + '\n' +
-            f"Total disk apri       : {num_disk_apri}\n"
-            f"Total ram apri        : {num_ram_apri}\n"
-            f"Total apos            : {num_apos}\n"
-            f"Total disk blk length : {total_disk_blk_len}\n"
-            f"Total ram blk length  : {total_ram_blk_len}"
-        )
+        if include_ram:
+            return (
+                repr(self) + '\n' +
+                f"Total disk apri       : {num_disk_apri}\n"
+                f"Total ram apri        : {num_ram_apri}\n"
+                f"Total apos            : {num_apos}\n"
+                f"Total disk blk length : {total_disk_blk_len}\n"
+                f"Total ram blk length  : {total_ram_blk_len}"
+            )
+
+        else:
+            return (
+                repr(self) + '\n' +
+                f"Total disk apri       : {num_disk_apri}\n"
+                f"Total apos            : {num_apos}\n"
+                f"Total disk blk length : {total_disk_blk_len}"
+            )
 
     def set_shorthand(self, shorthand):
 
@@ -970,7 +979,7 @@ class Register(ABC):
         reg = Register._from_local_dir(local_dir, True)
 
         with reg.open(readonly = True) as reg:
-            return reg.summary()
+            return reg.summary(False)
 
     def _digest(self):
 
