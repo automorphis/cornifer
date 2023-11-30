@@ -2549,7 +2549,7 @@ class Register(ABC):
         blk_key, compressed_key = self._get_disk_blk_keys(apri, apri_json, reencode, startn, 1, r_txn)
 
         if blk_key is None:
-            return None
+            return None, None
 
         len1 = _BLK_KEY_PREFIX_LEN        + _MAX_NUM_APRI_LEN + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
         len2 = _COMPRESSED_KEY_PREFIX_LEN + _MAX_NUM_APRI_LEN + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
@@ -4531,6 +4531,9 @@ class Register(ABC):
 
             else:
                 prefix = self._get_disk_blk_prefixes(apri, apri_json, False, r_txn)[0]
+
+            if prefix is None:
+                return None, None
 
             with r_txn_prefix_iter(prefix, r_txn) as it:
 

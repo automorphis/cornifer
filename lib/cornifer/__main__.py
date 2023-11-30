@@ -9,18 +9,22 @@ parser = argparse.ArgumentParser(
     description = 'Command line utility for Cornifer.'
 )
 parser.add_argument(
-    'filename', help = 'Register save directory (default: current working directory)', default = Path.cwd(), nargs = '?'
+    'command', help = 'summary (default), search, delete, move, copy, merge, help', default = 'summary', nargs = '?',
+    choices = ('summary', 'search', 'delete', 'move', 'copy', 'merge', 'help')
 )
-parser.add_argument('-i', '--info', help = 'Print ')
-parser.add_argument('-h', '--help', help = 'Display this help message.', action = 'store_true')
-parser.add_argument('-r', '--remove', help = 'Delete registers.', action = 'store_true')
+parser.add_argument(
+    '-d', '--dir', help = 'Register save directory (default: current working directory)', default = Path.cwd(),
+    nargs = '?', type = Path
+)
 parser.add_argument('-s', '--shorthand', help = 'Comma separated list of shorthands (default: all registers).')
-parser.add_argument('-d', '--ident', help = 'Comma separated list of identifiers.')
+parser.add_argument('-i', '--ident', help = 'Comma separated list of identifiers.')
 parser.add_argument(
-    '-m', '--move', help = 'Move to given save directory (default: current working directory)', default = Path.cwd()
+    '-m', '--move', help = 'Move to given save directory (default: current working directory)', default = Path.cwd(),
+    type = Path
 )
 parser.add_argument(
-    '-c', '--copy', help = 'Copy to given save directory (default: current working directory)', default = Path.cwd()
+    '-c', '--copy', help = 'Copy to given save directory (default: current working directory)', default = Path.cwd(),
+    type = Path
 )
 args = parser.parse_args()
 filename = Path(args.filename)
