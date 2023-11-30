@@ -1062,6 +1062,17 @@ class Register(ABC):
             raise RegisterAlreadyOpenError(self)
 
         ret._readonly = readonly
+
+        if not ret._write_db_filepath.exists() or not ret._write_db_filepath.is_dir():
+
+            warnings.warn(
+                f'Could not locate `Register` write database `{ret._write_db_filepath}`. This likely happened because '
+                'a process that opened this `Register` was killed before it could revert changes made to the database. '
+                f'Opening the register from the permanent database located at {ret._perm_db_filepath}.'
+            )
+            write_txt_file(str(ret._perm_db_filepath), ret._local_dir / WRITE_DB_FILEPATH, True)
+            ret._write_db_filepath = ret._perm_db_filepath
+
         ret._db = open_lmdb(ret._write_db_filepath, ret._db_map_size, readonly)
 
         with ret._txn("reader") as ro_txn:
