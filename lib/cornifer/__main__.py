@@ -131,7 +131,7 @@ elif args.command == 'debug':
         dir_ = parent_dir / dir_time.strftime(_file_datetime_format)
 
     if args.pids is not None:
-        pids = args.pids.split(',')
+        pids = args.pids
 
     else:
 
