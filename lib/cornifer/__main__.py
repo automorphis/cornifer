@@ -84,11 +84,11 @@ if args.command == 'summary':
 
 elif args.command == 'debug':
 
-    if (args.diff1 is None) != (args.diff2 is None):
+    if (args.start is None) != (args.end is None):
         raise ValueError
 
-    if args.diff1 is not None:
-        d1, d2 = args.diff1, args.diff2
+    if args.start is not None:
+        d1, d2 = args.start, args.end
 
     else:
         d1 = d2 = None
