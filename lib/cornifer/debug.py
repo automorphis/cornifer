@@ -40,12 +40,6 @@ def log(message):
         with _log_file.open('a') as fh:
             fh.write(f'{datetime.datetime.now().strftime("%H:%M:%S.%f")} {message}\n')
 
-def _separate(line):
-    return (
-        datetime.datetime.strptime(line[:_line_datetime_len], _line_datetime_format),
-        line[_line_datetime_len + 1:].strip()
-    )
-
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()

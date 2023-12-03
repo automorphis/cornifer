@@ -117,7 +117,7 @@ def load_shorthand(shorthand, saves_dir = None, wait_for_latency = False, timeou
 
                 else:
 
-                    reg = Register._from_local_dir(d)
+                    reg = Register._from_local_dir(d, True)
 
                     if reg.shorthand() == shorthand:
 

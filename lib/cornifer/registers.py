@@ -1068,7 +1068,7 @@ class Register(ABC):
             warnings.warn(
                 f'Could not locate `Register` write database `{ret._write_db_filepath}`. This likely happened because '
                 'a process that opened this `Register` was killed before it could revert changes made to the database. '
-                f'Opening the register from the permanent database located at {ret._perm_db_filepath}.'
+                f'Opening the register from the permanent database located at `{ret._perm_db_filepath}`.\n{ret}'
             )
             write_txt_file(str(ret._perm_db_filepath), ret._local_dir / WRITE_DB_FILEPATH, True)
             ret._write_db_filepath = ret._perm_db_filepath
