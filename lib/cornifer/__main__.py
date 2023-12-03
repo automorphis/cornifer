@@ -93,8 +93,8 @@ elif args.command == 'debug':
     else:
         d1 = d2 = None
 
-    if args.file is not None:
-        parent_dir = Path(args.file)
+    if args.dir is not None:
+        parent_dir = Path(args.dir)
 
     else:
         parent_dir = Path.cwd()
