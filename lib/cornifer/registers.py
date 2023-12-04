@@ -466,17 +466,17 @@ class Register(ABC):
 
             if con is None:
 
-                if not monkeypatch:
+                if monkeypatch:
+
+                    con = type(cls_name, (_LMDBOnlyRegister,), {})
+                    del Register._constructors[cls_name]
+
+                else:
                     raise TypeError(
                         f"Cornifer is not aware of a `Register` subclass called `{cls_name}`. Please be sure that "
                         f"`{cls_name}` properly subclasses `Register` and that `{cls_name}` is in the namespace by "
                         f"importing it."
                     )
-
-            elif monkeypatch:
-
-                con = type(cls_name, (_LMDBOnlyRegister,), {})
-                del Register._constructors[cls_name]
 
             log(str(Register._constructors))
             shorthand = read_txt_file(local_dir / SHORTHAND_FILEPATH)
