@@ -127,7 +127,7 @@ def load_shorthand(shorthand, saves_dir = None, wait_for_latency = False, timeou
                                 f"function `load_ident` to load a `Register`) :\n{str(reg)}\n{str(ret)}\n{dirs}")
 
                         else:
-                            ret = reg
+                            ret = Register._from_local_dir(d, False)
 
         if ret is not None:
 
