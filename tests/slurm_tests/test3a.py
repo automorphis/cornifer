@@ -5,7 +5,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from cornifer import ApriInfo, load_shorthand, Block
+from cornifer import ApriInfo, load, Block
 from cornifer._utilities.multiprocessing import start_with_timeout, make_sigterm_raise_KeyboardInterrupt
 
 
@@ -13,7 +13,7 @@ def f(test_home_dir, i, total_blks, num_processes, blk_size, total_indices, apri
 
     with make_sigterm_raise_KeyboardInterrupt():
 
-        reg = load_shorthand("reg", test_home_dir)
+        reg = load("reg", test_home_dir)
 
         with reg.open() as reg:
 
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     tmp_filename = Path(os.environ['TMPDIR'])
     total_blks = math.ceil(total_indices / blk_size)
     apri = ApriInfo(hi = "hello")
-    reg = load_shorthand("reg", test_home_dir)
+    reg = load("reg", test_home_dir)
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 

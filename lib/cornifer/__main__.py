@@ -1,18 +1,27 @@
 import argparse
+import collections
+import copy
 import datetime
 import re
+import shutil
 import statistics
+import sys
 from pathlib import Path
 
 from .errors import CannotLoadError
-from .registers import Register
 from .debug import _file_datetime_format, _line_datetime_format, _line_datetime_len
+from .regloader import _load, _load_ident
 
 
 def _add_shorthand_ident_arguments(parser):
 
-    parser.add_argument('-i', '--ident', help = 'Flags a register identifier.', metavar = 'ID', nargs = '+')
-    parser.add_argument('shorthands', help = 'List of register shorthands.', metavar = 'SH', nargs = '*')
+    parser.add_argument(
+        '-i', '--ident', help = 'Flags a register identifier.', metavar = 'ID', dest = 'idents', nargs = '+',
+        default = []
+    )
+    parser.add_argument(
+        'shorthands', help = 'List of register shorthands.', metavar = 'SH', nargs = '*', default = []
+    )
 
 def _add_save_dir_argument(parser):
     parser.add_argument(
@@ -21,13 +30,60 @@ def _add_save_dir_argument(parser):
     )
 
 def _add_target_dir_argument(parser):
-    parser.add_argument('-t', '--target', help = "Target directory.", nargs = 1, required = True, type = Path)
+    parser.add_argument('-t', '--target', help = 'Target directory.', nargs = 1, required = True, type = Path)
+
+def _add_verbose_argument(parser):
+    parser.add_argument('-v', '--verbose', help = 'Display additional info.', action = 'store_true')
 
 def _separate(line):
     return (
         datetime.datetime.strptime(line[:_line_datetime_len], _line_datetime_format),
         line[_line_datetime_len + 1:].strip()
     )
+
+def _load_regs(shorthands, idents, dir_):
+
+    do_all = len(shorthands) == 0 and len(idents) == 0
+
+    if do_all:
+
+        for d in dir_.iterdir():
+
+            try:
+                reg = _load_ident(d.name, dir_)
+
+            except CannotLoadError:
+                pass
+
+            else:
+                regs.append(reg)
+
+    else:
+
+        for shorthand in shorthands:
+
+            try:
+                regs_ = _load(shorthand, dir_)
+
+            except CannotLoadError:
+                pass
+
+            else:
+                regs.extend(regs_)
+
+        for ident in idents:
+
+            try:
+                reg = _load_ident(ident, dir_)
+
+            except CannotLoadError:
+                pass
+
+            else:
+                regs.append(reg)
+
+    return list(collections.OrderedDict([(reg, None) for reg in regs]).keys())
+
 
 parser_command = argparse.ArgumentParser(
     prog = 'Cornifer',
@@ -47,9 +103,12 @@ parser_debug.add_argument('-e', '--end')
 parser_debug.add_argument('-d', '--dir')
 parser_debug.add_argument('-t', '--time')
 
-# parser_delete = subparsers.add_parser('delete', help = 'Delete registers.')
-# add_save_dir_argument(parser_delete)
-# add_shorthand_ident_arguments(parser_delete)
+parser_delete = subparsers.add_parser('delete', help = 'Delete registers.')
+_add_save_dir_argument(parser_delete)
+_add_shorthand_ident_arguments(parser_delete)
+_add_verbose_argument(parser_delete)
+parser_delete.add_argument('-f', '--force', help = 'Ignore errors.', action = 'store_true')
+
 #
 # parser_move = subparsers.add_parser('move', help = 'Move registers to another directory.')
 # add_save_dir_argument(parser_move)
@@ -70,15 +129,40 @@ args = parser_command.parse_args()
 
 if args.command == 'summary':
 
-    to_print = f'`{str(args.dir)}` contains the following Registers:\n\n'
+    remaining_shorthands = copy.copy(args.shorthands)
+    remaining_idents = copy.copy(args.idents)
+    do_all = len(args.shorthands) == 0 and len(args.idents) == 0
+    regs = _load_regs(args.shorthands, args.idents, args.dir)
 
-    for d in args.dir.iterdir():
+    if not do_all:
 
-        try:
-            to_print += Register._summary(d) + '\n\n'
+        for reg in regs:
 
-        except CannotLoadError:
-            pass
+            try:
+                remaining_shorthands.remove(reg.shorthand())
+
+            except ValueError:
+                pass
+
+            try:
+                remaining_idents.remove(reg.ident())
+
+            except ValueError:
+                pass
+
+    to_print = ''
+
+    if len(remaining_shorthands) > 0:
+        to_print += f'COULD NOT FIND THE FOLLOWING SHORTHANDS: {", ".join(remaining_shorthands)}\n'
+
+    if len(remaining_idents) > 0:
+        to_print += f'COULD NOT FIND THE FOLLOWING IDENTS: {", ".join(remaining_idents)}\n'
+
+    if len(to_print) > 0 and len(regs) > 0:
+        to_print += '\n'
+
+    for reg in regs:
+        to_print += str(reg) + '\n\n'
 
     print(to_print)
 
@@ -205,6 +289,39 @@ elif args.command == 'debug':
                     pid, statistics.mean(stats), len(stats), sum(stats), statistics.stdev(stats), min(stats),
                     [str(t) for t in statistics.quantiles(stats, n = 8)], max(stats)
                 )
+
+elif args.command == 'delete':
+
+    regs = _load_regs(args.shorthands, args.idents, args.dir)
+    confirm = ''
+
+    while confirm.strip().lower() not in ('y', 'n'):
+
+        confirm = input('Permanently delete the registers above? (y/N) ')
+
+        if confirm.strip() == '':
+            confirm = 'n'
+
+    if confirm == 'y':
+
+        for reg in regs:
+
+            if args.verbose:
+                print(f'Deleting {reg}')
+
+            try:
+                shutil.rmtree(reg._local_dir)
+
+            except BaseException as e:
+
+                if not args.force:
+                    raise
+
+                elif args.verbose:
+                    print(f'Failed to delete {reg}, error: {repr(e)}')
+
+    else:
+        print('No confirmation given. Nothing deleted.')
 
 else:
     raise NotImplementedError

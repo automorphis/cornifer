@@ -3,13 +3,13 @@ import os
 import sys
 from pathlib import Path
 
-from cornifer import ApriInfo, load_shorthand, AposInfo, DataNotFoundError
+from cornifer import ApriInfo, load, AposInfo, DataNotFoundError
 from cornifer._utilities.multiprocessing import start_with_timeout
 
 
 def f(test_home_dir, j, num_apri, num_processes):
 
-    reg = load_shorthand("reg", test_home_dir)
+    reg = load("reg", test_home_dir)
 
     with reg.open() as reg:
 
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     num_apri = int(sys.argv[3])
     timeout = int(sys.argv[4])
     tmp_filename = Path(os.environ['TMPDIR'])
-    reg = load_shorthand("reg", test_home_dir)
+    reg = load("reg", test_home_dir)
     mp_ctx = multiprocessing.get_context("spawn")
     procs = []
 

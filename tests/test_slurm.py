@@ -12,7 +12,7 @@ import numpy as np
 from testslurm import TestSlurm, SlurmStates
 
 import cornifer.debug
-from cornifer import NumpyRegister, ApriInfo, AposInfo, load_shorthand, Block, DataNotFoundError, _utilities
+from cornifer import NumpyRegister, ApriInfo, AposInfo, load, Block, DataNotFoundError, _utilities
 from cornifer._utilities import random_unique_filename
 from cornifer._utilities.lmdb import open_lmdb, r_txn_prefix_iter
 
@@ -156,7 +156,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
         self.wait_till_not_state(SlurmStates.RUNNING, max_sec = running_max_sec, verbose = True)
         self.check_error_file()
-        reg = load_shorthand("reg", test_dir, True)
+        reg = load("reg", test_dir, True)
 
         with reg.open(readonly = True):
 
@@ -191,7 +191,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
         self.wait_till_not_state(SlurmStates.RUNNING, max_sec = running_max_sec, verbose = True)
         self.check_error_file()
-        reg = load_shorthand("reg", test_dir, True)
+        reg = load("reg", test_dir, True)
 
         with reg.open(readonly = True):
 
@@ -246,7 +246,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         time.sleep(slurm_time + 30)
         stall_indices = [None] * num_processes
         stall_indices[1] = 2 * num_processes + 1
-        reg = load_shorthand("reg", test_dir, True)
+        reg = load("reg", test_dir, True)
 
         with reg.open(readonly = True):
 
@@ -321,7 +321,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
         self.wait_till_not_state(SlurmStates.RUNNING, max_sec = running_max_sec, verbose = True)
         self.check_error_file()
-        reg = load_shorthand("reg", test_dir, True)
+        reg = load("reg", test_dir, True)
 
         with reg.open(readonly = True):
 
@@ -389,7 +389,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
             self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
             self.wait_till_not_state(SlurmStates.RUNNING, max_sec = timeout, verbose = True)
             self.check_error_file()
-            reg = load_shorthand('sh', test_dir, True)
+            reg = load('sh', test_dir, True)
 
             with reg.open(readonly = True) as reg:
 
@@ -435,7 +435,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
                     self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
                     self.wait_till_not_state(SlurmStates.RUNNING, max_sec = timeout, verbose = True)
                     self.check_error_file()
-                    reg = load_shorthand('sh', test_dir, True)
+                    reg = load('sh', test_dir, True)
 
                     with reg.open(readonly = True) as reg:
 

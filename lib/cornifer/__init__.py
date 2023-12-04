@@ -24,7 +24,7 @@ from .info import ApriInfo, AposInfo
 from .blocks import Block
 from .multiprocessing import parallelize
 from .registers import Register, PickleRegister, NumpyRegister
-from .regloader import search, load_ident, load_shorthand
+from .regloader import search, load_ident, load
 from .errors import DataNotFoundError, CompressionError, DecompressionError, RegisterError, RegisterOpenError
 
 __all__ = [
@@ -36,7 +36,7 @@ __all__ = [
     "NumpyRegister",
     "search",
     "load_ident",
-    "load_shorthand",
+    "load",
     "DataNotFoundError",
     "CompressionError",
     "DecompressionError",

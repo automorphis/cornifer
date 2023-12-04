@@ -418,7 +418,7 @@ class Register(ABC):
         self._txn_timeout = 30 # seconds
         self._do_update_perm_db = False
         self._update_perm_db_event = None
-        self._num_active_txns = None
+        self._num_active_rw_txns = None
         self._update_perm_db_timeout = None
         self._do_hard_reset = False
         self._hard_reset_event = None
@@ -532,7 +532,7 @@ class Register(ABC):
             'local_dir' : str(self._local_dir),
             'do_update_perm_db' : self._do_update_perm_db,
             'update_perm_db_event' : self._update_perm_db_event,
-            'num_active_txns' : self._num_active_txns,
+            'num_active_rw_txns' : self._num_active_rw_txns,
             'update_perm_db_timeout' : self._update_perm_db_timeout,
             'do_hard_reset' : self._do_hard_reset,
             'hard_reset_event' : self._hard_reset_event,
@@ -554,7 +554,7 @@ class Register(ABC):
             self.__dict__ = Register._from_local_dir(local_dir).__dict__
             self._do_update_perm_db = state['do_update_perm_db']
             self._update_perm_db_event = state['update_perm_db_event']
-            self._num_active_txns = state['num_active_txns']
+            self._num_active_rw_txns = state['num_active_rw_txns']
             self._update_perm_db_timeout = state['update_perm_db_timeout']
             self._do_hard_reset = state['do_hard_reset']
             self._hard_reset_event = state['hard_reset_event']
@@ -570,7 +570,7 @@ class Register(ABC):
     #         TRANSACTIONS          #
 
     @contextmanager
-    def _manage_txn(self):
+    def _manage_txn(self, kind):
 
         if self._do_hard_reset and not self._hard_reset_event.is_set(): # If not set, must do hard reset
 
@@ -616,18 +616,20 @@ class Register(ABC):
 
             self._update_perm_db_event.wait(self._update_perm_db_timeout)
 
-            with self._num_active_txns.get_lock():
-                self._num_active_txns.value += 1
+            if kind == 'writer':
+
+                with self._num_active_rw_txns.get_lock():
+                    self._num_active_rw_txns.value += 1
 
         try:
             yield
 
         finally:
 
-            if self._do_update_perm_db:
+            if self._do_update_perm_db and kind == 'writer':
 
-                with self._num_active_txns.get_lock():
-                    self._num_active_txns.value -= 1
+                with self._num_active_rw_txns.get_lock():
+                    self._num_active_rw_txns.value -= 1
 
     @contextmanager
     def _txn(self, kind):
@@ -640,7 +642,7 @@ class Register(ABC):
             with ExitStack() as stack:
 
                 txn = None
-                stack.enter_context(self._manage_txn())
+                stack.enter_context(self._manage_txn(kind))
 
                 with timeout_cm(self._txn_timeout):
 
@@ -695,7 +697,7 @@ class Register(ABC):
         self._do_update_perm_db = True
         self._update_perm_db_event = mp_ctx.Event()
         self._update_perm_db_event.set()
-        self._num_active_txns = mp_ctx.Value('i', 0)
+        self._num_active_rw_txns = mp_ctx.Value('i', 0)
         self._update_perm_db_timeout = timeout
 
     def _create_hard_reset_shared_data(self, mp_ctx, num_alive_procs, timeout):
@@ -955,7 +957,7 @@ class Register(ABC):
 
         while timeout is None or time.time() - start < timeout:
 
-            if self._num_active_txns.value == 0:
+            if self._num_active_rw_txns.value == 0:
 
                 tmp_filename = random_unique_filename(self._perm_db_filepath, ".mdb")
 
@@ -1378,7 +1380,7 @@ class Register(ABC):
         return ret
 
     def __iter__(self):
-        return iter(self.apris())
+        yield from self.apris()
 
     #################################
     #      PROTEC APRI METHODS      #

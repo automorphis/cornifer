@@ -21,7 +21,7 @@ from pathlib import Path
 from .errors import RegisterError, DataExistsError, DataNotFoundError, CannotLoadError
 from .registers import Register
 from .regfilestructure import LOCAL_DIR_CHARS, check_reg_structure, DIGEST_FILEPATH
-from ._utilities import resolve_path, read_txt_file, check_return_Path_None_default
+from ._utilities import resolve_path, read_txt_file, check_return_Path_None_default, check_type
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
 
 _ARGS_TYPES = {
@@ -89,7 +89,7 @@ def set_search_args(**kwargs):
 
         _args[key] = val
 
-def load_shorthand(shorthand, saves_dir = None, wait_for_latency = False, timeout = 60):
+def load(shorthand, saves_dir = None, wait_for_latency = False, timeout = 60):
 
     saves_dir = check_return_Path_None_default(saves_dir, 'saves_dir', Path.cwd())
 
@@ -100,79 +100,71 @@ def load_shorthand(shorthand, saves_dir = None, wait_for_latency = False, timeou
 
     while True:
 
-        local_dir = None
-        reg = None
+        regs = _load(shorthand, saves_dir)
 
-        for d in saves_dir.iterdir():
+        if len(regs) > 1:
+            raise DataExistsError(
+                '\n'.join(map(str, regs)) +
+                f'More than one `Register` found with shorthand `{shorthand}`, listed above. (You can also use the '
+                f'function `load_ident` to load a `Register`.)'
+            )
 
-            if d.is_dir():
+        elif len(regs) == 1:
 
-                try:
-                    check_reg_structure(d)
-
-                except CannotLoadError:
-                    pass
-
-                else:
-
-                    reg_ = Register._from_local_dir(d, True)
-
-                    if reg_.shorthand() == shorthand:
-
-                        if reg is not None:
-                            raise DataExistsError(
-                                f"More than one `Register` found with shorthand `{shorthand}` (you can also use the "
-                                f"function `load_ident` to load a `Register`) :\n{str(reg)}\n{str(reg_)}"
-                            )
-
-                        else:
-
-                            reg = reg_
-                            local_dir = d
-
-        if local_dir is not None:
-
-            reg = Register._from_local_dir(local_dir, False)
+            reg = Register._from_local_dir(regs[0]._local_dir, False)
 
             if wait_for_latency:
                 _wait_for_latency(reg.ident(), reg, timeout)
 
+            _check_warn_compatible_version(reg)
             return reg
 
         elif not wait_for_latency or time.time() - start >= timeout:
             raise DataNotFoundError(f"No `Register` found with shorthand `{shorthand}`.")
 
-def load_ident(identifier, wait_for_latency = False, timeout = 60):
+def load_ident(ident, saves_dir = None, wait_for_latency = False, timeout = 60):
 
-    if not isinstance(identifier, (str, Path)):
-        raise TypeError("`ident` must be a string or a `pathlib.Path`.")
+    check_type(ident, 'ident', str)
+    saves_dir = check_return_Path_None_default(saves_dir, 'saves_dir', Path.cwd())
 
-    identifier = Path(identifier)
-
-    if not identifier.is_absolute():
-        resolved = Path.cwd() / identifier
-
-    else:
-        resolved = identifier
-
-    if "(" in resolved.name or ")" in resolved.name:
+    if "(" in ident or ")" in ident:
         raise ValueError("You don't need to include the parentheses for the `ident` when you call `load`.")
 
-    bad_symbs = [symb for symb in resolved.name if symb not in LOCAL_DIR_CHARS]
+    bad_symbs = [symb for symb in ident if symb not in LOCAL_DIR_CHARS]
+
     if len(bad_symbs) > 0:
         raise ValueError("An ident cannot contain any of the following symbols: " + "".join(bad_symbs))
 
-    reg = Register._from_local_dir(resolved)
+    if not saves_dir.is_absolute():
+        saves_dir = Path.cwd() / saves_dir
 
-    if not reg._has_compatible_version():
-        warnings.warn(
-            f"The register at `{reg._local_dir}` has an incompatible version.\n"
-            f"Current Cornifer version: {CURRENT_VERSION}\n"
-            f"Compatible version(s):    {', '.join(COMPATIBLE_VERSIONS)}\n"
-            f"Loaded register version:  {reg._version}"
-        )
+    return Register._from_local_dir(saves_dir / ident, False)
 
-    return reg
+def _load(shorthand, saves_dir):
+
+    ret = []
+
+    for d in saves_dir.iterdir():
+
+        if d.is_dir():
+
+            try:
+                check_reg_structure(d)
+
+            except CannotLoadError:
+                pass
+
+            else:
+
+                reg = Register._from_local_dir(d, True)
+
+                if reg.shorthand() == shorthand:
+                    ret.append(reg)
+
+    return ret
+
+def _load_ident(ident, saves_dir):
+    return Register._from_local_dir(saves_dir / ident, True)
 
 def search(apri = None, saves_directory = None, **kwargs):
 
@@ -472,3 +464,13 @@ def _wait_for_latency(ident, reg, timeout):
             time.sleep(digest_wait_int)
 
     raise TimeoutError
+
+def _check_warn_compatible_version(reg):
+
+    if not reg._has_compatible_version():
+        warnings.warn(
+            f"The register at `{reg._local_dir}` has an incompatible version.\n"
+            f"Current Cornifer version: {CURRENT_VERSION}\n"
+            f"Compatible version(s):    {', '.join(COMPATIBLE_VERSIONS)}\n"
+            f"Loaded register version:  {reg._version}"
+        )
