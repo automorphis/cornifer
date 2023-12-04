@@ -464,12 +464,14 @@ class Register(ABC):
             log(cls_name)
             log(str(Register._constructors))
 
-            if con is None and not monkeypatch:
-                raise TypeError(
-                    f"Cornifer is not aware of a `Register` subclass called `{cls_name}`. Please be sure that "
-                    f"`{cls_name}` properly subclasses `Register` and that `{cls_name}` is in the namespace by "
-                    f"importing it."
-                )
+            if con is None:
+
+                if not monkeypatch:
+                    raise TypeError(
+                        f"Cornifer is not aware of a `Register` subclass called `{cls_name}`. Please be sure that "
+                        f"`{cls_name}` properly subclasses `Register` and that `{cls_name}` is in the namespace by "
+                        f"importing it."
+                    )
 
             elif monkeypatch:
 
