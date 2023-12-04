@@ -100,12 +100,10 @@ def load_shorthand(shorthand, saves_dir = None, wait_for_latency = False, timeou
 
     while True:
 
-        ret = None
-        dirs = []
+        local_dir = None
+        reg = None
 
         for d in saves_dir.iterdir():
-
-            dirs.append(d)
 
             if d.is_dir():
 
@@ -117,24 +115,29 @@ def load_shorthand(shorthand, saves_dir = None, wait_for_latency = False, timeou
 
                 else:
 
-                    reg = Register._from_local_dir(d, True)
+                    reg_ = Register._from_local_dir(d, True)
 
-                    if reg.shorthand() == shorthand:
+                    if reg_.shorthand() == shorthand:
 
-                        if ret is not None:
+                        if reg is not None:
                             raise DataExistsError(
                                 f"More than one `Register` found with shorthand `{shorthand}` (you can also use the "
-                                f"function `load_ident` to load a `Register`) :\n{str(reg)}\n{str(ret)}\n{dirs}")
+                                f"function `load_ident` to load a `Register`) :\n{str(reg)}\n{str(reg_)}"
+                            )
 
                         else:
-                            ret = Register._from_local_dir(d, False)
 
-        if ret is not None:
+                            reg = reg_
+                            local_dir = d
+
+        if local_dir is not None:
+
+            reg = Register._from_local_dir(local_dir, False)
 
             if wait_for_latency:
-                _wait_for_latency(ret.ident(), ret, timeout)
+                _wait_for_latency(reg.ident(), reg, timeout)
 
-            return ret
+            return reg
 
         elif not wait_for_latency or time.time() - start >= timeout:
             raise DataNotFoundError(f"No `Register` found with shorthand `{shorthand}`.")
