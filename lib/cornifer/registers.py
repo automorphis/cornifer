@@ -460,6 +460,8 @@ class Register(ABC):
                 )
 
             con = Register._constructors.get(cls_name, None)
+            log(str(con))
+            log(cls_name)
             log(str(Register._constructors))
 
             if con is None and not monkeypatch:
@@ -473,7 +475,6 @@ class Register(ABC):
 
                 con = type(cls_name, (_LMDBOnlyRegister,), {})
                 del Register._constructors[cls_name]
-
 
             shorthand = read_txt_file(local_dir / SHORTHAND_FILEPATH)
             msg = read_txt_file(local_dir / MSG_FILEPATH)
