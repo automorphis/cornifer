@@ -476,6 +476,7 @@ class Register(ABC):
                 con = type(cls_name, (_LMDBOnlyRegister,), {})
                 del Register._constructors[cls_name]
 
+            log(str(Register._constructors))
             shorthand = read_txt_file(local_dir / SHORTHAND_FILEPATH)
             msg = read_txt_file(local_dir / MSG_FILEPATH)
             map_size = int(read_txt_file(local_dir / MAP_SIZE_FILEPATH))
