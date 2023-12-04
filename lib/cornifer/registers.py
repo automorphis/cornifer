@@ -460,7 +460,7 @@ class Register(ABC):
                 )
 
             con = Register._constructors.get(cls_name, None)
-            log(Register._constructors)
+            log(str(Register._constructors))
 
             if con is None and not monkeypatch:
                 raise TypeError(
