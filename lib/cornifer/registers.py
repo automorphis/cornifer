@@ -2531,41 +2531,6 @@ class Register(ABC):
                 else:
                     raise
 
-    @contextmanager
-    def readonly_decompress(self, apri, startn = None, length = None, ret_metadata = False, timeout = None):
-
-        with ExitStack() as post_yield:
-
-            with ExitStack() as pre_yield:
-
-                pre_yield.enter_context(self._time("decompress_elapsed"))
-                timeout = check_return_int_None_default(timeout, 'timeout', None)
-
-                if timeout is not None and timeout <= 0:
-                    raise ValueError("`timeout` must be positive.")
-
-                pre_yield.enter_context(timeout_cm(timeout))
-                self._check_open_raise("readonly_decompress")
-                check_type(apri, "apri", ApriInfo)
-                startn = check_return_int_None_default(startn, "startn", None)
-                length = check_return_int_None_default(length, "length", None)
-                check_type(ret_metadata, "ret_metadata", bool)
-
-                if startn is not None and startn < 0:
-                    raise ValueError("`startn` must be non-negative.")
-
-                if length is not None and length < 0:
-                    raise ValueError("`length` must be non-negative.")
-
-                with self._txn("reader") as ro_txn:
-                    blk_filename, compressed_filename, startn = self._readonly_decompress_pre(
-                        apri, None, True, startn, length, ro_txn
-                    )
-
-                seg = type(self)._readonly_decompress_disk2(blk_filename, compressed_filename)
-
-            yield post_yield.enter_context(Block(seg, apri, startn))
-
     def is_compressed(self, apri, startn = None, length = None):
 
         self._check_open_raise("is_compressed")
@@ -3050,47 +3015,6 @@ class Register(ABC):
         else:
             return e
 
-    def _readonly_decompress_pre(self, apri, apri_json, reencode, startn, length, r_txn):
-
-        errmsg = self._blk_not_found_err_msg(False, True, False, apri, startn, length, None)
-
-        if reencode:
-            apri_json = self._relational_encode_info(apri, r_txn) # raises `DataNotFoundError` (see pattern VI.1)
-
-        startn_, length_ = self._resolve_startn_length_disk(apri, apri_json, False, startn, length, r_txn)
-
-        if startn_ is None:
-            raise DataNotFoundError(errmsg)
-
-        blk_key, compressed_key = self._get_disk_blk_keys(apri, apri_json, False, startn_, length_, r_txn)
-
-        if not Register._disk_blk_keys_exist(blk_key, compressed_key, r_txn):
-            raise DataNotFoundError(errmsg)
-
-        compressed_val = r_txn.get(compressed_key)
-
-        if compressed_val == _IS_NOT_COMPRESSED_VAL:
-            raise DecompressionError(
-                "The disk `Block` with the following data is not compressed: " +
-                f"{str(apri)}, startn = {startn_}, length = {length_}"
-            )
-
-        blk_filename = self._local_dir / r_txn.get(blk_key).decode("ASCII")
-        compressed_filename = self._local_dir / compressed_val.decode("ASCII")
-        return blk_filename, compressed_filename, startn_
-
-    @classmethod
-    def _readonly_decompress_disk2(cls, blk_filename, compressed_filename):
-
-        with tempfile.TemporaryDirectory() as temp_file:
-
-            temp_file = Path(temp_file)
-
-            with zipfile.ZipFile(compressed_filename, "r") as compressed_fh:
-                compressed_fh.extract(blk_filename.name, temp_file)
-
-            return cls.load_disk_data(temp_file / blk_filename.name)
-
     def _compress_pre(self, apri, apri_json, reencode, startn, length, r_txn):
 
         errmsg = self._blk_not_found_err_msg(False, True, False, apri, startn, length, None)
@@ -3431,7 +3355,7 @@ class Register(ABC):
     # PUBLIC RAM & DISK BLK METHODS #
 
     @contextmanager
-    def blk_by_n(self, apri, n, diskonly = False, recursively = False, ret_metadata = False, timeout = None, **kwargs):
+    def blk_by_n(self, apri, n, decompress = False, diskonly = False, recursively = False, ret_metadata = False, timeout = None, **kwargs):
 
         with ExitStack() as post_yield:
 
@@ -3466,20 +3390,24 @@ class Register(ABC):
                 ro_txn = prior_yield.enter_context(self._txn("reader"))
 
                 try:
-                    blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
+                    blk_filename, compressed_filename, startn, is_compressed = self._blk_by_n_pre(
+                        apri, None, True, n, decompress, ro_txn
+                    )
 
                 except DataNotFoundError:
                     pass
 
                 else:
 
-                    yield_ = type(self)._blk_disk(blk_filename, apri, startn, ret_metadata, kwargs)
+                    yield_ = type(self)._blk_disk2(
+                        blk_filename, compressed_filename, apri, startn, is_compressed, ret_metadata, kwargs
+                    )
                     raise BreakExitStack
 
                 if recursively:
 
                     try:
-                        yield_ = self._blk_by_n_recursive(apri, n, diskonly, ret_metadata, kwargs, ro_txn)
+                        yield_ = self._blk_by_n_recursive(apri, n, decompress, diskonly, ret_metadata, kwargs, ro_txn)
 
                     except DataNotFoundError:
                         pass
@@ -3499,7 +3427,7 @@ class Register(ABC):
 
     @contextmanager
     def blk(
-        self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False,
+        self, apri, startn = None, length = None, decompress = False, diskonly = False, recursively = False, ret_metadata = False,
         timeout = None, **kwargs
     ):
 
@@ -3512,6 +3440,7 @@ class Register(ABC):
                 check_type(apri, "apri", ApriInfo)
                 startn = check_return_int_None_default(startn, "startn", None)
                 length = check_return_int_None_default(length, "length", None)
+                check_type(decompress, 'decompress', bool)
                 check_type(diskonly, "diskonly", bool)
                 check_type(recursively, "recursively", bool)
                 check_type(ret_metadata, "ret_metadata", bool)
@@ -3536,20 +3465,24 @@ class Register(ABC):
                 ro_txn = pre_yield.enter_context(self._txn("reader"))
 
                 try:
-                    blk_filename, startn_ = self._blk_pre(apri, None, True, startn, length, ro_txn)
+                    blk_filename, compressed_filename, startn_, is_compressed = self._blk_pre(
+                        apri, None, True, startn, length, decompress, ro_txn
+                    )
 
                 except DataNotFoundError:
                     pass
 
                 else:
 
-                    yield_ = type(self)._blk_disk(blk_filename, apri, startn_, ret_metadata, kwargs)
+                    yield_ = type(self)._blk_disk2(
+                        blk_filename, compressed_filename, apri, startn_, is_compressed, ret_metadata, kwargs
+                    )
                     raise BreakExitStack
 
                 if recursively:
 
                     try:
-                        yield_ = self._blk_recursive(apri, startn, length, diskonly, ret_metadata, kwargs, ro_txn)
+                        yield_ = self._blk_recursive(apri, startn, length, decompress, diskonly, ret_metadata, kwargs, ro_txn)
 
                     except DataNotFoundError:
                         pass
@@ -3568,10 +3501,11 @@ class Register(ABC):
             else:
                 yield post_yield.enter_context(yield_)
 
-    def blks(self, apri, diskonly = False, recursively = False, ret_metadata = False, timeout = None, **kwargs):
+    def blks(self, apri, decompress = False, diskonly = False, recursively = False, ret_metadata = False, timeout = None, **kwargs):
 
         self._check_open_raise("blks")
         check_type(apri, "apri", ApriInfo)
+        check_type(decompress, 'decompress', bool)
         check_type(diskonly, "diskonly", bool)
         check_type(recursively, "recursively", bool)
         check_type(ret_metadata, "ret_metadata", bool)
@@ -3592,10 +3526,10 @@ class Register(ABC):
             else:
 
                 prefix = self._intervals_pre(apri, apri_json, False, ro_txn)
-                blks_disk_gen = self._blks_disk(prefix, apri, apri_json, False, ret_metadata, kwargs, ro_txn)
+                blks_disk_gen = self._blks_disk2(prefix, apri, apri_json, False, decompress, ret_metadata, kwargs, ro_txn)
 
             if recursively:
-                blks_recursive_gen = self._blks_recursive(apri, diskonly, ret_metadata, kwargs, ro_txn)
+                blks_recursive_gen = self._blks_recursive(apri, diskonly, decompress, ret_metadata, kwargs, ro_txn)
 
             else:
                 blks_recursive_gen = []
@@ -3610,12 +3544,13 @@ class Register(ABC):
     def __getitem__(self, apri_n_diskonly):
         return self.get(*Register._resolve_apri_n_diskonly(apri_n_diskonly))
 
-    def get(self, apri, n, diskonly = False, **kwargs):
+    def get(self, apri, n, decompress = False, diskonly = False, **kwargs):
 
         with self._time("get_elapsed"):
 
             self._check_open_raise("get")
             check_type(apri, "apri", ApriInfo)
+            check_type(decompress, 'decompress', bool)
             check_type(diskonly, "diskonly", bool)
             n_slice = isinstance(n, slice)
 
@@ -3673,14 +3608,18 @@ class Register(ABC):
                 with self._txn("reader") as ro_txn:
 
                     try:
-                        blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
+                        blk_filename, compressed_filename, startn, is_compressed = self._blk_by_n_pre(
+                            apri, None, True, n, decompress, ro_txn
+                        )
 
                     except DataNotFoundError:
                         pass
 
                     else:
 
-                        with type(self)._blk_disk(blk_filename, apri, startn, False, kwargs) as blk:
+                        with type(self)._blk_disk2(
+                            blk_filename, compressed_filename, apri, startn, decompress, False, kwargs
+                        ) as blk:
                             return blk[n]
 
                 raise DataNotFoundError(self._blk_not_found_err_msg(not diskonly, True, False, apri, None, None, n))
@@ -3725,7 +3664,9 @@ class Register(ABC):
                     else:
 
                         try:
-                            blk_filename, startn = self._blk_by_n_pre(apri, apri_json, False, n, ro_txn)
+                            blk_filename, compressed_filename, startn, is_compressed = self._blk_by_n_pre(
+                                apri, apri_json, False, n, False, ro_txn
+                            )
 
                         except DataNotFoundError:
                             to_raise = True
@@ -3733,7 +3674,9 @@ class Register(ABC):
                         else:
 
                             to_raise = False
-                            blk = self._blk_disk(blk_filename, apri, startn, False, kwargs)
+                            blk = self._blk_disk2(
+                                blk_filename, compressed_filename, apri, startn, is_compressed, False, kwargs
+                            )
                             blk_stack.enter_context(blk)
                             length = len(blk)
                             blk[n] = value
@@ -4156,14 +4099,18 @@ class Register(ABC):
             with self._txn("reader") as ro_txn:
                 # need to refresh reader
                 try:
-                    blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
+                    blk_filename, compressed_filename, startn, is_compressed = self._blk_by_n_pre(
+                        apri, None, True, n, False, ro_txn
+                    )
 
                 except DataNotFoundError:
                     loop_ram_and_disk = False
 
                 else:
 
-                    with type(self)._blk_disk(blk_filename, apri, startn, False, kwargs) as blk:
+                    with type(self)._blk_disk2(
+                        blk_filename, compressed_filename, apri, startn, is_compressed, False, kwargs
+                    ) as blk:
 
                         while n in blk and (stop is None or n < stop):
 
@@ -4349,14 +4296,23 @@ class Register(ABC):
         if self.___contains___ram(apri):
             yield from self._ram_blks[apri]
 
-    def _blks_disk(self, prefix, apri, apri_json, reencode, ret_metadata, kwargs, r_txn):
+    def _blks_disk2(self, prefix, apri, apri_json, reencode, decompress, ret_metadata, kwargs, r_txn):
 
         for startn, length in self._intervals_disk(prefix, r_txn):
 
-            blk_filename, _ = self._blk_pre(apri, apri_json, reencode, startn, length, r_txn)
-            yield type(self)._blk_disk(blk_filename, apri, startn, ret_metadata, kwargs)
+            try:
+                blk_filename, compressed_filename, startn_, is_compressed = self._blk_pre(
+                    apri, apri_json, reencode, startn, length, decompress, r_txn
+                )
 
-    def _blks_recursive(self, apri, diskonly, ret_metadata, kwargs, r_txn):
+            except DataNotFoundError as e:
+                raise RegisterError from e
+
+            yield type(self)._blk_disk2(
+                blk_filename, compressed_filename, apri, startn, is_compressed, ret_metadata, kwargs
+            )
+
+    def _blks_recursive(self, apri, diskonly, decompress, ret_metadata, kwargs, r_txn):
 
         for subreg, ro_txn in self._subregs_bfs(True, r_txn):
 
@@ -4372,7 +4328,7 @@ class Register(ABC):
             else:
 
                 prefix = self._intervals_pre(apri, apri_json, False, ro_txn)
-                yield from self._blks_disk(prefix, apri, apri_json, False, ret_metadata, kwargs, r_txn)
+                yield from self._blks_disk2(prefix, apri, apri_json, False, decompress, ret_metadata, kwargs, r_txn)
 
     def _blk_by_n_ram(self, apri, n):
 
@@ -4391,7 +4347,7 @@ class Register(ABC):
 
         raise DataNotFoundError
 
-    def _blk_by_n_pre(self, apri, apri_json, reencode, n, r_txn):
+    def _blk_by_n_pre(self, apri, apri_json, reencode, n, decompress, r_txn):
 
         errmsg = self._blk_not_found_err_msg(False, True, False, apri, None, None, n)
 
@@ -4410,17 +4366,19 @@ class Register(ABC):
 
         blk_key, compressed_key = self._get_disk_blk_keys(apri, apri_json, False, startn, length, r_txn)
         blk_filename, compressed_filename = self._get_disk_blk_filenames(blk_key, compressed_key, r_txn)
+        is_compressed = compressed_filename is not None
 
-        if compressed_filename is not None:
+        if not decompress and is_compressed:
             raise CompressionError(
-                "Could not load disk `Block` with the following data because the `Block` is compressed. "
-                "Please call `self.decompress()` first before loading the data.\n" +
-                f"{apri}, startn = {startn}, length = {length}"
+                'Could not load disk `Block` with the following data because the `Block` is compressed. '
+                f'Please call either `{self._shorthand}.blk_by_n(..., decompress = True)` to temporarily decompress the '
+                f'`Block`, or call `{self._shorthand}.decompress()` to permanently do so.\n'
+                f'{apri}, startn = {startn}, length = {length}\n{self}'
             )
 
-        return blk_filename, startn
+        return blk_filename, compressed_filename, startn, is_compressed
 
-    def _blk_by_n_recursive(self, apri, n, diskonly, ret_metadata, kwargs, r_txn):
+    def _blk_by_n_recursive(self, apri, n, decompress, diskonly, ret_metadata, kwargs, r_txn):
 
         for subreg, ro_txn in self._subregs_bfs(True, r_txn):
 
@@ -4441,13 +4399,17 @@ class Register(ABC):
                         return ret
 
             try:
-                blk_filename, startn = subreg._blk_by_n_pre(apri, None, True, n, ro_txn)
+                blk_filename, compressed_filename, startn, is_compressed = subreg._blk_by_n_pre(
+                    apri, None, True, n, decompress, ro_txn
+                )
 
             except DataNotFoundError:
                 pass
 
             else:
-                return type(subreg)._blk_disk(blk_filename, apri, startn, ret_metadata, kwargs)
+                return type(subreg)._blk_disk2(
+                    blk_filename, compressed_filename, apri, startn, is_compressed, ret_metadata, kwargs
+                )
 
         raise DataNotFoundError(self._blk_not_found_err_msg(not diskonly, True, True, apri, None, None, n))
 
@@ -4480,7 +4442,7 @@ class Register(ABC):
 
         raise DataNotFoundError(errmsg)
 
-    def _blk_pre(self, apri, apri_json, reencode, startn, length, r_txn):
+    def _blk_pre(self, apri, apri_json, reencode, startn, length, decompress, r_txn):
 
         errmsg = self._blk_not_found_err_msg(False, True, False, apri, startn, length, None)
 
@@ -4503,29 +4465,49 @@ class Register(ABC):
             raise DataNotFoundError(errmsg)
 
         blk_filename, compressed_filename = self._get_disk_blk_filenames(blk_key, compressed_key, r_txn)
+        is_compressed = compressed_filename is not None
 
-        if compressed_filename is not None:
+        if is_compressed and not decompress:
             raise CompressionError(
-                "Could not load disk `Block` with the following data because the `Block` is compressed. "
-                "Please call `self.decompress()` first before loading the data.\n" +
-                f"{apri}, startn = {startn_}, length = {length_}"
+                'Could not load disk `Block` with the following data because the `Block` is compressed. '
+                f'Please call either `{self._shorthand}.blk(..., decompress = True)` to temporarily decompress the '
+                f'`Block`, or call `{self._shorthand}.decompress()` to permanently do so.\n'
+                f'{apri}, startn = {startn_}, length = {length_}\n{self}'
             )
 
-        return blk_filename, startn_
+        return blk_filename, compressed_filename, startn_, is_compressed
 
     @classmethod
-    def _blk_disk(cls, blk_filename, apri, startn, ret_metadata, kwargs):
+    def _blk_disk2(
+        cls, blk_filename, compressed_filename, apri, startn, is_compressed, ret_metadata, kwargs
+    ):
 
-        seg = cls.load_disk_data(blk_filename, **kwargs)
-        blk = Block(seg, apri, startn)
+        if is_compressed:
+
+            with tempfile.TemporaryDirectory() as temp_file:
+
+                temp_file = Path(temp_file)
+
+                with zipfile.ZipFile(compressed_filename, "r") as compressed_fh:
+                    compressed_fh.extract(blk_filename.name, temp_file)
+
+                blk = Block(apri, cls.load_disk_data(temp_file / blk_filename.name), startn)
+
+        else:
+
+            seg = cls.load_disk_data(blk_filename, **kwargs)
+            blk = Block(seg, apri, startn)
 
         if not ret_metadata:
             return blk
 
+        elif is_compressed:
+            return blk, FileMetadata.from_path(compressed_filename)
+
         else:
             return blk, FileMetadata.from_path(blk_filename)
 
-    def _blk_recursive(self, apri, startn, length, diskonly, ret_metadata, kwargs, r_txn):
+    def _blk_recursive(self, apri, startn, length, decompress, diskonly, ret_metadata, kwargs, r_txn):
 
         for subreg, ro_txn in self._subregs_bfs(True, r_txn):
 
@@ -4538,13 +4520,17 @@ class Register(ABC):
                     pass
 
             try:
-                blk_filename, _ = subreg._blk_pre(apri, None, True, startn, length, ro_txn)
+                blk_filename, compressed_filename, startn_, is_compressed = subreg._blk_pre(
+                    apri, None, True, startn, length, decompress, ro_txn
+                )
 
             except DataNotFoundError:
                 pass
 
             else:
-                return type(subreg)._blk_disk(blk_filename, apri, startn, ret_metadata, kwargs)
+                return type(subreg)._blk_disk2(
+                    blk_filename, compressed_filename, apri, startn_, is_compressed, ret_metadata, kwargs
+                )
 
         raise DataNotFoundError(self._blk_not_found_err_msg(not diskonly, True, True, apri, startn, length, None))
 
@@ -4876,14 +4862,18 @@ class NumpyRegister(Register, file_suffix = ".npy"):
             with self._txn("reader") as ro_txn:
 
                 try:
-                    blk_filename, startn = self._blk_by_n_pre(apri, None, True, n, ro_txn)
+                    blk_filename, compressed_filename, startn, is_compressed = self._blk_by_n_pre(
+                        apri, None, True, n, False, ro_txn
+                    )
 
                 except DataNotFoundError:
                     pass
 
                 else:
 
-                    with self._blk_disk(blk_filename, apri, startn, False, kwargs) as blk:
+                    with self._blk_disk2(
+                        blk_filename, compressed_filename, apri, startn, is_compressed, False, kwargs
+                    ) as blk:
 
                         blk[n] = value
                         return

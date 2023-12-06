@@ -9,7 +9,7 @@ from unittest import TestCase
 import cornifer
 import numpy as np
 
-from cornifer import NumpyRegister, Register, Block, load_ident, openblks, openregs
+from cornifer import NumpyRegister, Register, Block, load_ident, stack
 from cornifer.info import ApriInfo, AposInfo
 from cornifer._utilities import random_unique_filename, intervals_overlap
 from cornifer.errors import RegisterAlreadyOpenError, DataNotFoundError, RegisterError, CompressionError, \
@@ -1852,7 +1852,7 @@ class Test_Register(TestCase):
                 total
             )
 
-            with openblks(blk1, blk2):
+            with stack(blk1, blk2):
 
                 reg.add_disk_blk(blk2)
                 self._assert_num_open_readers(reg._db, 0)
@@ -1884,7 +1884,7 @@ class Test_Register(TestCase):
                 total
             )
 
-            with openblks(blk1, blk2, blk3):
+            with stack(blk1, blk2, blk3):
 
                 reg.add_disk_blk(blk3)
                 self._assert_num_open_readers(reg._db, 0)
@@ -2181,9 +2181,9 @@ class Test_Register(TestCase):
         reg1 = Testy_Register(SAVES_DIR, "sh",  "helllo")
         reg2 = Testy_Register(SAVES_DIR, "sh",  "suuup")
 
-        with openregs(reg1, reg2) as (reg1, reg2):
+        with stack(reg1.open(), reg2.open()) as (reg1, reg2):
 
-            with openblks(blk1, blk2, blk3, blk4, blk5):
+            with stack(blk1, blk2, blk3, blk4, blk5):
 
                 reg1.add_ram_blk(blk1)
                 reg1.add_ram_blk(blk2)
@@ -2241,7 +2241,7 @@ class Test_Register(TestCase):
 
         with reg.open() as reg:
 
-            with openblks(blk1, blk2, blk3, blk4):
+            with stack(blk1, blk2, blk3, blk4):
 
                 reg.add_disk_blk(blk1)
                 reg.add_disk_blk(blk2)
@@ -2357,7 +2357,7 @@ class Test_Register(TestCase):
 
                 self._assert_num_open_readers(reg._db, 0)
 
-            with openblks(blk1, blk2, reg.blk(apri1, 100, 100), reg.blk(apri1, 0, 100)) as (blk1, blk2, blk3, blk4):
+            with stack(blk1, blk2, reg.blk(apri1, 100, 100), reg.blk(apri1, 0, 100)) as (blk1, blk2, blk3, blk4):
 
                 self._assert_num_open_readers(reg._db, 0)
                 self.assertEqual(
@@ -2942,7 +2942,7 @@ class Test_Register(TestCase):
             with self.assertRaisesRegex(RegisterError, "add_subreg"):
                 reg1.add_subreg(reg2)
 
-        with openregs(reg1, reg2, readonlys = (True, True)):
+        with stack(reg1.open(True), reg2.open(True)):
 
             self.assertEqual(
                 db_count_keys(_SUB_KEY_PREFIX, reg1._db),
@@ -2958,7 +2958,7 @@ class Test_Register(TestCase):
             with self.assertRaisesRegex(RegisterError, "add_subreg"):
                 reg1.add_subreg(reg2)
 
-        with openregs(reg1, reg2, readonlys = (True, True)):
+        with stack(reg1.open(True), reg2.open(True)):
 
             self.assertEqual(
                 db_count_keys(_SUB_KEY_PREFIX, reg1._db),
@@ -2976,7 +2976,7 @@ class Test_Register(TestCase):
                 with self.assertRaisesRegex(RegisterError, "read-write"):
                     reg1.add_subreg(reg2)
 
-        with openregs(reg1, reg2, readonlys = (True, True)):
+        with stack(reg1.open(True), reg2.open(True)):
 
             self.assertEqual(
                 db_count_keys(_SUB_KEY_PREFIX, reg1._db),
@@ -2994,7 +2994,7 @@ class Test_Register(TestCase):
                 with self.assertRaisesRegex(RegisterError, "read-write"):
                     reg1.add_subreg(reg2)
 
-        with openregs(reg1, reg2, readonlys = (True, True)):
+        with stack(reg1.open(True), reg2.open(True)):
 
             self.assertEqual(
                 db_count_keys(_SUB_KEY_PREFIX, reg1._db),
@@ -3015,7 +3015,7 @@ class Test_Register(TestCase):
                 except RegisterError:
                     self.fail()
 
-        with openregs(reg1, reg2, readonlys = (True, True)):
+        with stack(reg1.open(True), reg2.open(True)):
 
             self.assertEqual(
                 db_count_keys(_SUB_KEY_PREFIX, reg1._db),
@@ -3036,7 +3036,7 @@ class Test_Register(TestCase):
                 except RegisterError:
                     self.fail()
 
-        with openregs(reg1, reg2, reg3,  readonlys = (True, True, True)):
+        with stack(reg1.open(True), reg2.open(True), reg3.open(True)):
 
             self.assertEqual(
                 db_count_keys(_SUB_KEY_PREFIX, reg1._db),
@@ -3061,7 +3061,7 @@ class Test_Register(TestCase):
                 except RegisterError:
                     self.fail()
 
-        with openregs(reg1, reg2, reg3, readonlys = (True, True, True)):
+        with stack(reg1.open(True), reg2.open(True), reg3.open(True)):
 
             self.assertEqual(
                 db_count_keys(_SUB_KEY_PREFIX, reg1._db),
@@ -3083,7 +3083,7 @@ class Test_Register(TestCase):
                 with self.assertRaisesRegex(RegisterError, "cycle"):
                     reg3.add_subreg(reg1)
 
-        with openregs(reg1, reg2, reg3, readonlys = (True, True, True)):
+        with stack(reg1.open(True), reg2.open(True), reg3.open(True)):
 
             self.assertEqual(
                 db_count_keys(_SUB_KEY_PREFIX, reg1._db),
@@ -3107,7 +3107,7 @@ class Test_Register(TestCase):
         with self.assertRaisesRegex(RegisterNotOpenError, "open.*rmv_subreg"):
             reg1.rmv_subreg(reg2)
 
-        with openregs(reg1, reg2, reg3):
+        with stack(reg1.open(), reg2.open(), reg3.open()):
 
             reg1.add_subreg(reg2)
             self._assert_num_open_readers(reg1._db, 0)
@@ -3170,9 +3170,9 @@ class Test_Register(TestCase):
         reg1 = Testy_Register(SAVES_DIR, "sh",  "helllo")
         reg2 = Testy_Register(SAVES_DIR, "sh",  "suuup")
 
-        with openblks(blk1, blk2, blk3, blk4, blk5):
+        with stack(blk1, blk2, blk3, blk4, blk5):
 
-            with openregs(reg1, reg2) as (reg1, reg2):
+            with stack(reg1.open(), reg2.open()) as (reg1, reg2):
 
                 reg1.add_ram_blk(blk1)
                 reg1.add_ram_blk(blk2)
@@ -3209,7 +3209,7 @@ class Test_Register(TestCase):
                     total
                 )
 
-            with openregs(reg1, reg2, readonlys = (False, True)):
+            with stack(reg1.open(), reg2.open(True)):
 
                 reg1.add_subreg(reg2)
                 self._assert_num_open_readers(reg1._db, 0)
@@ -3425,7 +3425,7 @@ class Test_Register(TestCase):
 
             with reg.open() as reg:
 
-                with openblks(Block([1], apri1), Block([1], apri2)) as (blk1, blk2):
+                with stack(Block([1], apri1), Block([1], apri2)) as (blk1, blk2):
 
                     reg.add_disk_blk(blk1)
                     reg.add_ram_blk(blk2)
@@ -3506,7 +3506,7 @@ class Test_Register(TestCase):
 
         with reg2.open() as reg2:
 
-            with openblks(blk1, blk2, blk3):
+            with stack(blk1, blk2, blk3):
 
                 reg2.add_disk_blk(blk1)
                 reg2.add_disk_blk(blk2)
@@ -3625,7 +3625,7 @@ class Test_Register(TestCase):
                 blk1 = Block(np.arange(15), apri)
                 blk2 = Block(np.arange(15, 30), apri, 15)
 
-                with openblks(blk1, blk2):
+                with stack(blk1, blk2):
 
                     reg.add_disk_blk(blk1)
                     reg.add_disk_blk(blk2)
@@ -4003,7 +4003,7 @@ class Test_Register(TestCase):
             blk1 = Block(np.arange(100), apri)
             blk2 = Block(np.arange(100, 200), apri, 100)
 
-            with openblks(blk1, blk2):
+            with stack(blk1, blk2):
 
                 reg.add_disk_blk(blk1)
                 self._assert_num_open_readers(reg._db, 0)
@@ -4243,7 +4243,7 @@ class Test_Register(TestCase):
             blk7 = Block(np.arange(4100, 4200), apri, 4100)
             blk8 = Block(np.arange(4200, 4201), apri, 4200)
 
-            with openblks(blk6, blk7, blk8):
+            with stack(blk6, blk7, blk8):
 
                 reg.add_disk_blk(blk6)
                 reg.add_disk_blk(blk7)
