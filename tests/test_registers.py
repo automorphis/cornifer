@@ -4696,7 +4696,7 @@ class Test_Register(TestCase):
             f'sh ({reg._local_dir}): \\\\new msg""\\\''
         )
 
-        reg = load_ident(reg._local_dir)
+        reg = load_ident(reg._local_dir.name, reg._local_dir.parent)
 
         with reg.open() as reg:
 

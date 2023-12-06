@@ -17,6 +17,7 @@ import itertools
 import json
 import pickle
 import shutil
+import tempfile
 import warnings
 import zipfile
 from contextlib import contextmanager, ExitStack
@@ -2530,6 +2531,41 @@ class Register(ABC):
                 else:
                     raise
 
+    @contextmanager
+    def readonly_decompress(self, apri, startn = None, length = None, ret_metadata = False, timeout = None):
+
+        with ExitStack() as post_yield:
+
+            with ExitStack() as pre_yield:
+
+                pre_yield.enter_context(self._time("decompress_elapsed"))
+                timeout = check_return_int_None_default(timeout, 'timeout', None)
+
+                if timeout is not None and timeout <= 0:
+                    raise ValueError("`timeout` must be positive.")
+
+                pre_yield.enter_context(timeout_cm(timeout))
+                self._check_open_raise("readonly_decompress")
+                check_type(apri, "apri", ApriInfo)
+                startn = check_return_int_None_default(startn, "startn", None)
+                length = check_return_int_None_default(length, "length", None)
+                check_type(ret_metadata, "ret_metadata", bool)
+
+                if startn is not None and startn < 0:
+                    raise ValueError("`startn` must be non-negative.")
+
+                if length is not None and length < 0:
+                    raise ValueError("`length` must be non-negative.")
+
+                with self._txn("reader") as ro_txn:
+                    blk_filename, compressed_filename, startn = self._readonly_decompress_pre(
+                        apri, None, True, startn, length, ro_txn
+                    )
+
+                seg = type(self)._readonly_decompress_disk2(blk_filename, compressed_filename)
+
+            yield post_yield.enter_context(Block(seg, apri, startn))
+
     def is_compressed(self, apri, startn = None, length = None):
 
         self._check_open_raise("is_compressed")
@@ -3013,6 +3049,47 @@ class Register(ABC):
 
         else:
             return e
+
+    def _readonly_decompress_pre(self, apri, apri_json, reencode, startn, length, r_txn):
+
+        errmsg = self._blk_not_found_err_msg(False, True, False, apri, startn, length, None)
+
+        if reencode:
+            apri_json = self._relational_encode_info(apri, r_txn) # raises `DataNotFoundError` (see pattern VI.1)
+
+        startn_, length_ = self._resolve_startn_length_disk(apri, apri_json, False, startn, length, r_txn)
+
+        if startn_ is None:
+            raise DataNotFoundError(errmsg)
+
+        blk_key, compressed_key = self._get_disk_blk_keys(apri, apri_json, False, startn_, length_, r_txn)
+
+        if not Register._disk_blk_keys_exist(blk_key, compressed_key, r_txn):
+            raise DataNotFoundError(errmsg)
+
+        compressed_val = r_txn.get(compressed_key)
+
+        if compressed_val == _IS_NOT_COMPRESSED_VAL:
+            raise DecompressionError(
+                "The disk `Block` with the following data is not compressed: " +
+                f"{str(apri)}, startn = {startn_}, length = {length_}"
+            )
+
+        blk_filename = self._local_dir / r_txn.get(blk_key).decode("ASCII")
+        compressed_filename = self._local_dir / compressed_val.decode("ASCII")
+        return blk_filename, compressed_filename, startn_
+
+    @classmethod
+    def _readonly_decompress_disk2(cls, blk_filename, compressed_filename):
+
+        with tempfile.TemporaryDirectory() as temp_file:
+
+            temp_file = Path(temp_file)
+
+            with zipfile.ZipFile(compressed_filename, "r") as compressed_fh:
+                compressed_fh.extract(blk_filename.name, temp_file)
+
+            return cls.load_disk_data(temp_file / blk_filename.name)
 
     def _compress_pre(self, apri, apri_json, reencode, startn, length, r_txn):
 

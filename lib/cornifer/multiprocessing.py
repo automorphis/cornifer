@@ -25,133 +25,135 @@ def parallelize(
     sec_per_block_upper_bound = 60
 ):
 
-    start = time.time()
-    num_procs = check_return_int(num_procs, "num_procs")
+    with make_sigterm_raise_KeyboardInterrupt():
 
-    if not callable(target):
-        return TypeError("`target` must be a function.")
+        start = time.time()
+        num_procs = check_return_int(num_procs, "num_procs")
 
-    check_type(args, "args", tuple)
-    timeout = check_return_int(timeout, "timeout")
-    check_return_Path_None_default(tmp_dir, "tmp_dir", None)
-    update_period = check_return_int_None_default(update_period, "update_period", None)
-    update_timeout = check_return_int(update_timeout, "update_timeout")
+        if not callable(target):
+            return TypeError("`target` must be a function.")
 
-    if num_procs <= 0:
-        raise ValueError("`num_procs` must be positive.")
+        check_type(args, "args", tuple)
+        timeout = check_return_int(timeout, "timeout")
+        check_return_Path_None_default(tmp_dir, "tmp_dir", None)
+        update_period = check_return_int_None_default(update_period, "update_period", None)
+        update_timeout = check_return_int(update_timeout, "update_timeout")
 
-    num_params = len(inspect.signature(target).parameters)
+        if num_procs <= 0:
+            raise ValueError("`num_procs` must be positive.")
 
-    if num_params < 2:
-        raise ValueError(
-            "`target` function must have at least two parameters. The first must be `num_procs` (the number of "
-            "processes, a positive int) and the second must be `proc_index` (the process index, and int between 0 and "
-            "`num_procs-1`, inclusive)."
+        num_params = len(inspect.signature(target).parameters)
+
+        if num_params < 2:
+            raise ValueError(
+                "`target` function must have at least two parameters. The first must be `num_procs` (the number of "
+                "processes, a positive int) and the second must be `proc_index` (the process index, and int between 0 and "
+                "`num_procs-1`, inclusive)."
+            )
+
+        has_variable_num_args = any(
+            param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            for param in inspect.signature(target).parameters.values()
         )
 
-    has_variable_num_args = any(
-        param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-        for param in inspect.signature(target).parameters.values()
-    )
+        if not has_variable_num_args and 2 + len(args) > num_params:
+            raise ValueError(
+                f"`target` function takes at most {num_params} parameters, but `args` parameter has length {len(args)} "
+                f"(plus 2 for `num_procs` and `proc_index`)."
+            )
 
-    if not has_variable_num_args and 2 + len(args) > num_params:
-        raise ValueError(
-            f"`target` function takes at most {num_params} parameters, but `args` parameter has length {len(args)} "
-            f"(plus 2 for `num_procs` and `proc_index`)."
-        )
-
-    if timeout <= 0:
-        raise ValueError("`timeout` must be positive.")
-
-    if tmp_dir is not None:
-        tmp_dir = resolve_path(tmp_dir)
-
-    regs = tuple(arg for arg in args if isinstance(arg, Register))
-
-    log(f'{regs}')
-
-    for reg in regs:
-
-        if reg._opened:
-            raise RegisterOpenError(f"Register `{reg.shorthand()}` cannot be open during a call to `parallelize`.")
-
-    if tmp_dir is None and update_period is None:
-        warnings.warn(
-            'You passed `update_period` to `parallelize, but did not pass `tmp_dir`.'
-        )
-
-    if update_period is not None and update_period <= 0:
-        raise ValueError("`update_period` must be positive.")
-
-    if update_timeout <= 0:
-        raise ValueError("`update_timeout` must be positive.")
-
-    async def update_all_perm_dbs():
-
-        for reg_ in regs:
-            await reg_._update_perm_db(update_timeout)
-
-    mp_ctx = multiprocessing.get_context("spawn")
-    num_alive_procs = mp_ctx.Value('i', 0)
-    procs = []
-
-    for reg in regs:
+        if timeout <= 0:
+            raise ValueError("`timeout` must be positive.")
 
         if tmp_dir is not None:
+            tmp_dir = resolve_path(tmp_dir)
 
-            log(f'creating update data {reg.shorthand()}')
-            reg._create_update_perm_db_shared_data(mp_ctx, update_timeout)
+        regs = tuple(arg for arg in args if isinstance(arg, Register))
 
-        log(f'creating hard reset data {reg.shorthand()}')
-        reg._create_hard_reset_shared_data(mp_ctx, num_alive_procs, 2 * sec_per_block_upper_bound)
+        log(f'{regs}')
 
-    with ExitStack() as stack:
+        for reg in regs:
 
-        if tmp_dir is not None:
+            if reg._opened:
+                raise RegisterOpenError(f"Register `{reg.shorthand()}` cannot be open during a call to `parallelize`.")
 
-            for reg in regs:
+        if tmp_dir is None and update_period is None:
+            warnings.warn(
+                'You passed `update_period` to `parallelize, but did not pass `tmp_dir`.'
+            )
 
-                log(f'entering tmp_db {reg.shorthand()}')
-                stack.enter_context(reg.tmp_db(tmp_dir, update_timeout))
+        if update_period is not None and update_period <= 0:
+            raise ValueError("`update_period` must be positive.")
 
-        for proc_index in range(num_procs):
-            procs.append(mp_ctx.Process(
-                target = _wrap_target,
-                args = (target, num_procs, proc_index, args, num_alive_procs, [reg._hard_reset_condition for reg in regs])
-            ))
+        if update_timeout <= 0:
+            raise ValueError("`update_timeout` must be positive.")
 
-        log(f'starting procs')
+        async def update_all_perm_dbs():
 
-        for proc in procs:
-            proc.start()
+            for reg_ in regs:
+                await reg_._update_perm_db(update_timeout)
 
-        last_update_end = time.time()
+        mp_ctx = multiprocessing.get_context("spawn")
+        num_alive_procs = mp_ctx.Value('i', 0)
+        procs = []
 
-        while True: # timeout loop
+        for reg in regs:
 
-            log(f'timeout loop')
+            if tmp_dir is not None:
 
-            if time.time() - start >= timeout:
+                log(f'creating update data {reg.shorthand()}')
+                reg._create_update_perm_db_shared_data(mp_ctx, update_timeout)
 
-                log(f'terminating procs')
+            log(f'creating hard reset data {reg.shorthand()}')
+            reg._create_hard_reset_shared_data(mp_ctx, num_alive_procs, 2 * sec_per_block_upper_bound)
 
-                for p in procs:
-                    p.terminate()
+        with ExitStack() as stack:
 
-                log(f'procs terminated')
-                break # timeout loop
+            if tmp_dir is not None:
 
-            elif all(not proc.is_alive() for proc in procs):
-                break # timeout loop
+                for reg in regs:
 
-            elif update_period is not None and tmp_dir is not None and time.time() - last_update_end >= update_period:
+                    log(f'entering tmp_db {reg.shorthand()}')
+                    stack.enter_context(reg.tmp_db(tmp_dir, update_timeout))
 
-                log(f'update block in timeout loop')
-                asyncio.run(update_all_perm_dbs())
-                last_update_end = time.time()
+            for proc_index in range(num_procs):
+                procs.append(mp_ctx.Process(
+                    target = _wrap_target,
+                    args = (target, num_procs, proc_index, args, num_alive_procs, [reg._hard_reset_condition for reg in regs])
+                ))
 
-            log(str([(proc.pid, proc.is_alive()) for proc in procs]))
-            time.sleep(1)
+            log(f'starting procs')
 
-        for proc in procs:
-            proc.join()
+            for proc in procs:
+                proc.start()
+
+            last_update_end = time.time()
+
+            while True: # timeout loop
+
+                log(f'timeout loop')
+
+                if time.time() - start >= timeout:
+
+                    log(f'terminating procs')
+
+                    for p in procs:
+                        p.terminate()
+
+                    log(f'procs terminated')
+                    break # timeout loop
+
+                elif all(not proc.is_alive() for proc in procs):
+                    break # timeout loop
+
+                elif update_period is not None and tmp_dir is not None and time.time() - last_update_end >= update_period:
+
+                    log(f'update block in timeout loop')
+                    asyncio.run(update_all_perm_dbs())
+                    last_update_end = time.time()
+
+                log(str([(proc.pid, proc.is_alive()) for proc in procs]))
+                time.sleep(1)
+
+            for proc in procs:
+                proc.join()
