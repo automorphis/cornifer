@@ -4881,7 +4881,7 @@ class NumpyRegister(Register, file_suffix = ".npy"):
             raise DataNotFoundError(self._blk_not_found_err_msg(not diskonly, True, False, apri, None, None, n))
 
     @contextmanager
-    def blk(self, apri, startn = None, length = None, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
+    def blk(self, apri, startn = None, length = None, decompress = False, diskonly = False, recursively = False, ret_metadata = False, **kwargs):
         """
         :param apri: (type `ApriInfo`)
         :param startn: (type `int`)
@@ -4894,7 +4894,7 @@ class NumpyRegister(Register, file_suffix = ".npy"):
         :return: (type `File_Metadata`) If `ret_metadata is True`.
         """
 
-        with super().blk(apri, startn, length, diskonly, recursively, ret_metadata, **kwargs) as ret:
+        with super().blk(apri, startn, length, decompress, diskonly, recursively, ret_metadata, **kwargs) as ret:
 
             if ret_metadata:
                 blk = ret[0]
