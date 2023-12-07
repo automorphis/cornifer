@@ -1071,7 +1071,9 @@ class Register(ABC):
 
         ret._readonly = readonly
 
-        if not ret._write_db_filepath.exists() or not ret._write_db_filepath.is_dir():
+        if ret._write_db_filepath != ret._perm_db_filepath and (
+            not ret._write_db_filepath.exists() or not ret._write_db_filepath.is_dir()
+        ):
 
             warnings.warn(
                 f'Could not locate `Register` write database `{ret._write_db_filepath}`. This likely happened because '
