@@ -1083,7 +1083,11 @@ class Register(ABC):
             write_txt_file(str(ret._perm_db_filepath), ret._local_dir / WRITE_DB_FILEPATH, True)
             ret._write_db_filepath = ret._perm_db_filepath
 
-        ret._db = open_lmdb(ret._write_db_filepath, ret._db_map_size, readonly)
+        try:
+            ret._db = open_lmdb(ret._write_db_filepath, ret._db_map_size, readonly)
+
+        except lmdb.Error as e:
+            raise RegisterError(f'Failed to open `Register`\n{self}') from e
 
         with ret._txn("reader") as ro_txn:
             ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
