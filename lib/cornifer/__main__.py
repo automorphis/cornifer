@@ -35,6 +35,9 @@ def _add_target_dir_argument(parser):
 def _add_verbose_argument(parser):
     parser.add_argument('-v', '--verbose', help = 'Display additional info.', action = 'store_true')
 
+def _add_force_argument(parser):
+    parser.add_argument('-f', '--force', help = 'Ignore errors.', action = 'store_true')
+
 def _separate(line):
     return (
         datetime.datetime.strptime(line[:_line_datetime_len], _line_datetime_format),
@@ -107,7 +110,7 @@ parser_delete = subparsers.add_parser('delete', help = 'Delete registers.')
 _add_save_dir_argument(parser_delete)
 _add_shorthand_ident_arguments(parser_delete)
 _add_verbose_argument(parser_delete)
-parser_delete.add_argument('-f', '--force', help = 'Ignore errors.', action = 'store_true')
+
 
 #
 # parser_move = subparsers.add_parser('move', help = 'Move registers to another directory.')

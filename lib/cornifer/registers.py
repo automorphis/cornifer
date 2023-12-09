@@ -4497,7 +4497,7 @@ class Register(ABC):
                 with zipfile.ZipFile(compressed_filename, "r") as compressed_fh:
                     compressed_fh.extract(blk_filename.name, temp_file)
 
-                blk = Block(apri, cls.load_disk_data(temp_file / blk_filename.name), startn)
+                blk = Block(cls.load_disk_data(temp_file / blk_filename.name), apri, startn)
 
         else:
 
