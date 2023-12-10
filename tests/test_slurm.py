@@ -30,7 +30,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         test_dir = type(self).test_dir
         self.write_batch(
             test_dir / sbatch_file,
-            f'sage -python {slurm_test_main_filename} ',
+            f'srun sage -python {slurm_test_main_filename}',
             'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, [('--signal', 'TERM@1')], True
         )
         self.submit_batch()
