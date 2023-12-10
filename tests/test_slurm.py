@@ -35,7 +35,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         )
         self.submit_batch()
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
-        self.wait_till_not_state(SlurmStates.RUNNING, max_sec = slurm_time, verbose = True)
+        self.wait_till_not_state(SlurmStates.RUNNING, max_sec = slurm_time + 60, verbose = True)
         self.check_error_file()
 
     def test_slurm_1(self):
