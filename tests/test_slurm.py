@@ -31,7 +31,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         self.write_batch(
             test_dir / sbatch_file,
             f'sage -python {slurm_test_main_filename} ',
-            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True, [('--signal', 'B:TERM@5')]
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, [('--signal', 'B:TERM@5')], True
         )
         self.submit_batch()
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
