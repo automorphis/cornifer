@@ -26,12 +26,12 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
 
         slurm_test_main_filename = slurm_tests_filename / 'test_make_sigterm_raise_ReceivedSigterm.py'
         num_processes = 1
-        slurm_time = 70
+        slurm_time = 180
         test_dir = type(self).test_dir
         self.write_batch(
             test_dir / sbatch_file,
             f'sage -python {slurm_test_main_filename} ',
-            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, [('--signal', 'B:TERM@5')], True
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, [('--signal', 'B:TERM@01:00')], True
         )
         self.submit_batch()
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
