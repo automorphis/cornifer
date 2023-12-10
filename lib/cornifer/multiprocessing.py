@@ -5,7 +5,7 @@ import time
 import warnings
 from contextlib import ExitStack
 
-from ._utilities.multiprocessing import make_sigterm_raise_KeyboardInterrupt, process_wrapper
+from ._utilities.multiprocessing import make_sigterm_raise_ReceivedSigterm, process_wrapper, ReceivedSigterm
 from ._utilities import check_return_int, check_type, check_return_Path_None_default, check_return_int_None_default, \
     resolve_path
 from .debug import log
@@ -14,7 +14,7 @@ from .errors import RegisterOpenError
 
 def _wrap_target(target, num_procs, proc_index, args, num_alive_procs, hard_reset_conditions):
 
-    with make_sigterm_raise_KeyboardInterrupt():
+    with make_sigterm_raise_ReceivedSigterm():
 
         with process_wrapper(num_alive_procs, [], hard_reset_conditions):
             target(num_procs, proc_index, *args)
@@ -25,7 +25,7 @@ def parallelize(
     sec_per_block_upper_bound = 60
 ):
 
-    with make_sigterm_raise_KeyboardInterrupt():
+    with make_sigterm_raise_ReceivedSigterm():
 
         start = time.time()
         num_procs = check_return_int(num_procs, "num_procs")
@@ -100,11 +100,8 @@ def parallelize(
         for reg in regs:
 
             if tmp_dir is not None:
-
-                log(f'creating update data {reg.shorthand()}')
                 reg._create_update_perm_db_shared_data(mp_ctx, update_timeout)
 
-            log(f'creating hard reset data {reg.shorthand()}')
             reg._create_hard_reset_shared_data(mp_ctx, num_alive_procs, 2 * sec_per_block_upper_bound)
 
         with ExitStack() as stack:
@@ -112,8 +109,6 @@ def parallelize(
             if tmp_dir is not None:
 
                 for reg in regs:
-
-                    log(f'entering tmp_db {reg.shorthand()}')
                     stack.enter_context(reg.tmp_db(tmp_dir, update_timeout))
 
             for proc_index in range(num_procs):
@@ -122,38 +117,46 @@ def parallelize(
                     args = (target, num_procs, proc_index, args, num_alive_procs, [reg._hard_reset_condition for reg in regs])
                 ))
 
-            log(f'starting procs')
-
             for proc in procs:
                 proc.start()
 
-            last_update_end = time.time()
+            try:
 
-            while True: # timeout loop
+                last_update_end = time.time()
 
-                log(f'timeout loop')
+                while True: # timeout loop
 
-                if time.time() - start >= timeout:
+                    if time.time() - start >= timeout:
 
-                    log(f'terminating procs')
+                        log(f'Terminating procs due to timeout.')
 
-                    for p in procs:
-                        p.terminate()
+                        for p in procs:
+                            p.terminate()
 
-                    log(f'procs terminated')
-                    break # timeout loop
+                        log(f'Procs terminated.')
+                        break # timeout loop
 
-                elif all(not proc.is_alive() for proc in procs):
-                    break # timeout loop
+                    elif all(not proc.is_alive() for proc in procs):
+                        break # timeout loop
 
-                elif update_period is not None and tmp_dir is not None and time.time() - last_update_end >= update_period:
+                    elif update_period is not None and tmp_dir is not None and time.time() - last_update_end >= update_period:
 
-                    log(f'update block in timeout loop')
-                    asyncio.run(update_all_perm_dbs())
-                    last_update_end = time.time()
+                        asyncio.run(update_all_perm_dbs())
+                        last_update_end = time.time()
 
-                log(str([(proc.pid, proc.is_alive()) for proc in procs]))
-                time.sleep(1)
+                    log(str([(proc.pid, proc.is_alive()) for proc in procs]))
+                    time.sleep(1)
+
+            except ReceivedSigterm:
+
+                log(f'Terminating procs due to sigterm.')
+
+                for p in procs:
+                    p.terminate()
+
+                log(f'Procs terminated.')
+
+                raise
 
             for proc in procs:
                 proc.join()

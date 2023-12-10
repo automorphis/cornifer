@@ -6,6 +6,7 @@ from contextlib import contextmanager
 
 from ..debug import log
 
+class ReceivedSigterm(RuntimeError):pass
 
 def start_with_timeout(procs, timeout, query_wait = 1.0):
 
@@ -30,11 +31,11 @@ def start_with_timeout(procs, timeout, query_wait = 1.0):
     return False
 
 @contextmanager
-def make_sigterm_raise_KeyboardInterrupt():
+def make_sigterm_raise_ReceivedSigterm():
     import signal
 
     def handler(*_):
-        raise KeyboardInterrupt
+        raise ReceivedSigterm
 
     signal.signal(signal.SIGTERM, handler)
 

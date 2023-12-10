@@ -19,7 +19,7 @@ from pathlib import Path
 
 from ._utilities import check_type, check_return_int, check_type_None_default, check_return_Path_None_default, \
     check_return_int_None_default, resolve_path, is_deletable
-from ._utilities.multiprocessing import start_with_timeout, process_wrapper, make_sigterm_raise_KeyboardInterrupt
+from ._utilities.multiprocessing import start_with_timeout, process_wrapper, make_sigterm_raise_ReceivedSigterm
 from .info import ApriInfo, AposInfo
 from .blocks import Block
 from .multiprocessing import parallelize

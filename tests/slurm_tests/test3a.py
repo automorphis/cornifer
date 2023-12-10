@@ -6,12 +6,12 @@ import sys
 from pathlib import Path
 
 from cornifer import ApriInfo, load, Block
-from cornifer._utilities.multiprocessing import start_with_timeout, make_sigterm_raise_KeyboardInterrupt
+from cornifer._utilities.multiprocessing import start_with_timeout, make_sigterm_raise_ReceivedSigterm
 
 
 def f(test_home_dir, i, total_blks, num_processes, blk_size, total_indices, apri):
 
-    with make_sigterm_raise_KeyboardInterrupt():
+    with make_sigterm_raise_ReceivedSigterm():
 
         reg = load("reg", test_home_dir)
 
