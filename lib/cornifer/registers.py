@@ -39,7 +39,6 @@ from ._utilities import random_unique_filename, resolve_path, BYTES_PER_MB, is_d
     check_return_int_None_default, check_return_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
     write_txt_file, read_txt_file, intervals_subset, combine_intervals, sort_intervals, is_int, hash_file, \
     timeout_cm, BreakableExitStack, BreakExitStack
-from .debug import log
 from ._utilities.lmdb import r_txn_has_key, open_lmdb, ReversibleWriter, num_open_readers_accurate, \
     r_txn_prefix_iter, r_txn_count_keys, create_lmdb
 from .regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
@@ -461,9 +460,6 @@ class Register(ABC):
                 )
 
             con = Register._constructors.get(cls_name, None)
-            log(str(con))
-            log(cls_name)
-            log(str(Register._constructors))
 
             if con is None:
 
@@ -479,7 +475,6 @@ class Register(ABC):
                         f"importing it."
                     )
 
-            log(str(Register._constructors))
             shorthand = read_txt_file(local_dir / SHORTHAND_FILEPATH)
             msg = read_txt_file(local_dir / MSG_FILEPATH)
             map_size = int(read_txt_file(local_dir / MAP_SIZE_FILEPATH))

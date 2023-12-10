@@ -4,8 +4,6 @@ from datetime import timedelta
 import time
 from contextlib import contextmanager
 
-from ..debug import log
-
 class ReceivedSigterm(RuntimeError):pass
 
 def start_with_timeout(procs, timeout, query_wait = 1.0):
@@ -32,6 +30,7 @@ def start_with_timeout(procs, timeout, query_wait = 1.0):
 
 @contextmanager
 def make_sigterm_raise_ReceivedSigterm():
+
     import signal
 
     def handler(*_):
@@ -95,12 +94,8 @@ def wait_for_value(value, expected, timeout, query_period):
 @contextmanager
 def process_wrapper(num_alive_procs, start_conditions, end_conditions):
 
-    log(f'process_wrapper enter')
-
     with num_alive_procs.get_lock():
         num_alive_procs.value += 1
-
-    log(f'num_alive_procs = {num_alive_procs.value}')
 
     for cond in start_conditions:
 
@@ -112,12 +107,8 @@ def process_wrapper(num_alive_procs, start_conditions, end_conditions):
 
     finally:
 
-        log(f'process_wrapper finally')
-
         with num_alive_procs.get_lock():
             num_alive_procs.value -= 1
-
-        log(f'num_alive_procs = {num_alive_procs.value}')
 
         for cond in end_conditions:
 

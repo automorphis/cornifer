@@ -22,6 +22,22 @@ slurm_tests_filename = Path(__file__).parent / "slurm_tests"
 
 class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_testcases'):
 
+    def test_make_sigterm_raise_ReceivedSigterm(self):
+
+        slurm_test_main_filename = slurm_tests_filename / 'test_make_sigterm_raise_ReceivedSigterm.py'
+        num_processes = 1
+        slurm_time = 70
+        test_dir = type(self).test_dir
+        self.write_batch(
+            test_dir / sbatch_file,
+            f'sage -python {slurm_test_main_filename} ',
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, [('--signal', 'B:TERM@5')]
+        )
+        self.submit_batch()
+        self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
+        self.wait_till_not_state(SlurmStates.RUNNING, max_sec = slurm_time, verbose = True)
+        self.check_error_file()
+
     def test_slurm_1(self):
 
         test_dir = type(self).test_dir
@@ -34,7 +50,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         self.write_batch(
             test_dir / sbatch_file,
             f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {db_filename} {num_entries}',
-            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, verbose = True
         )
         self.submit_batch()
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
@@ -82,7 +98,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
             self.write_batch(
                 test_dir / sbatch_file,
                 f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {db_filename} {num_entries}',
-                'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+                'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, verbose = True
             )
             self.submit_batch()
             self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
@@ -150,7 +166,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         self.write_batch(
             test_dir / sbatch_file,
             f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {blk_size} {total_indices} {slurm_time - 10}',
-            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, verbose = True
         )
         self.submit_batch()
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
@@ -185,7 +201,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         self.write_batch(
             test_dir / sbatch_file,
             f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {num_apri} {slurm_time - 10}',
-            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, verbose = True
         )
         self.submit_batch()
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
@@ -237,7 +253,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         self.write_batch(
             test_dir / sbatch_file,
             f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {num_apri} {slurm_time - 10}',
-            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, verbose = True
         )
         self.submit_batch()
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
@@ -315,7 +331,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
         self.write_batch(
             test_dir / sbatch_file,
             f'sage -python {slurm_test_main_filename} {num_processes} {test_dir} {num_apri} {slurm_time - 10}',
-            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, True
+            'CorniferSlurmTests', 1, num_processes, slurm_time, test_dir / error_file, None, verbose = True
         )
         self.submit_batch()
         self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
@@ -383,7 +399,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
             self.write_batch(
                 test_dir / sbatch_file,
                 f'sage -python {slurm_test_main_filename} {num_procs} {test_dir} {num_apri} {num_blks} {blk_len}',
-                'CorniferSlurmTests', 1, num_procs, timeout, test_dir / error_file, None, True
+                'CorniferSlurmTests', 1, num_procs, timeout, test_dir / error_file, None, verbose = True
             )
             self.submit_batch()
             self.wait_till_not_state(SlurmStates.PENDING, verbose = True)
@@ -429,7 +445,7 @@ class TestCorniferSlurm(TestSlurm, test_dir = Path.home() / 'cornifer_slurm_test
                     self.write_batch(
                         test_dir / sbatch_file,
                         f'sage -python {slurm_test_main_filename} {num_procs} {test_dir} {num_apri} {num_blks} {blk_len} {update_period} {update_timeout} {timeout} {max_readers}',
-                        'CorniferSlurmTests', 1, num_procs, timeout, test_dir / error_file, None, True
+                        'CorniferSlurmTests', 1, num_procs, timeout, test_dir / error_file, None, verbose = True
                     )
                     self.submit_batch(verbose = True)
                     self.wait_till_not_state(SlurmStates.PENDING, verbose = True)

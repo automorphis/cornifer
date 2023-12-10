@@ -144,7 +144,6 @@ def parallelize(
                         asyncio.run(update_all_perm_dbs())
                         last_update_end = time.time()
 
-                    log(str([(proc.pid, proc.is_alive()) for proc in procs]))
                     time.sleep(1)
 
             except ReceivedSigterm:
