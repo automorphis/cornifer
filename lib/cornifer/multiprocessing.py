@@ -157,5 +157,7 @@ def parallelize(
 
                 raise
 
-            for proc in procs:
-                proc.join()
+            else:
+
+                for proc in procs:
+                    proc.join()
