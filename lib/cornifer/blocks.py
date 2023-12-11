@@ -139,7 +139,7 @@ class Block:
             if not self._check_and_warn_custom_get_ndarray("__getitem__"):
                 return self._seg_ndarray[item, ...]
 
-            elif issubclass(self.segment_type, np.ndarray) and self._seg.ndim >= 2:
+            elif issubclass(self.segment_type, np.ndarray):
                 return self._seg[item, ...]
 
             else:
@@ -158,7 +158,7 @@ class Block:
             if not self._check_and_warn_custom_get_ndarray("__getitem__"):
                 return self._seg_ndarray[item]
 
-            elif issubclass(self.segment_type, np.ndarray):
+            elif issubclass(self.segment_type, np.ndarray) and self._seg.ndim >= 2:
                 return self._seg[item, ...]
 
             else:

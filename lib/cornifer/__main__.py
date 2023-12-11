@@ -12,6 +12,15 @@ from .errors import CannotLoadError
 from .debug import _file_datetime_format, _line_datetime_format, _line_datetime_len
 from .regloader import _load, _load_ident
 
+def resolved_Path(str_):
+
+    path = Path(str_)
+
+    if path.is_absolute():
+        return path
+
+    else:
+        return Path.cwd() / str_
 
 def _add_shorthand_ident_arguments(parser):
 
@@ -26,11 +35,11 @@ def _add_shorthand_ident_arguments(parser):
 def _add_save_dir_argument(parser):
     parser.add_argument(
         '-d', '--dir', help = 'Register(s) parent directory (default: current directory)', default = Path.cwd(),
-        type = Path
+        type = resolved_Path
     )
 
 def _add_target_dir_argument(parser):
-    parser.add_argument('-t', '--target', help = 'Target directory.', nargs = 1, required = True, type = Path)
+    parser.add_argument('-t', '--target', help = 'Target directory.', nargs = 1, required = True, type = resolved_Path)
 
 def _add_verbose_argument(parser):
     parser.add_argument('-v', '--verbose', help = 'Display additional info.', action = 'store_true')
@@ -87,7 +96,6 @@ def _load_regs(shorthands, idents, dir_):
 
     return list(collections.OrderedDict([(reg, None) for reg in regs]).keys())
 
-
 parser_command = argparse.ArgumentParser(
     prog = 'Cornifer',
     description = 'Command line utility for Cornifer.'
@@ -111,6 +119,24 @@ _add_save_dir_argument(parser_delete)
 _add_shorthand_ident_arguments(parser_delete)
 _add_verbose_argument(parser_delete)
 
+parser_slurmify = subparsers.add_parser(
+    'slurmify', help = 'Submit a Python script to Slurm for execution. Any options not listed below will be forwarded '
+                       'to `sbatch`.'
+)
+parser_slurmify.add_argument('main', help = 'Python script to run', type = resolved_Path)
+parser_slurmify.add_argument('--ncpu', help = 'Number of CPUs (default: 1)', default = 1, type = int)
+parser_slurmify.add_argument(
+    '--time', help = 'Maximum allowed runtime (formatted D-HH:MM:SS) (default: 1:00:00)', default = '1:00:00'
+)
+parser_slurmify.add_argument('--email', help = 'Email this address when script starts/finishes (default: no emails)')
+parser_slurmify.add_argument('--name', help = 'Slurm job name (default: CorniferScript)')
+parser_slurmify.add_argument(
+    '--error', help = 'File to print error messages to (default: `slurm-{job_id}.out`)', type = resolved_Path
+)
+parser_slurmify.add_argument(
+    '--output', help = 'File to print output to (default: `slurm-{job_id}.out`)', type = resolved_Path
+)
+parser_slurmify.add_argument('--guess', help = 'Print Slurm\'s estimate for job queue time', action = 'store_true')
 
 #
 # parser_move = subparsers.add_parser('move', help = 'Move registers to another directory.')
@@ -123,12 +149,13 @@ _add_verbose_argument(parser_delete)
 # add_shorthand_ident_arguments(parser_copy)
 # add_target_dir_argument(parser_copy)
 
-args = parser_command.parse_args()
+args, unrecognized = parser_command.parse_known_args()
 
 
 # parser_search = subparsers.add_parser('search', help = 'hi')
 # parser_merge = subparsers.add_parser('merge', help = 'hi')
 # parser_help = subparsers.add_parser('help', help = 'hi')
+
 
 if args.command == 'summary':
 
@@ -325,6 +352,12 @@ elif args.command == 'delete':
 
     else:
         print('No confirmation given. Nothing deleted.')
+
+elif args.command == 'slurmify':
+
+    sbatch_args = [
+        '--job-name', args.name, '--time', args.time, '--nodes', '1', '--ntasks', '1', '--cpus-per-task', str(args.ncpu),
+    ]
 
 else:
     raise NotImplementedError
