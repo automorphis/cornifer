@@ -57,6 +57,7 @@ def _separate(line):
 def _load_regs(shorthands, idents, dir_):
 
     do_all = len(shorthands) == 0 and len(idents) == 0
+    regs = []
 
     if do_all:
 
