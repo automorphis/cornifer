@@ -373,13 +373,30 @@ class _Info(ABC):
         return str(self)
 
     def __copy__(self):
+
         info = type(self)(placeholder = "placeholder")
-        del info.placeholder
+        del info.__dict__['placeholder']
         info.__dict__.update(self.__dict__)
         return info
 
     def __deepcopy__(self, memo):
         return self.__copy__()
+
+    def __getattr__(self, item):
+        raise AttributeError(f'{item} is not an attribute of {self}') from None
+
+    def __setattr__(self, key, value):
+
+        if key in type(self)._reserved_kws:
+            self.__dict__[key] = value
+
+        else:
+            raise AttributeError(f'Attributes of ApriInfo are readonly (cannot be changed).')
+
+    def __delattr__(self, item):
+
+        if item not in type(self)._reserved_kws:
+            raise AttributeError(f'Attributes of ApriInfo are readonly (cannot be deleted).')
 
 class ApriInfo(_Info, reserved_kws = ["_hash"]):
 

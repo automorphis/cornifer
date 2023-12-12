@@ -5,6 +5,7 @@ import datetime
 import re
 import shutil
 import statistics
+import subprocess
 import sys
 from pathlib import Path
 
@@ -125,18 +126,9 @@ parser_slurmify = subparsers.add_parser(
 )
 parser_slurmify.add_argument('main', help = 'Python script to run', type = resolved_Path)
 parser_slurmify.add_argument('--ncpu', help = 'Number of CPUs (default: 1)', default = 1, type = int)
-parser_slurmify.add_argument(
-    '--time', help = 'Maximum allowed runtime (formatted D-HH:MM:SS) (default: 1:00:00)', default = '1:00:00'
-)
 parser_slurmify.add_argument('--email', help = 'Email this address when script starts/finishes (default: no emails)')
-parser_slurmify.add_argument('--name', help = 'Slurm job name (default: CorniferScript)')
-parser_slurmify.add_argument(
-    '--error', help = 'File to print error messages to (default: `slurm-{job_id}.out`)', type = resolved_Path
-)
-parser_slurmify.add_argument(
-    '--output', help = 'File to print output to (default: `slurm-{job_id}.out`)', type = resolved_Path
-)
-parser_slurmify.add_argument('--guess', help = 'Print Slurm\'s estimate for job queue time', action = 'store_true')
+parser_slurmify.add_argument('--job-name', help = 'Slurm job name (default: CorniferScript)', dest = 'job_name')
+_add_verbose_argument(parser_slurmify)
 
 #
 # parser_move = subparsers.add_parser('move', help = 'Move registers to another directory.')
@@ -355,9 +347,44 @@ elif args.command == 'delete':
 
 elif args.command == 'slurmify':
 
+    if '--nodes' in unrecognized or '-N' in unrecognized:
+        raise ValueError(
+            '`slurmify` does not accept either of the options -N or --nodes (the hardcoded value is 1). You must use '
+            '`sbatch` manually if you wish to change the number of nodes.'
+        )
+
+    if '--ntasks' in unrecognized or '-n' in unrecognized:
+        raise ValueError(
+            '`slurmify` does not accept either of the options -n or --ntasks (the hardcoded value is 1). You must use '
+            '`sbatch` manually if you wish to change the number of tasks.'
+        )
+
     sbatch_args = [
-        '--job-name', args.name, '--time', args.time, '--nodes', '1', '--ntasks', '1', '--cpus-per-task', str(args.ncpu),
+        '--job-name', args.job_name,
+        '--nodes', '1',
+        '--ntasks', '1',
+        '--cpus-per-task', str(args.ncpu)
     ]
+
+    if args.email is not None:
+        sbatch_args += [
+            '--mail-user', args.email,
+            '--mail-type', 'ALL'
+        ]
+
+    sbatch_args.extend(unrecognized)
+    sbatch_args = ['sbatch'] + sbatch_args + [args.main]
+    sbatch_command = " ".join(sbatch_args)
+
+    if args.verbose:
+        print(f'Running `{sbatch_command}`')
+
+    sbatch_capture = subprocess.run(sbatch_args, text = True, capture_output = True)
+
+    if sbatch_capture.stderr != '':
+        raise RuntimeError(f'`{sbatch_command}` errored out: {sbatch_capture.stderr}')
+
+    print(sbatch_capture.stdout)
 
 else:
     raise NotImplementedError

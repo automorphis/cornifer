@@ -4,7 +4,7 @@ from unittest import TestCase
 
 import numpy as np
 
-from cornifer import Block, openblks
+from cornifer import Block, stack
 from cornifer.info import ApriInfo
 
 
@@ -45,7 +45,7 @@ class Test_Block(TestCase):
             Block([], descr, 0.5)
 
         self.assertEqual(
-            Block([], descr).startn(),
+            Block([], descr).startn,
             0
         )
 
@@ -55,16 +55,16 @@ class Test_Block(TestCase):
 
         seq = Block([], descr, 0)
         with self.assertRaises(TypeError):
-            seq.set_startn(0.5)
+            seq.startn = 0.5
 
         seq = Block([], descr, 0)
         with self.assertRaises(ValueError):
-            seq.set_startn(-1)
+            seq.startn = -1
 
         seq = Block([], descr)
-        seq.set_startn(15)
+        seq.startn = 15
         self.assertEqual(
-            seq.startn(),
+            seq.startn,
             15
         )
 
@@ -279,27 +279,27 @@ class Test_Block(TestCase):
         descr1 = ApriInfo(name ="primes")
         descr2 = ApriInfo(name ="primes", mod4 = 1)
 
-        with openblks(Block(np.arange(50), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
+        with stack(Block(np.arange(50), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
             self.assertEqual(blk1, blk2)
 
-        with openblks(Block(list(range(50)), descr1), Block(list(range(50)), descr1)) as (blk1, blk2):
+        with stack(Block(list(range(50)), descr1), Block(list(range(50)), descr1)) as (blk1, blk2):
             self.assertEqual(blk1, blk2)
 
-        with openblks(Block(np.arange(50), descr2), Block(np.arange(50), descr1)) as (blk1, blk2):
+        with stack(Block(np.arange(50), descr2), Block(np.arange(50), descr1)) as (blk1, blk2):
             self.assertNotEqual(blk1, blk2)
 
-        with openblks(Block(np.arange(60), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
+        with stack(Block(np.arange(60), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
             self.assertNotEqual(blk1, blk2)
 
         class Block2(Block):pass
 
-        with openblks(Block(np.arange(50), descr1), Block2(np.arange(50), descr1)) as (blk1, blk2):
+        with stack(Block(np.arange(50), descr1), Block2(np.arange(50), descr1)) as (blk1, blk2):
             self.assertNotEqual(blk1, blk2)
 
-        with openblks(Block(np.arange(50), descr1, 0), Block(np.arange(50), descr1, 1)) as (blk1, blk2):
+        with stack(Block(np.arange(50), descr1, 0), Block(np.arange(50), descr1, 1)) as (blk1, blk2):
             self.assertNotEqual(blk1, blk2)
 
-        with openblks(Block(list(range(50)), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
+        with stack(Block(list(range(50)), descr1), Block(np.arange(50), descr1)) as (blk1, blk2):
             self.assertNotEqual(blk1, blk2)
 
     def test___hash__(self):

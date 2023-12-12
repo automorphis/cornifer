@@ -149,7 +149,7 @@ class Testy_Register2(Register):
 def data(blk):
 
     with blk:
-        return blk.apri(), blk.startn(), len(blk)
+        return blk.apri, blk.startn, len(blk)
 
 class Test_Register(TestCase):
 
@@ -900,7 +900,7 @@ class Test_Register(TestCase):
                     self._assert_num_open_readers(reg._db, 0)
                     self.assertTrue(np.all(
                         np.arange(30) ==
-                        blk.segment()
+                        blk.segment
                     ))
 
                 with self.assertRaises(DataNotFoundError):
@@ -2448,17 +2448,17 @@ class Test_Register(TestCase):
 
             with reg.blk(apri1) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(50)
+                    blk.segment == np.arange(50)
                 ))
 
             with reg.blk(apri1) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(50)
+                    blk.segment == np.arange(50)
                 ))
 
             with reg.blk(apri1, 0, 50) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(50)
+                    blk.segment == np.arange(50)
                 ))
 
             with Block(list(range(51)), apri1) as blk:
@@ -2466,22 +2466,22 @@ class Test_Register(TestCase):
 
             with reg.blk(apri1) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(51)
+                    blk.segment == np.arange(51)
                 ))
 
             with reg.blk(apri1, 0) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(51)
+                    blk.segment == np.arange(51)
                 ))
 
             with reg.blk(apri1, 0, 51) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(51)
+                    blk.segment == np.arange(51)
                 ))
 
             with reg.blk(apri1, 0, 50) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(50)
+                    blk.segment == np.arange(50)
                 ))
 
             with Block(list(range(100)), apri1, 1) as blk:
@@ -2489,27 +2489,27 @@ class Test_Register(TestCase):
 
             with reg.blk(apri1) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(51)
+                    blk.segment == np.arange(51)
                 ))
 
             with reg.blk(apri1, 0) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(51)
+                    blk.segment == np.arange(51)
                 ))
 
             with reg.blk(apri1, 0, 51) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(51)
+                    blk.segment == np.arange(51)
                 ))
 
             with reg.blk(apri1, 0, 50) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(50)
+                    blk.segment == np.arange(50)
                 ))
 
             with reg.blk(apri1, 1, 100) as blk:
                 self.assertTrue(np.all(
-                    blk.segment() == np.arange(100)
+                    blk.segment == np.arange(100)
                 ))
 
             with Block(list(range(5)), apri1) as blk1:
@@ -3589,7 +3589,7 @@ class Test_Register(TestCase):
 
                     reg1.add_disk_blk(blk)
                     data_files_bytes.append(
-                        self._is_not_compressed_helper(reg1, blk.apri(), blk.startn(), len(blk))
+                        self._is_not_compressed_helper(reg1, blk.apri, blk.startn, len(blk))
                     )
 
             for t in zip(apris, start_ns, lengths):
@@ -4065,10 +4065,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(200)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4079,10 +4079,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(200)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4112,10 +4112,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(200)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4126,10 +4126,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(200)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4157,10 +4157,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4000)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4171,10 +4171,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4000)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4203,10 +4203,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4000)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4217,10 +4217,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4000)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4267,10 +4267,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     4005,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4005, 4201)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4281,10 +4281,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     4005,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4005, 4201)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4295,10 +4295,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4000)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4326,10 +4326,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     4005,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4005, 4201)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4340,10 +4340,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     4005,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4005, 4201)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4354,10 +4354,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4000)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4368,10 +4368,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     4201,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4201, 4201)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4401,10 +4401,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     4005,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4005, 4201)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4415,10 +4415,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     4005,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4005, 4201)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4429,10 +4429,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4000)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4443,10 +4443,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     4201,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(4201, 4201)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4457,10 +4457,10 @@ class Test_Register(TestCase):
 
                 self.assertEqual(
                     0,
-                    blk.startn()
+                    blk.startn
                 )
                 self.assertTrue(np.all(
-                    blk.segment() ==
+                    blk.segment ==
                     np.arange(0, 0)
                 ))
                 self._assert_num_open_readers(reg._db, 0)
@@ -4498,15 +4498,15 @@ class Test_Register(TestCase):
                     with reg.blk(*data) as blk:
 
                         self.assertEqual(
-                            blk.apri(),
+                            blk.apri,
                             data[0]
                         )
                         self.assertEqual(
-                            blk.startn(),
+                            blk.startn,
                             data[1]
                         )
                         self.assertTrue(np.all(
-                            blk.segment() ==
+                            blk.segment ==
                             seg
                         ))
 

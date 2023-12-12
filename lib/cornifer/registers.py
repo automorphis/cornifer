@@ -202,7 +202,7 @@ class Register(ABC):
     # 1. Like `info._Info` (see III.1), protected methods that take a `Block` object as a parameter also take two
     #    `bytes` objects named `blk_key` and `compressed_key` and a `bool` named `reencode`.
     #    a. `blk_key, compressed_key` is the return value of
-    #           self._get_disk_blk_keys(blk.apri(), None, True, blk.startn(), len(blk), r_txn)
+    #           self._get_disk_blk_keys(blk.apri, None, True, blk.startn, len(blk), r_txn)
     #
     #
     # V. RECURSIVE PATTERNS
@@ -1404,12 +1404,12 @@ class Register(ABC):
                 for blk in self._blks_ram(apri):
 
                     try:
-                        seg = blk.segment()
+                        seg = blk.segment
 
                     except BlockNotOpenError as e:
-                        raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri), blk.startn()) from e
+                        raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri), blk.startn) from e
 
-                    blk_ = Block(seg, apri_, blk.startn())
+                    blk_ = Block(seg, apri_, blk.startn)
                     self.add_ram_blk(blk_)
 
                 del self._ram_blks[apri]
@@ -2228,21 +2228,21 @@ class Register(ABC):
             if len(blk) > self._max_length:
                 raise ValueError
 
-            startn_head = blk.startn() // self._startn_tail_mod
+            startn_head = blk.startn // self._startn_tail_mod
 
             if startn_head != self._startn_head:
                 raise IndexError(
                     "The `startn` for the passed `Block` does not have the correct head:\n"
                     f"`tail_len`      : {self._startn_tail_length}\n"
                     f"expected `head` : {self._startn_head}\n"
-                    f"`startn`        : {blk.startn()}\n"
+                    f"`startn`        : {blk.startn}\n"
                     f"`startn` head   : {startn_head}\n"
                     "Please see the method `set_startn_info` to troubleshoot this error."
                 )
 
             with self._txn("reader") as ro_txn:
                 blk_key, compressed_key, filename, add_apri = self._add_disk_blk_pre(
-                    blk.apri(), None, True, blk.startn(), len(blk), exists_ok, dups_ok, ro_txn
+                    blk.apri, None, True, blk.startn, len(blk), exists_ok, dups_ok, ro_txn
                 )
 
             rrw_txn = None
@@ -2251,10 +2251,10 @@ class Register(ABC):
 
                 with self._txn("reversible") as rrw_txn:
                     self._add_disk_blk_disk(
-                        blk.apri(), blk.startn(), len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
+                        blk.apri, blk.startn, len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
                     )
 
-                return type(self)._add_disk_blk_disk2(blk.segment(), filename, ret_metadata, kwargs)
+                return type(self)._add_disk_blk_disk2(blk.segment, filename, ret_metadata, kwargs)
 
             except BaseException as e:
 
@@ -2290,7 +2290,7 @@ class Register(ABC):
 
             with self._txn("reader") as ro_txn:
                 blk_key, compressed_key, filename, add_apri, startn = self._append_disk_blk_pre(
-                    blk.apri(), None, True, blk.startn(), len(blk), ro_txn
+                    blk.apri, None, True, blk.startn, len(blk), ro_txn
                 )
 
             rrw_txn = None
@@ -2299,10 +2299,10 @@ class Register(ABC):
 
                 with self._txn("reversible") as rrw_txn:
                     self._add_disk_blk_disk(
-                        blk.apri(), blk.startn(), len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
+                        blk.apri, blk.startn, len(blk), blk_key, compressed_key, filename, add_apri, rrw_txn
                     )
 
-                file_metadata = type(self)._add_disk_blk_disk2(blk.segment(), filename, ret_metadata, kwargs)
+                file_metadata = type(self)._add_disk_blk_disk2(blk.segment, filename, ret_metadata, kwargs)
 
                 if ret_metadata:
                     return startn, file_metadata
@@ -3284,13 +3284,13 @@ class Register(ABC):
         self._check_readwrite_raise("add_ram_blk")
         self._check_blk_open_raise(blk, "add_ram_blk")
         check_type(blk, "blk", Block)
-        apri = blk.apri()
+        apri = blk.apri
 
         if not self.___contains___ram(apri):
-            self._add_apri_ram(blk.apri(), False)
+            self._add_apri_ram(apri, False)
 
         if self._num_blks_ram(apri) == 0:
-            self._ram_blks[blk.apri()].append(blk)
+            self._ram_blks[apri].append(blk)
 
         else:
 
@@ -3301,33 +3301,33 @@ class Register(ABC):
 
                 except BlockNotOpenError as e:
                     raise BlockNotOpenError(
-                        _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk_.startn())
+                        _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk_.startn)
                     ) from e
 
                 if blk_ is blk:
                     break
 
-                elif blk.startn() < blk_.startn() or (blk.startn() == blk_.startn() and len(blk) > blk_len):
+                elif blk.startn < blk_.startn or (blk.startn == blk_.startn and len(blk) > blk_len):
 
                     self._ram_blks[apri].insert(i, blk)
                     break
 
             else:
-                self._ram_blks[blk.apri()].append(blk)
+                self._ram_blks[apri].append(blk)
 
     def rmv_ram_blk(self, blk):
 
         self._check_open_raise("add_ram_blk")
         check_type(blk, "blk", Block)
-        apri = blk.apri()
+        apri = blk.apri
 
         try:
             self._check_blk_open_raise(blk, "rmv_ram_blk")
 
         except BlockNotOpenError as e:
-            raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())) from e
+            raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn)) from e
 
-        errmsg = self._blk_not_found_err_msg(True, False, False, apri, blk.startn(), len(blk), None)
+        errmsg = self._blk_not_found_err_msg(True, False, False, apri, blk.startn, len(blk), None)
 
         if not self.___contains___ram(apri):
             raise DataNotFoundError(errmsg)
@@ -3705,7 +3705,7 @@ class Register(ABC):
                         raise
 
                 try:
-                    type(self)._add_disk_blk_disk2(blk.segment(), blk_filename, False, kwargs)
+                    type(self)._add_disk_blk_disk2(blk.segment, blk_filename, False, kwargs)
 
                 except BaseException as e:
                     raise RegisterRecoveryError from e
@@ -3760,57 +3760,14 @@ class Register(ABC):
                 else:
                     yield from intervals_sorted
 
-    def total_len(self, apri, diskonly = False, recursively = False):
+    def len(self, apri, combine = False, diskonly = False, recursively = False):
 
         self._check_open_raise("total_len")
         check_type(apri, "apri", ApriInfo)
+        check_type(combine, 'combine', bool)
         check_type(diskonly, "diskonly", bool)
         check_type(recursively, "recursively", bool)
-        ret = 0
-        to_raise = True
-
-        if not diskonly:
-
-            try:
-                ret += self._total_len_ram(apri)
-
-            except DataNotFoundError:
-                pass
-
-            else:
-                to_raise = False
-
-        with self._txn("reader") as ro_txn:
-
-            try:
-                prefix = self._intervals_pre(apri, None, True, ro_txn)
-
-            except DataNotFoundError:
-                pass
-
-            else:
-
-                to_raise = False
-                ret += self._total_len_disk(prefix, ro_txn)
-
-            if recursively:
-
-                try:
-                    ret += self._total_len_recursive(apri, diskonly, ro_txn)
-
-                except DataNotFoundError:
-                    pass
-
-                else:
-                    to_raise = False
-
-        if to_raise:
-            raise DataNotFoundError(self._blk_not_found_err_msg(
-                not diskonly, True, recursively, apri, None, None, None
-            ))
-
-        else:
-            return ret
+        return sum(length for _, length in self.intervals(apri, False, combine, diskonly, recursively))
 
     def num_blks(self, apri, diskonly = False, recursively = False):
 
@@ -4341,9 +4298,9 @@ class Register(ABC):
                     blk_len = len(blk)
 
                 except BlockNotOpenError as e:
-                    raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())) from e
+                    raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn)) from e
 
-                if blk.startn() <= n < blk.startn() + blk_len:
+                if blk.startn <= n < blk.startn + blk_len:
                     return blk
 
         raise DataNotFoundError
@@ -4431,9 +4388,9 @@ class Register(ABC):
                     blk_len = len(blk)
 
                 except BlockNotOpenError as e:
-                    raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())) from e
+                    raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn)) from e
 
-                if blk.startn() == startn_ and blk_len == length_:
+                if blk.startn == startn_ and blk_len == length_:
 
                     if not ret_metadata:
                         return blk
@@ -4570,12 +4527,12 @@ class Register(ABC):
 
                     except BlockNotOpenError as e:
                         raise BlockNotOpenError(
-                            _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(blk.apri(), blk.startn())
+                            _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(blk.apri, blk.startn)
                         ) from e
 
                     else:
 
-                        if blk.startn() == startn:
+                        if blk.startn == startn:
                             return startn, blk_len
 
             else:
@@ -4586,10 +4543,10 @@ class Register(ABC):
                     blk_len = len(blk)
 
                 except BlockNotOpenError as e:
-                    raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(blk.apri(), blk.startn())) from e
+                    raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(blk.apri, blk.startn)) from e
 
                 else:
-                    return blk.startn(), blk_len
+                    return blk.startn, blk_len
 
         return None, None # could not resolve
 
@@ -4634,10 +4591,10 @@ class Register(ABC):
                     blk_len = len(blk)
 
                 except BlockNotOpenError as e:
-                    raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn())) from e
+                    raise BlockNotOpenError(_RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE.format(apri, blk.startn)) from e
 
                 else:
-                    yield blk.startn(), blk_len
+                    yield blk.startn, blk_len
 
     def _intervals_pre(self, apri, apri_json, reencode, r_txn):
 
@@ -5136,21 +5093,21 @@ class NumpyRegister(Register, file_suffix = ".npy"):
                 # check that all shapes are correct
                 if fixed_shape is None:
                     # initialize correct shape
-                    fixed_shape = blk.segment().shape[1:]
-                    ref_blk_startn = blk.startn()
+                    fixed_shape = blk.segment.shape[1:]
+                    ref_blk_startn = blk.startn
                     ref_blk_len = len(blk)
 
-                elif fixed_shape != blk.segment().shape[1:]:
+                elif fixed_shape != blk.segment.shape[1:]:
                     raise ValueError(
                         "Cannot combine the following two `Block`s because all axes other than axis 0 must have the"
                         " same shape:\n"
                         f"{str(apri)}, startn = {ref_blk_startn}, length = {ref_blk_len}\n, shape = "
                         f"{str(fixed_shape)}\n"
                         f"{str(apri)}, startn = {startn_}, length = {length_}\n, shape = "
-                        f"{str(blk.segment().shape)}"
+                        f"{str(blk.segment.shape)}"
                     )
 
-            combined_seg = np.concatenate([blk.segment() for blk in blks], axis=0)
+            combined_seg = np.concatenate([blk.segment for blk in blks], axis=0)
 
         combined_blk_key, combined_compressed_key, combined_filename, _ = self._add_disk_blk_pre(
             apri, apri_json, False, res_startn, res_length, False, True, r_txn
