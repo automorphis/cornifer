@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ._utilities.multiprocessing import slurm_timecode_to_timedelta, timedelta_to_slurm_timecode
 from .errors import CannotLoadError
 from .debug import _file_datetime_format, _line_datetime_format, _line_datetime_len
 from .regloader import _load, _load_ident
@@ -128,6 +129,9 @@ parser_slurmify.add_argument('main', help = 'Python script to run', type = resol
 parser_slurmify.add_argument('--ncpu', help = 'Number of CPUs (default: 1)', default = 1, type = int)
 parser_slurmify.add_argument('--email', help = 'Email this address when script starts/finishes (default: no emails)')
 parser_slurmify.add_argument('--job-name', help = 'Slurm job name (default: CorniferScript)', dest = 'job_name')
+parser_slurmify.add_argument(
+    '--time', help = 'Maximum run time (formatted D-HH:MM:SS) (default: 1:00:00)', type = slurm_timecode_to_timedelta
+)
 _add_verbose_argument(parser_slurmify)
 
 #
@@ -363,7 +367,9 @@ elif args.command == 'slurmify':
         '--job-name', args.job_name,
         '--nodes', '1',
         '--ntasks', '1',
-        '--cpus-per-task', str(args.ncpu)
+        '--cpus-per-task', str(args.ncpu),
+        '--time', timedelta_to_slurm_timecode(args.time + datetime.timedelta(minutes = 5)),
+        '--signal', 'TERM@300'
     ]
 
     if args.email is not None:
@@ -373,8 +379,8 @@ elif args.command == 'slurmify':
         ]
 
     sbatch_args.extend(unrecognized)
-    sbatch_args = ['sbatch'] + sbatch_args + [args.main]
-    sbatch_command = " ".join(sbatch_args)
+    sbatch_args = ['sbatch'] + sbatch_args + ['srun', args.main]
+    sbatch_command = ' '.join(sbatch_args)
 
     if args.verbose:
         print(f'Running `{sbatch_command}`')

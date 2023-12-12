@@ -70,6 +70,21 @@ def slurm_timecode_to_timedelta(timecode):
     else:
         raise ValueError
 
+def timedelta_to_slurm_timecode(timedelta_):
+
+    secs_in_day = 60 * 60 * 24
+    total_seconds = int(timedelta_.total_seconds())
+    secs = total_seconds % secs_in_day
+    days = total_seconds // secs_in_day
+    timedelta_ = timedelta(seconds = secs)
+    str_ = str(timedelta_)
+
+    if days == 0:
+        return str_
+
+    else:
+        return f'{days}-{str_}'
+
 def copytree_with_timeout(timeout, *args):
 
     proc = multiprocessing.get_context("spawn").Process(target = shutil.copytree, args = args)
