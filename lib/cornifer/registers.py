@@ -1318,7 +1318,7 @@ class Register(ABC):
                 keys, blk_filenames, compressed_filenames = self._rmv_apri_pre(apri, None, True, force, ignore_errors, ro_txn)
 
             except DataNotFoundError:
-                pass
+                keys = blk_filenames = compressed_filenames = []
 
             else:
                 missing = False
