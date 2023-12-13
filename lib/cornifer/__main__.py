@@ -125,7 +125,7 @@ parser_slurmify = subparsers.add_parser(
     'slurmify', help = 'Submit a Python script to Slurm for execution. Any options not listed below will be forwarded '
                        'to `sbatch`.'
 )
-parser_slurmify.add_argument('main', help = 'Python script to run', type = resolved_Path)
+parser_slurmify.add_argument('main', help = 'Python script to run with command-line args', type = resolved_Path, nargs = '+')
 parser_slurmify.add_argument('--ncpu', help = 'Number of CPUs (default: 1)', default = 1, type = int)
 parser_slurmify.add_argument('--email', help = 'Email this address when script starts/finishes (default: no emails)')
 parser_slurmify.add_argument('--job-name', help = 'Slurm job name (default: CorniferScript)', dest = 'job_name')

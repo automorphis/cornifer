@@ -89,7 +89,6 @@ _RAM_BLOCK_NOT_OPEN_ERROR_MESSAGE = (
     "Closed RAM `Block` with the following data (it is good practice to always keep all RAM `Block`s open) :\n{0}\n"
     "startn = {1}."
 )
-
 #################################
 #           CONSTANTS           #
 
@@ -1291,13 +1290,14 @@ class Register(ABC):
         with self._txn("writer") as rw_txn:
             self._change_apri_disk(old_id, old_apri_id_key, old_id_apri_key, new_apri, rw_txn)
 
-    def rmv_apri(self, apri, force = False, missing_ok = False, diskonly = False):
+    def rmv_apri(self, apri, force = False, missing_ok = False, ignore_errors = False, diskonly = False):
 
         self._check_open_raise("rmv_apri")
         self._check_readwrite_raise("rmv_apri")
         check_type(apri, "apri", ApriInfo)
         check_type(force, "force", bool)
         check_type(missing_ok, "missing_ok", bool)
+        check_type(ignore_errors, 'ignore_errors', bool)
 
         missing = True
 
@@ -1315,7 +1315,7 @@ class Register(ABC):
         with self._txn("reader") as ro_txn:
 
             try:
-                keys, blk_filenames, compressed_filenames = self._rmv_apri_pre(apri, None, True, force, ro_txn)
+                keys, blk_filenames, compressed_filenames = self._rmv_apri_pre(apri, None, True, force, ignore_errors, ro_txn)
 
             except DataNotFoundError:
                 pass
@@ -1626,7 +1626,7 @@ class Register(ABC):
         else:
             raise DataNotFoundError(_NO_APRI_ERROR_MESSAGE.format(apri, self))
 
-    def _rmv_apri_pre(self, apri, apri_json, reencode, force, r_txn):
+    def _rmv_apri_pre(self, apri, apri_json, reencode, force, ignore_errors, r_txn):
 
         if reencode:
             apri_json = self._relational_encode_info(apri, r_txn)
@@ -1671,7 +1671,7 @@ class Register(ABC):
                                 for (blk_key, _), (compressed_key, _) in zip(blk_it, compressed_it):
 
                                     blk_filename, compressed_filename = self._get_disk_blk_filenames(
-                                        blk_key, compressed_key, r_txn
+                                        blk_key, compressed_key, not ignore_errors, r_txn
                                     )
                                     keys.append(blk_key)
                                     blk_filenames.append(blk_filename)
@@ -2322,7 +2322,7 @@ class Register(ABC):
                 else:
                     raise
 
-    def rmv_disk_blk(self, apri, startn = None, length = None, missing_ok = False, timeout = None, **kwargs):
+    def rmv_disk_blk(self, apri, startn = None, length = None, missing_ok = False, ignore_errors = False, timeout = None, **kwargs):
 
         with ExitStack() as stack:
 
@@ -2336,6 +2336,7 @@ class Register(ABC):
             self._check_open_raise("rmv_disk_blk")
             self._check_readwrite_raise("rmv_disk_blk")
             check_type(apri, "apri", ApriInfo)
+            check_type(ignore_errors, 'ignore_errors', bool)
             startn = check_return_int_None_default(startn, "startn", None)
             length = check_return_int_None_default(length, "length", None)
             check_type(missing_ok, "missing_ok", bool)
@@ -2349,7 +2350,7 @@ class Register(ABC):
             try:
 
                 with self._txn("reader") as ro_txn:
-                    ret = self._rmv_disk_blk_pre(apri, None, True, startn, length, ro_txn)
+                    ret = self._rmv_disk_blk_pre(apri, None, True, startn, length, ignore_errors, ro_txn)
 
             except DataNotFoundError:
 
@@ -2740,7 +2741,7 @@ class Register(ABC):
             raise DataNotFoundError(errmsg)
 
         blk_key, compressed_key = self._get_disk_blk_keys(apri, apri_json, False, startn_, length_, r_txn)
-        blk_filename, compressed_filename = self._get_disk_blk_filenames(blk_key, compressed_key, r_txn)
+        blk_filename, compressed_filename = self._get_disk_blk_filenames(blk_key, compressed_key, True, r_txn)
 
         return blk_filename, compressed_filename
 
@@ -2768,7 +2769,7 @@ class Register(ABC):
 
         raise DataNotFoundError(self._blk_not_found_err_msg(False, True, True, apri, startn, length, None))
 
-    def _rmv_disk_blk_pre(self, apri, apri_json, reencode, startn, length, r_txn):
+    def _rmv_disk_blk_pre(self, apri, apri_json, reencode, startn, length, ignore_errors, r_txn):
 
         errmsg = self._blk_not_found_err_msg(False, True, False, apri, startn, length, None)
 
@@ -2785,13 +2786,13 @@ class Register(ABC):
         if not Register._disk_blk_keys_exist(blk_key, compressed_key, r_txn):
             raise DataNotFoundError(errmsg)
 
-        blk_filename, compressed_filename = self._get_disk_blk_filenames(blk_key, compressed_key, r_txn)
+        blk_filename, compressed_filename = self._get_disk_blk_filenames(blk_key, compressed_key, not ignore_errors, r_txn)
 
-        if not is_deletable(blk_filename):
-            raise OSError(f"Cannot delete `Block` file `{str(blk_filename)}`.")
+        if blk_filename is not None and not is_deletable(blk_filename):
+            raise OSError(f"Cannot delete `Block` file `{blk_filename}`.")
 
         if compressed_filename is not None and not is_deletable(compressed_filename):
-            raise OSError(f"Cannot delete compressed `Block` file `{str(compressed_filename)}`.")
+            raise OSError(f"Cannot delete compressed `Block` file `{compressed_filename}`.")
 
         return startn_, length_, blk_key, compressed_key, blk_filename, compressed_filename
 
@@ -2809,31 +2810,17 @@ class Register(ABC):
 
         if compressed_filename is not None:
 
+            compressed_filename.unlink()
+
             if _debug == 2:
                 raise KeyboardInterrupt
 
-            blk_filename.unlink()
-
-            if _debug == 3:
-                raise KeyboardInterrupt
-
-            compressed_filename.unlink()
-
-            if _debug == 4:
-                raise KeyboardInterrupt
-
-        else:
-
-            if _debug == 5:
-                raise KeyboardInterrupt
+        if blk_filename is not None:
 
             cls.clean_disk_data(blk_filename, **kwargs)
 
-            if _debug == 6:
+            if _debug == 3:
                 raise KeyboardInterrupt
-
-        if _debug == 7:
-            raise KeyboardInterrupt
 
     def _rmv_disk_blk_error(self, blk_filename, compressed_filename, rrw_txn, rw_txn, e):
 
@@ -3253,7 +3240,7 @@ class Register(ABC):
             self._max_length - intify_bytes(op_length_bytes)
         )
 
-    def _get_disk_blk_filenames(self, blk_key, compressed_key, r_txn):
+    def _get_disk_blk_filenames(self, blk_key, compressed_key, raise_missing, r_txn):
 
         blk_val = r_txn.get(blk_key)
         compressed_val = r_txn.get(compressed_key)
@@ -3263,17 +3250,44 @@ class Register(ABC):
 
             compressed_filename = self._local_dir / compressed_val.decode("ASCII")
 
-            if not compressed_filename.exists() or not blk_filename.exists():
-                raise RegisterError("Compressed `Block` file or ghost file seems to be missing!")
+            if not compressed_filename.exists():
 
-            return blk_filename, compressed_filename
+                if raise_missing:
+                    raise RegisterError(f'Compressed file seems to be missing! Expected location: {compressed_filename}')
+
+                else:
+
+                    if not blk_filename.exists():
+                        return None, None
+
+                    else:
+                        return blk_filename, None
+
+            else:
+
+                if not blk_filename.exists():
+
+                    if raise_missing:
+                        raise RegisterError(f'Block ghost file seems to be missing! Expected location: {blk_filename}')
+
+                    else:
+                        return None, compressed_filename
+
+                else:
+                    return blk_filename, compressed_filename
 
         else:
 
             if not blk_filename.exists():
-                raise RegisterError("`Block` file seems to be missing!")
 
-            return blk_filename, None
+                if raise_missing:
+                    raise RegisterError(f'Block file seems to be missing! Expected location: {blk_filename}')
+
+                else:
+                    return None, None
+
+            else:
+                return blk_filename, None
 
     #################################
     #    PUBLIC RAM BLK METHODS     #
@@ -3684,7 +3698,7 @@ class Register(ABC):
 
                             try:
                                 _, _, blk_key, compressed_key, blk_filename, compressed_filename = self._rmv_disk_blk_pre(
-                                    apri, apri_json, False, startn, length, ro_txn
+                                    apri, apri_json, False, startn, length, False, ro_txn
                                 )
 
                             except DataNotFoundError as e:
@@ -4323,7 +4337,7 @@ class Register(ABC):
             raise DataNotFoundError(errmsg)
 
         blk_key, compressed_key = self._get_disk_blk_keys(apri, apri_json, False, startn, length, r_txn)
-        blk_filename, compressed_filename = self._get_disk_blk_filenames(blk_key, compressed_key, r_txn)
+        blk_filename, compressed_filename = self._get_disk_blk_filenames(blk_key, compressed_key, True, r_txn)
         is_compressed = compressed_filename is not None
 
         if not decompress and is_compressed:
@@ -4422,7 +4436,7 @@ class Register(ABC):
         if not Register._disk_blk_keys_exist(blk_key, compressed_key, r_txn):
             raise DataNotFoundError(errmsg)
 
-        blk_filename, compressed_filename = self._get_disk_blk_filenames(blk_key, compressed_key, r_txn)
+        blk_filename, compressed_filename = self._get_disk_blk_filenames(blk_key, compressed_key, True, r_txn)
         is_compressed = compressed_filename is not None
 
         if is_compressed and not decompress:
@@ -5059,7 +5073,7 @@ class NumpyRegister(Register, file_suffix = ".npy"):
 
                     intervals_to_get.append((startn_, length_))
                     keys = self._get_disk_blk_keys(apri, apri_json, False, startn_, length_, r_txn)
-                    del_filenames.append(self._get_disk_blk_filenames(keys[0], keys[1], r_txn))
+                    del_filenames.append(self._get_disk_blk_filenames(keys[0], keys[1], True,  r_txn))
                     del_keys.extend(keys)
                     last_check = startn_ + length_ == res_startn + res_length
 
