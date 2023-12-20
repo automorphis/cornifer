@@ -16,6 +16,7 @@ import asyncio
 import itertools
 import json
 import pickle
+import re
 import shutil
 import tempfile
 import warnings
@@ -97,8 +98,8 @@ _LENGTH_LENGTH_DEFAULT         = 7
 _MAX_LENGTH_DEFAULT            = 10 ** _LENGTH_LENGTH_DEFAULT - 1
 _START_N_HEAD_DEFAULT          = 0
 _INITIAL_REGISTER_SIZE_DEFAULT = 5 * BYTES_PER_MB
-_MAX_NUM_APRI_LEN              = 6
-_MAX_NUM_APRI                  = 10 ** _MAX_NUM_APRI_LEN
+_MAX_APRI_DFL_LEN              = 6
+_MAX_APRI_DFL                  = 10 ** _MAX_APRI_DFL_LEN
 
 class Register(ABC):
 
@@ -403,6 +404,8 @@ class Register(ABC):
         self._startn_tail_mod = 10 ** self._startn_tail_length
         self._length_length = _LENGTH_LENGTH_DEFAULT
         self._max_length = _MAX_LENGTH_DEFAULT
+        self._max_apri_length = _MAX_APRI_DFL_LEN
+        self._max_apri = _MAX_APRI_DFL
         # RAM BLOCKS #
         self._ram_blks = {}
         # TIMEIT #
@@ -724,7 +727,7 @@ class Register(ABC):
         return f'{self._shorthand} ({self._local_dir}): {self._msg}'
 
     def __repr__(self):
-        return f'{self.__class__.__name__}("{str(self.dir)}", "{self._shorthand}", "{self._msg}", {self._db_map_size})'
+        return str(self)
 
     def summary(self, include_ram = True):
 
@@ -937,6 +940,142 @@ class Register(ABC):
             asyncio.run(self._update_perm_db(timeout))
             self._write_db_filepath = self._perm_db_filepath
             write_txt_file(str(self._write_db_filepath), self._local_dir / WRITE_DB_FILEPATH, True)
+
+    def increase_max_apri(self, new_max):
+
+        self._check_open_raise('increase_max_apri')
+        self._check_readwrite_raise('increase_max_apri')
+        new_max = check_return_int(new_max, 'new_max')
+
+        if new_max <= 0:
+            raise ValueError('`new_max` must be positive.')
+
+        if re.match(r'^10*$', str(new_max)) is None:
+            raise ValueError('`new_max` must be a power of 10')
+
+        if new_max <= self._max_apri:
+            raise ValueError(f'`new_max` must be greater than the current max, which is {self._max_apri}.')
+
+        new_max_len = len(bytify_int(new_max - 1))
+
+        def new_id(old_id_):
+            return bytify_int(intify_bytes(old_id_), new_max_len)
+
+        with self._txn('reader') as ro_txn:
+            # Order apri so that depending apri appear earlier in the list and dependent apri appear later
+            apris_ = {} # keys are apris, vals are positions in the ordered list, then the original apri_id
+            inner_apri_iters = [apri.iter_inner_info('dfs') for apri, _ in self._apris_disk(ro_txn)]
+            non_exhausted = False
+
+            for i, it in enumerate(itertools.cycle(inner_apri_iters)):
+
+                try:
+                    apri = next(it)[1]
+
+                except StopIteration:
+                    pass
+
+                else:
+
+                    if apri not in apris_.keys():
+                        apris_[apri] = (len(apris_), self._get_apri_id(apri, None, True, ro_txn))
+
+                    non_exhausted = True
+
+                if i % len(inner_apri_iters) == len(inner_apri_iters) - 1:
+
+                    if not non_exhausted:
+                        break # inner_apris_iter loop
+
+                    else:
+                        non_exhausted = False
+
+            apris = [None] * len(apris_)
+
+            for apri, (pos, apri_id) in apris_.items():
+                apris[pos] = (apri, apri_id)
+
+            aposs = []
+
+            for apri, _ in apris:
+                # get all decoded apos
+                try:
+                    apos_key = self._apos_pre(apri, None, True, ro_txn)
+
+                except DataNotFoundError:
+                    pass
+
+                else:
+                    aposs.append((apri, self._apos_disk(apos_key, ro_txn)))
+
+        with self._txn('writer') as rw_txn:
+            # 1. For each apri ordered by the list `apris`, do the following: Update keys and vals of
+            #    (apri -> apri_id) and of (apri_id -> apri)
+            # 2. Delete old keys of (apri_id -> apos)
+            # 3. Put new keys and vals of (apri_id -> apos)
+            # 4. Update keys of (blk -> blkdata)
+            # 5. Update keys of (compr -> comprdata)
+
+            for apri, old_apri_id in apris:
+                # 1. For each apri ordered by the list `apris`, do the following: Update keys and vals of
+                #    (apri -> apri_id) and of (apri_id -> apri)
+                old_apri_json = Register._get_apri_json(old_apri_id, rw_txn)
+                old_apri_id_key = Register._get_apri_id_key(old_apri_json)
+                old_id_apri_key = Register._get_id_apri_key(old_apri_id)
+                new_apri_id = new_id(old_apri_id)
+                new_apri_json = self._relational_encode_info(apri, rw_txn)
+                new_apri_id_key = Register._get_apri_id_key(new_apri_json)
+                new_id_apri_key = Register._get_id_apri_key(new_apri_id)
+                rw_txn.put(new_apri_id_key, new_apri_id)
+                rw_txn.put(new_id_apri_key, new_apri_json)
+
+                if old_apri_id_key != new_apri_id_key:
+                    rw_txn.delete(old_apri_id_key)
+
+                if old_id_apri_key != new_apri_id_key:
+                    rw_txn.delete(old_id_apri_key)
+
+            deletes = []
+
+            with r_txn_prefix_iter(_APOS_KEY_PREFIX, rw_txn) as it:
+
+                for apos_key, _ in it:
+                    deletes.append(apos_key)
+
+            for delete in deletes:
+                rw_txn.delete(delete) # 2. Delete old keys of (apri_id -> apos)
+
+            deletes.clear()
+
+            for apri, apos in aposs:
+                # 3. Put new keys and vals of (apri_id -> apos)
+                apos_key = self._get_apos_key(apri, None, True, rw_txn)
+                apos_json = self._relational_encode_info(apos, rw_txn)
+                rw_txn.put(apos_key, apos_json)
+
+            puts = []
+
+            for prefix, prefix_len in (
+                (_BLK_KEY_PREFIX, _BLK_KEY_PREFIX_LEN), (_COMPRESSED_KEY_PREFIX, _COMPRESSED_KEY_PREFIX_LEN)
+            ):
+                # 4. Update keys of (blk -> blkdata)
+                # 5. Update keys of (compr -> comprdata)
+                with r_txn_prefix_iter(prefix, rw_txn) as it:
+
+                    for key, val in it:
+
+                        deletes.append(key)
+                        apri_id, startn, length = self._get_raw_startn_length(prefix_len, key)
+                        puts.append((Register._join_disk_blk_data(prefix, new_id(apri_id), startn, length), val))
+
+                for put in puts:
+                    rw_txn.put(*put)
+
+                for delete in deletes:
+                    rw_txn.delete(delete)
+
+        self._max_apri = new_max
+        self._max_apri_length = len(str(new_max - 1))
 
     #################################
     #    PROTEC REGISTER METHODS    #
@@ -1510,20 +1649,6 @@ class Register(ABC):
         return _ID_APRI_KEY_PREFIX + apri_id
 
     def _get_apri_id(self, apri, apri_json, reencode, r_txn):
-        """Get an `ApriInfo` ID for this database. If `missing_ok is True`, then create an ID if the passed `apri` or
-        `apri_json` is unknown to this `Register`.
-
-        One of `apri` and `apri_json` can be `None`, but not both. If both are not `None`, then `apri` is used.
-
-        `self._db` must be opened by the caller.
-
-        :param apri: (type `ApriInfo`)
-        :param apri_json: (type `bytes`)
-        :param r_txn: (type `lmbd.Transaction`, default `None`) The transaction to query. If `None`, then open a new
-        transaction and commit it after this method returns.
-        :raises DataNotFoundError: If `apri` or `apri_json` is not known to this `Register`.
-        :return: (type `bytes`)
-        """
 
         if reencode:
             # uncaught `DataNotFoundError` (see pattern VI.1)
@@ -1539,20 +1664,19 @@ class Register(ABC):
         else:
             return apri_id
 
-    @staticmethod
-    def _get_new_id(reserved, rw_txn):
+    def _get_new_id(self, reserved, rw_txn):
 
-        for next_apri_id_num in range(int(rw_txn.get(_CURR_ID_KEY)), _MAX_NUM_APRI):
+        for next_apri_id_num in range(int(rw_txn.get(_CURR_ID_KEY)), self._max_apri):
 
-            next_id = bytify_int(next_apri_id_num, _MAX_NUM_APRI_LEN)
+            next_id = bytify_int(next_apri_id_num, self._max_apri_length)
 
             if next_id not in reserved:
                 break
 
         else:
-            raise RegisterError(f"Too many apris added to this `Register`, the limit is {_MAX_NUM_APRI}.")
+            raise RegisterError(f"Too many apris added to this `Register`, the limit is {self._max_apri}.")
 
-        rw_txn.put(_CURR_ID_KEY, bytify_int(next_apri_id_num + 1, _MAX_NUM_APRI_LEN))
+        rw_txn.put(_CURR_ID_KEY, bytify_int(next_apri_id_num + 1, self._max_apri_length))
         return next_id
 
     def _add_apri_ram(self, apri, exclude_root):
@@ -1586,7 +1710,7 @@ class Register(ABC):
 
                 if not self.___contains___disk(apri_id_key, rw_txn):
 
-                    id_ = Register._get_new_id(reserved, rw_txn)
+                    id_ = self._get_new_id(reserved, rw_txn)
                     Register._add_apri_disk_helper(inner_info, inner_apri_json, id_, rw_txn)
 
     @staticmethod
@@ -2561,8 +2685,8 @@ class Register(ABC):
         if blk_key is None:
             return None, None
 
-        len1 = _BLK_KEY_PREFIX_LEN        + _MAX_NUM_APRI_LEN + _KEY_SEP_LEN
-        len2 = _COMPRESSED_KEY_PREFIX_LEN + _MAX_NUM_APRI_LEN + _KEY_SEP_LEN
+        len1 = _BLK_KEY_PREFIX_LEN        + self._max_apri_length + _KEY_SEP_LEN
+        len2 = _COMPRESSED_KEY_PREFIX_LEN + self._max_apri_length + _KEY_SEP_LEN
         return blk_key[ : len1], compressed_key[ : len2]
 
     def _get_disk_blk_prefixes_startn(self, apri, apri_json, reencode, startn, r_txn):
@@ -2572,8 +2696,8 @@ class Register(ABC):
         if blk_key is None:
             return None, None
 
-        len1 = _BLK_KEY_PREFIX_LEN        + _MAX_NUM_APRI_LEN + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
-        len2 = _COMPRESSED_KEY_PREFIX_LEN + _MAX_NUM_APRI_LEN + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
+        len1 = _BLK_KEY_PREFIX_LEN        + self._max_apri_length + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
+        len2 = _COMPRESSED_KEY_PREFIX_LEN + self._max_apri_length + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
         return blk_key[: len1], compressed_key[: len2]
 
     def _add_disk_blk_pre(self, apri, apri_json, reencode, startn, length, exists_ok, dups_ok, r_txn):
@@ -3206,7 +3330,7 @@ class Register(ABC):
 
     def _get_raw_startn_length(self, prefix_len, key):
 
-        stop1 = prefix_len + _MAX_NUM_APRI_LEN
+        stop1 = prefix_len + self._max_apri_length
         stop2 = stop1 + _KEY_SEP_LEN + self._startn_tail_length
 
         return (
@@ -5241,7 +5365,7 @@ class _RelationalApriInfoStrHook:
 
             id_ = str_[len(ApriInfo.__name__) : ]
 
-            if len(id_) == _MAX_NUM_APRI_LEN:
+            if len(id_) == self._reg._max_apri_length:
 
                 try:
                     int(id_)

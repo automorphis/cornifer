@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import types
+from contextlib import ExitStack
 from itertools import product, chain, repeat
 from pathlib import Path
 from unittest import TestCase
@@ -20,9 +21,9 @@ from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
     _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG, \
     _START_N_TAIL_LENGTH_DEFAULT, _LENGTH_LENGTH_KEY, _LENGTH_LENGTH_DEFAULT, _CURR_ID_KEY, \
-    _INITIAL_REGISTER_SIZE_DEFAULT
+    _INITIAL_REGISTER_SIZE_DEFAULT, _MAX_APRI_DFL
 from cornifer._utilities.lmdb import db_has_key, db_prefix_iter, db_count_keys, open_lmdb, \
-    num_open_readers_accurate, r_txn_count_keys, r_txn_has_key
+    num_open_readers_accurate, r_txn_count_keys, r_txn_has_key, db_prefix_list
 from cornifer.version import CURRENT_VERSION
 
 """
@@ -271,12 +272,12 @@ class Test_Register(TestCase):
             f"sh ({reg._local_dir}): hello"
         )
 
-    def test___repr__(self):
-
-        self.assertEqual(
-            repr(Testy_Register(SAVES_DIR, "sh", "hello")),
-            f"Testy_Register(\"{str(SAVES_DIR)}\", \"sh\", \"hello\", {_INITIAL_REGISTER_SIZE_DEFAULT})"
-        )
+    # def test___repr__(self):
+    #
+    #     self.assertEqual(
+    #         repr(Testy_Register(SAVES_DIR, "sh", "hello")),
+    #         f"Testy_Register(\"{str(SAVES_DIR)}\", \"sh\", \"hello\", {_INITIAL_REGISTER_SIZE_DEFAULT})"
+    #     )
 
     def test__set_local_dir(self):
 
@@ -5469,6 +5470,169 @@ class Test_Register(TestCase):
     def test_num_blks(self):
 
         pass # TODO
+
+    def test_increase_max_apri(self):
+
+        max_apri_dfl_len = 2
+        max_apri_dfl = 10 ** max_apri_dfl_len
+        old_max_apri_dfl = cornifer.registers._MAX_APRI_DFL
+        old_max_apri_dfl_len = cornifer.registers._MAX_APRI_DFL_LEN
+
+        def test_case(curr_max, curr_max_len, aposs, blks, existing_apris, num_existing_blks, is_full):
+
+            self.assertEqual(reg._max_apri, curr_max)
+            self.assertEqual(reg._max_apri_length, curr_max_len)
+            new_apos_apris = set()
+            new_blk_apris = set()
+
+            for apri, _ in aposs:
+
+                for _, apri_ in apri.iter_inner_info():
+                    
+                    if apri_ not in existing_apris:
+                        new_apos_apris.add(apri_)
+
+            for blk in blks:
+
+                for _, apri in blk.apri.iter_inner_info():
+                    
+                    if apri not in existing_apris and apri not in new_apos_apris:
+                        new_blk_apris.add(apri)
+
+            with reg.open():
+
+                for apri, apos in aposs:
+                    reg.set_apos(apri, apos, False)
+
+            with reg.open(True):
+
+                num_apris = len(existing_apris) + len(new_apos_apris)
+                self.assertEqual(db_count_keys(_ID_APRI_KEY_PREFIX, reg._db), num_apris)
+                self.assertEqual(db_count_keys(_APRI_ID_KEY_PREFIX, reg._db), num_apris)
+
+                for apri, apos in aposs:
+
+                    self.assertIn(apri, reg)
+                    self.assertEqual(reg.apos(apri), apos)
+
+            with reg.open():
+
+                for blk in blks:
+
+                    with blk:
+                        reg.add_disk_blk(blk, False)
+
+            with reg.open(True):
+
+                num_apris = len(existing_apris) + len(new_apos_apris) + len(new_blk_apris)
+                self.assertEqual(db_count_keys(_ID_APRI_KEY_PREFIX, reg._db), num_apris)
+                self.assertEqual(db_count_keys(_APRI_ID_KEY_PREFIX, reg._db), num_apris)
+
+                for blk in blks:
+
+                    with blk:
+
+                        self.assertIn(blk.apri, reg)
+
+                        with reg.blk(blk.apri, blk.startn, len(blk)) as blk_:
+                            self.assertEqual(blk, blk_)
+
+                self.assertEqual(
+                    sum(reg.num_blks(apri) for apri in reg),
+                    num_existing_blks + len(blks)
+                )
+
+            if is_full:
+
+                with reg.open():
+
+                    with reg._db.begin(write = True) as rw_txn:
+
+                        with self.assertRaises(RegisterError):
+                            reg._get_new_id([], rw_txn)
+
+            return existing_apris.union(new_apos_apris).union(new_blk_apris), num_existing_blks + len(blks)
+
+        try:
+
+            cornifer.registers._MAX_APRI_DFL_LEN = max_apri_dfl_len
+            cornifer.registers._MAX_APRI_DFL = max_apri_dfl
+            reg = NumpyRegister(SAVES_DIR, 'sh', 'msg')
+
+            with self.assertRaises(RegisterNotOpenError):
+                reg.increase_max_apri(1)
+
+            with reg.open(True):
+
+                with self.assertRaisesRegex(RegisterError, 'read-write'):
+                    reg.increase_max_apri(1)
+
+            for new_max in (-1, 0, 1, 5, 10, max_apri_dfl - 1, max_apri_dfl, max_apri_dfl + 1):
+
+                with reg.open():
+
+                    with self.assertRaises(ValueError):
+                        reg.increase_max_apri(new_max)
+
+            existing_apris, num_existing_blks = test_case(
+                max_apri_dfl, max_apri_dfl_len,
+                [(ApriInfo(i = i), AposInfo(yes = True)) for i in range(max_apri_dfl)],
+                (), set(), 0, True
+            )
+
+            with reg.open():
+                reg.increase_max_apri(10 * max_apri_dfl)
+
+            existing_apris, num_existing_blks = test_case(
+                10 * max_apri_dfl, 1 + max_apri_dfl_len, [], [], existing_apris, num_existing_blks, False
+            )
+            existing_apris, num_existing_blks = test_case(
+                10 * max_apri_dfl, 1 + max_apri_dfl_len,
+                [(ApriInfo(i = i), AposInfo(yes = True)) for i in range(max_apri_dfl, 10 * max_apri_dfl)],
+                [], existing_apris, num_existing_blks, True
+            )
+
+            with reg.open():
+                reg.increase_max_apri(100 * max_apri_dfl)
+
+            existing_apris, num_existing_blks = test_case(
+                100 * max_apri_dfl, 2 + max_apri_dfl_len, [], [], existing_apris, num_existing_blks, False
+            )
+            existing_apris, num_existing_blks = test_case(
+                100 * max_apri_dfl, 2 + max_apri_dfl_len,
+                [
+                    (ApriInfo(hey = 'hi', resp = ApriInfo(i = i)), AposInfo(no = False))
+                    for i in range(max_apri_dfl, 10 * max_apri_dfl)
+                ],
+                [], existing_apris, num_existing_blks, False
+            )
+
+            with reg.open():
+                reg.increase_max_apri(1000 * max_apri_dfl)
+
+            existing_apris, num_existing_blks = test_case(
+                1000 * max_apri_dfl, 3 + max_apri_dfl_len, [], [], existing_apris, num_existing_blks, False
+            )
+            existing_apris, num_existing_blks = test_case(
+                1000 * max_apri_dfl, 3 + max_apri_dfl_len, [],
+                [
+                    Block(np.arange(10), ApriInfo(resp = (ApriInfo(hey = 'hi', resp = ApriInfo(i = i)))))
+                    for i in range(10 * max_apri_dfl)
+                ],
+                existing_apris, num_existing_blks, False
+            )
+
+            with reg.open():
+                reg.increase_max_apri(10000 * max_apri_dfl)
+
+            existing_apris, num_existing_blks = test_case(
+                10000 * max_apri_dfl, 4 + max_apri_dfl_len, [], [], existing_apris, num_existing_blks, False
+            )
+
+        finally:
+
+            cornifer.registers._MAX_APRI_DFL = old_max_apri_dfl
+            cornifer.registers._MAX_APRI_DFL_LEN = old_max_apri_dfl_len
 
 def _set_block_datas_compressed(block_datas, apri, start_n = None, length = None, compressed = True):
 

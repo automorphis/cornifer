@@ -2,14 +2,14 @@ import argparse
 import collections
 import copy
 import datetime
+import functools
 import re
 import shutil
 import statistics
 import subprocess
-import sys
 from pathlib import Path
 
-from .errors import CannotLoadError
+from .errors import CannotLoadError, DataNotFoundError
 from .debug import _file_datetime_format, _line_datetime_format, _line_datetime_len
 from .regloader import _load, _load_ident
 
@@ -58,6 +58,7 @@ def _load_regs(shorthands, idents, dir_):
 
     do_all = len(shorthands) == 0 and len(idents) == 0
     regs = []
+    missing = ''
 
     if do_all:
 
@@ -96,34 +97,125 @@ def _load_regs(shorthands, idents, dir_):
             else:
                 regs.append(reg)
 
-    return list(collections.OrderedDict([(reg, None) for reg in regs]).keys())
+        remaining_shorthands = copy.copy(args.shorthands)
+        remaining_idents = copy.copy(args.idents)
 
+        for reg in regs:
+
+            try:
+                remaining_shorthands.remove(reg.shorthand())
+
+            except ValueError:
+                pass
+
+            try:
+                remaining_idents.remove(reg.ident())
+
+            except ValueError:
+                pass
+
+        if len(remaining_shorthands) > 0:
+            missing += f'Could not find the following shorthands: {", ".join(remaining_shorthands)}\n'
+
+        if len(remaining_idents) > 0:
+            missing += f'Could not find the following idents: {", ".join(remaining_idents)}\n'
+
+    if len(regs) == 0:
+        raise DataNotFoundError(f"No matching Registers found in {dir_}")
+
+    return list(collections.OrderedDict([(reg, None) for reg in regs]).keys()), missing
+
+def _check_raise_directory(path):
+
+    if not path.exists():
+        raise FileNotFoundError(path)
+
+    elif not path.is_dir():
+        raise NotADirectoryError(path)
+
+def _check_plain_file(path):
+
+    if not path.exists():
+        raise FileNotFoundError(path)
+
+    elif path.is_dir():
+        raise IsADirectoryError(path)
+
+
+###########################
+#         COMMAND         #
 parser_command = argparse.ArgumentParser(
     prog = 'Cornifer',
     description = 'Command line utility for Cornifer.'
 )
 subparsers = parser_command.add_subparsers(required = True, dest ='command')
-
+###########################
+#         SUMMARY         #
 parser_summary = subparsers.add_parser('summary', help = 'Print register summaries.')
 _add_save_dir_argument(parser_summary)
 _add_shorthand_ident_arguments(parser_summary)
-
+###########################
+#          DEBUG          #
+NLINES_DEFAULT = -10
+FIRST_DEFAULT = -10
+LAST_DEFAULT = -1
+STEP_DEFAULT = 1
 parser_debug = subparsers.add_parser('debug', help = 'Display debug file info.')
-parser_debug.add_argument('-m', '--memory', default = -10, type = int)
-parser_debug.add_argument('-p', '--pids', nargs = '*')
-parser_debug.add_argument('-s', '--start')
-parser_debug.add_argument('-e', '--end')
-parser_debug.add_argument('-d', '--dir')
-parser_debug.add_argument('-t', '--time')
+mutex_group = parser_debug.add_mutually_exclusive_group()
+mutex_group.add_argument(
+    '-n', '--nlines', help = f'Number of lines to display (default: {NLINES_DEFAULT}) (positive: forward from first '
+    'line, negative: backward from last line, zero: all lines)', default = None, type = int
+)
+absolute_lines_group = mutex_group.add_argument_group(
+    'Absolute lines. Positive numbers count forward from the first line, negative backwards from the last.'
+)
+absolute_lines_group.add_argument(
+    '-f', '--first', help = f'First line to display (default: {FIRST_DEFAULT})', default = None, type = int
+)
+absolute_lines_group.add_argument(
+    '-l', '--last', help = f'Last line to display (default: {LAST_DEFAULT})', default = None, type = int
+)
+absolute_lines_group.add_argument(
+    '-s', '--step', help = f'Step (default: {STEP_DEFAULT})', default = None, type = int
+)
+parser_debug.add_argument(
+    '-d', '--dir', help = 'Directory of debug file (default: cwd)', default = Path.cwd(), type = resolved_Path
+)
+parser_debug.add_argument(
+    '-t', '--time', help = 'Display lines from time file (default: most recent file)',
+    type = lambda arg: datetime.datetime.strptime(arg, _file_datetime_format)
+)
+parser_debug.add_argument(
+    '-p', '--pids', help = 'Process IDs to display (default: all pids)', default = None, nargs = '+'
+)
+parser_debug.add_argument(
+    '-r', '--regex', help = 'Filter lines matching given regex (default: no filter)', type = re.compile
+)
+elapsed_group = parser_debug.add_argument_group(
+    'Calculate elapsed time statistics.', 'Timer starts at any line matching option -e1 and ends at first following '
+    'line that matches option -e2.')
+elapsed_group.add_argument('-e1', '--elapsed1', help = 'Regex', type = re.compile)
+elapsed_group.add_argument('-e2', '--elapsed2', help = 'Regex', type = re.compile)
+elapsed_group.add_argument('-S', '--sum', help = 'Display sum of all elapsed times', action = 'store_true')
+elapsed_group.add_argument('-m', '--mean', help = 'Display mean elapsed time', action = 'store_true')
+elapsed_group.add_argument('-M', '--median', help = 'Display median elapsed time', action = 'store_true')
+elapsed_group.add_argument('-c', '--count', help = 'Display number elapsed times', action = 'store_true')
+elapsed_group.add_argument('--min', help = 'Display min time', action = 'store_true')
+elapsed_group.add_argument('--max', help = 'Display max time', action = 'store_true')
+elapsed_group.add_argument('--spread', help = 'Display spread', action = 'store_true')
+elapsed_group.add_argument('-q', '--quants', help = 'Number of quantiles to display (default: none)', type = int)
 
+###########################
+#          DELETE         #
 parser_delete = subparsers.add_parser('delete', help = 'Delete registers.')
 _add_save_dir_argument(parser_delete)
 _add_shorthand_ident_arguments(parser_delete)
 _add_verbose_argument(parser_delete)
-
+###########################
+#         SLURMIFY        #
 parser_slurmify = subparsers.add_parser(
     'slurmify', help = 'Submit a Python script to Slurm for execution. Any options not listed below will be forwarded '
-                       'to `sbatch`.'
+    'to `sbatch`.'
 )
 parser_slurmify.add_argument('main', help = 'Python script to run with command-line args', type = resolved_Path, nargs = '+')
 parser_slurmify.add_argument('--ncpu', help = 'Number of CPUs (default: 1)', default = 1, type = int)
@@ -152,36 +244,10 @@ args, unrecognized = parser_command.parse_known_args()
 
 if args.command == 'summary':
 
-    remaining_shorthands = copy.copy(args.shorthands)
-    remaining_idents = copy.copy(args.idents)
-    do_all = len(args.shorthands) == 0 and len(args.idents) == 0
-    regs = _load_regs(args.shorthands, args.idents, args.dir)
+    parser_command.parse_args()  # no unknown args
+    regs, to_print = _load_regs(args.shorthands, args.idents, args.dir)
 
-    if not do_all:
-
-        for reg in regs:
-
-            try:
-                remaining_shorthands.remove(reg.shorthand())
-
-            except ValueError:
-                pass
-
-            try:
-                remaining_idents.remove(reg.ident())
-
-            except ValueError:
-                pass
-
-    to_print = ''
-
-    if len(remaining_shorthands) > 0:
-        to_print += f'COULD NOT FIND THE FOLLOWING SHORTHANDS: {", ".join(remaining_shorthands)}\n'
-
-    if len(remaining_idents) > 0:
-        to_print += f'COULD NOT FIND THE FOLLOWING IDENTS: {", ".join(remaining_idents)}\n'
-
-    if len(to_print) > 0 and len(regs) > 0:
+    if len(to_print) > 0:
         to_print += '\n'
 
     for reg in regs:
@@ -193,42 +259,25 @@ if args.command == 'summary':
 
 elif args.command == 'debug':
 
-    if (args.start is None) != (args.end is None):
-        raise ValueError
-
-    if args.start is not None:
-        d1, d2 = args.start, args.end
-
-    else:
-        d1 = d2 = None
-
-    if args.dir is not None:
-        parent_dir = Path(args.dir)
-
-    else:
-        parent_dir = Path.cwd()
-
-    if not parent_dir.exists():
-        raise FileNotFoundError(str(parent_dir))
+    parser_command.parse_args()  # no unknown args
+    display_nlines = args.first is None and args.last is None and args.step is None
+    _check_raise_directory(args.dir)
 
     if args.time is not None:
 
-        dir_time = datetime.datetime.strptime(args.time, _file_datetime_format)
-        dir_ = parent_dir / args.time
-
-        if not dir_.exists():
-            raise FileNotFoundError(str(dir_))
+        args.time = (args.time, args.dir / args.time.strftime(_file_datetime_format))
+        _check_raise_directory(args.time[1])
 
     else:
 
         dts = []
 
-        for dir_ in parent_dir.iterdir():
+        for time_dir in args.dir.iterdir():
 
-            if dir_.is_dir():
+            if time_dir.is_dir():
 
                 try:
-                    dt = datetime.datetime.strptime(dir_.name, _file_datetime_format)
+                    dt = datetime.datetime.strptime(time_dir.name, _file_datetime_format)
 
                 except ValueError:
                     pass
@@ -236,24 +285,50 @@ elif args.command == 'debug':
                 else:
                     dts.append(dt)
 
-        dir_time = max(dts)
-        dir_ = parent_dir / dir_time.strftime(_file_datetime_format)
+        if len(dts) == 0:
+            raise FileNotFoundError('No debug files found')
+
+        dt = max(dts)
+        args.time = args.dir / dt.strftime(_file_datetime_format)
 
     if args.pids is not None:
-        pids = args.pids
+
+        for i, pid in enumerate(args.pids):
+
+            pid_file = args.time / f'{pid}.txt'
+            _check_plain_file(pid_file)
+            args.pids[i] = (pid, pid_file)
 
     else:
 
-        pids = []
+        args.pids = []
 
-        for pid_file in dir_.iterdir():
+        for pid_file in args.time.iterdir():
 
-            if pid_file.is_file() and re.match(r'^\d+\.txt$', pid_file.name) is not None:
-                pids.append(pid_file.stem)
+            if pid_file.is_file() and re.search(r'\d+\.txt', pid_file.name) is not None:
+                args.pids.append((pid_file.stem, pid_file))
+
+        if len(args.pids) == 0:
+            raise FileNotFoundError('No debug files found')
+
+    print(f'Displaying debug info from {args.time[1]}')
+
+    if display_nlines:
+
+        if args.nlines > 0:
+
+            for pid, pid_file in args.pids:
+
+                print(pid)
+
+                with pid_file.open('r') as fh:
+
+                    for i, line in enumerate(fh.readlines()):
+
+                        if i >= args.nlines:
+                            break
 
 
-    memory = args.memory
-    print(f'm = {memory}, pids = {pids}, d1 = {d1}, d2 = {d2}, f = {parent_dir}, t = {dir_time}, dir = {dir_}')
 
     if d1 is None:
 
@@ -317,7 +392,15 @@ elif args.command == 'debug':
 
 elif args.command == 'delete':
 
-    regs = _load_regs(args.shorthands, args.idents, args.dir)
+    parser_command.parse_args() # no unknown args
+    regs, to_print = _load_regs(args.shorthands, args.idents, args.dir)
+
+    for reg in regs:
+        to_print += str(reg)
+
+    if len(to_print) > 0:
+        print(to_print)
+
     confirm = ''
 
     while confirm.strip().lower() not in ('y', 'n'):

@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest import TestCase
 
 from cornifer._utilities import random_unique_filename
+from cornifer.errors import CannotLoadError
 from cornifer.regfilestructure import check_reg_structure, REG_FILENAME, VERSION_FILEPATH, \
     MSG_FILEPATH, CLS_FILEPATH, DATABASE_FILEPATH, MAP_SIZE_FILEPATH, WRITE_DB_FILEPATH
 
@@ -22,7 +23,7 @@ class Test_Register_File_Structure(TestCase):
     def test_check_register_structure(self):
 
         # tests absolute filepath
-        with self.assertRaisesRegex(ValueError, "absolute"):
+        with self.assertRaisesRegex(CannotLoadError, "absolute"):
             check_reg_structure(Path("sup"))
 
         try:
@@ -32,7 +33,7 @@ class Test_Register_File_Structure(TestCase):
             if "absolute" in str(e):
                 self.fail()
 
-        except FileNotFoundError:
+        except CannotLoadError:
             pass
 
         local_dir = SAVES_DIR / "local_dir"
@@ -41,7 +42,7 @@ class Test_Register_File_Structure(TestCase):
         register_filepath = local_dir / REG_FILENAME
         register_filepath.mkdir(exist_ok = False)
 
-        with self.assertRaises(FileNotFoundError) as cm:
+        with self.assertRaises(CannotLoadError) as cm:
             check_reg_structure(local_dir)
 
         e = str(cm.exception)

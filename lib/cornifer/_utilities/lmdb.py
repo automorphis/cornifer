@@ -138,7 +138,7 @@ def db_prefix_list(prefix, db):
 
 def r_txn_prefix_list(prefix, r_txn):
 
-    with r_txn_prefix_iter(r_txn, prefix) as it:
+    with r_txn_prefix_iter(prefix, r_txn) as it:
         return list(it)
 
 @contextmanager
