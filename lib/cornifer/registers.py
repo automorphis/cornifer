@@ -67,6 +67,7 @@ _CURR_ID_KEY               = b"curr_id"
 _APOS_KEY_PREFIX           = b"apos"
 _COMPRESSED_KEY_PREFIX     = b"compr"
 _LENGTH_LENGTH_KEY         = b"lenlen"
+_MAX_APRI_LEN_KEY          = b'max_apri_len'
 
 _KEY_SEP_LEN               = len(_KEY_SEP)
 _SUB_KEY_PREFIX_LEN        = len(_SUB_KEY_PREFIX)
@@ -313,6 +314,7 @@ class Register(ABC):
                     rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startn_tail_length).encode("ASCII"))
                     rw_txn.put(_LENGTH_LENGTH_KEY, str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"))
                     rw_txn.put(_CURR_ID_KEY, b"0")
+                    rw_txn.put(_MAX_APRI_LEN_KEY, str(self._max_apri_len).encode('ASCII'))
 
             finally:
                 self._db.close()
@@ -404,7 +406,7 @@ class Register(ABC):
         self._startn_tail_mod = 10 ** self._startn_tail_length
         self._length_length = _LENGTH_LENGTH_DEFAULT
         self._max_length = _MAX_LENGTH_DEFAULT
-        self._max_apri_length = _MAX_APRI_DFL_LEN
+        self._max_apri_len = _MAX_APRI_DFL_LEN
         self._max_apri = _MAX_APRI_DFL
         # RAM BLOCKS #
         self._ram_blks = {}
@@ -1074,8 +1076,10 @@ class Register(ABC):
                 for delete in deletes:
                     rw_txn.delete(delete)
 
+            rw_txn.put(_MAX_APRI_LEN_KEY, str(new_max_len).encode('ASCII'))
+
         self._max_apri = new_max
-        self._max_apri_length = len(str(new_max - 1))
+        self._max_apri_len = new_max_len
 
     #################################
     #    PROTEC REGISTER METHODS    #
@@ -1213,7 +1217,10 @@ class Register(ABC):
                 'a process that opened this `Register` was killed before it could revert changes made to the database. '
                 f'Opening the register from the permanent database located at `{ret._perm_db_filepath}`.\n{ret}'
             )
-            write_txt_file(str(ret._perm_db_filepath), ret._local_dir / WRITE_DB_FILEPATH, True)
+
+            if not self._readonly:
+                write_txt_file(str(ret._perm_db_filepath), ret._local_dir / WRITE_DB_FILEPATH, True)
+
             ret._write_db_filepath = ret._perm_db_filepath
 
         try:
@@ -1223,8 +1230,11 @@ class Register(ABC):
             raise RegisterError(f'Failed to open `Register`\n{self}') from e
 
         with ret._txn("reader") as ro_txn:
-            ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
 
+            ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
+            ret._max_apri_len = int(ro_txn.get(_MAX_APRI_LEN_KEY))
+
+        ret._max_apri = 10 ** ret._max_apri_len
         ret._max_length = 10 ** ret._length_length - 1
         ret._opened = True
         return ret
@@ -1668,7 +1678,7 @@ class Register(ABC):
 
         for next_apri_id_num in range(int(rw_txn.get(_CURR_ID_KEY)), self._max_apri):
 
-            next_id = bytify_int(next_apri_id_num, self._max_apri_length)
+            next_id = bytify_int(next_apri_id_num, self._max_apri_len)
 
             if next_id not in reserved:
                 break
@@ -1676,7 +1686,7 @@ class Register(ABC):
         else:
             raise RegisterError(f"Too many apris added to this `Register`, the limit is {self._max_apri}.")
 
-        rw_txn.put(_CURR_ID_KEY, bytify_int(next_apri_id_num + 1, self._max_apri_length))
+        rw_txn.put(_CURR_ID_KEY, bytify_int(next_apri_id_num + 1, self._max_apri_len))
         return next_id
 
     def _add_apri_ram(self, apri, exclude_root):
@@ -2685,8 +2695,8 @@ class Register(ABC):
         if blk_key is None:
             return None, None
 
-        len1 = _BLK_KEY_PREFIX_LEN        + self._max_apri_length + _KEY_SEP_LEN
-        len2 = _COMPRESSED_KEY_PREFIX_LEN + self._max_apri_length + _KEY_SEP_LEN
+        len1 = _BLK_KEY_PREFIX_LEN        + self._max_apri_len + _KEY_SEP_LEN
+        len2 = _COMPRESSED_KEY_PREFIX_LEN + self._max_apri_len + _KEY_SEP_LEN
         return blk_key[ : len1], compressed_key[ : len2]
 
     def _get_disk_blk_prefixes_startn(self, apri, apri_json, reencode, startn, r_txn):
@@ -2696,8 +2706,8 @@ class Register(ABC):
         if blk_key is None:
             return None, None
 
-        len1 = _BLK_KEY_PREFIX_LEN        + self._max_apri_length + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
-        len2 = _COMPRESSED_KEY_PREFIX_LEN + self._max_apri_length + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
+        len1 = _BLK_KEY_PREFIX_LEN        + self._max_apri_len + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
+        len2 = _COMPRESSED_KEY_PREFIX_LEN + self._max_apri_len + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
         return blk_key[: len1], compressed_key[: len2]
 
     def _add_disk_blk_pre(self, apri, apri_json, reencode, startn, length, exists_ok, dups_ok, r_txn):
@@ -3330,7 +3340,7 @@ class Register(ABC):
 
     def _get_raw_startn_length(self, prefix_len, key):
 
-        stop1 = prefix_len + self._max_apri_length
+        stop1 = prefix_len + self._max_apri_len
         stop2 = stop1 + _KEY_SEP_LEN + self._startn_tail_length
 
         return (
@@ -5365,7 +5375,7 @@ class _RelationalApriInfoStrHook:
 
             id_ = str_[len(ApriInfo.__name__) : ]
 
-            if len(id_) == self._reg._max_apri_length:
+            if len(id_) == self._reg._max_apri_len:
 
                 try:
                     int(id_)

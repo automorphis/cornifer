@@ -21,7 +21,7 @@ from cornifer.registers import _BLK_KEY_PREFIX, _KEY_SEP, \
     _APRI_ID_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, \
     _COMPRESSED_KEY_PREFIX, _IS_NOT_COMPRESSED_VAL, _BLK_KEY_PREFIX_LEN, _SUB_VAL, _APOS_KEY_PREFIX, _NO_DEBUG, \
     _START_N_TAIL_LENGTH_DEFAULT, _LENGTH_LENGTH_KEY, _LENGTH_LENGTH_DEFAULT, _CURR_ID_KEY, \
-    _INITIAL_REGISTER_SIZE_DEFAULT, _MAX_APRI_DFL
+    _INITIAL_REGISTER_SIZE_DEFAULT, _MAX_APRI_DFL, _MAX_APRI_LEN_KEY, _MAX_APRI_DFL_LEN
 from cornifer._utilities.lmdb import db_has_key, db_prefix_iter, db_count_keys, open_lmdb, \
     num_open_readers_accurate, r_txn_count_keys, r_txn_has_key, db_prefix_list
 from cornifer.version import CURRENT_VERSION
@@ -422,6 +422,7 @@ class Test_Register(TestCase):
             _START_N_TAIL_LENGTH_KEY : str(_START_N_TAIL_LENGTH_DEFAULT).encode("ASCII"),
             _LENGTH_LENGTH_KEY : str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"),
             _CURR_ID_KEY : b"0",
+            _MAX_APRI_LEN_KEY: str(_MAX_APRI_DFL_LEN).encode('ASCII')
         }
         self.assertFalse(reg._opened)
         db = None
@@ -5481,7 +5482,7 @@ class Test_Register(TestCase):
         def test_case(curr_max, curr_max_len, aposs, blks, existing_apris, num_existing_blks, is_full):
 
             self.assertEqual(reg._max_apri, curr_max)
-            self.assertEqual(reg._max_apri_length, curr_max_len)
+            self.assertEqual(reg._max_apri_len, curr_max_len)
             new_apos_apris = set()
             new_blk_apris = set()
 
@@ -5625,6 +5626,10 @@ class Test_Register(TestCase):
             with reg.open():
                 reg.increase_max_apri(10000 * max_apri_dfl)
 
+            existing_apris, num_existing_blks = test_case(
+                10000 * max_apri_dfl, 4 + max_apri_dfl_len, [], [], existing_apris, num_existing_blks, False
+            )
+            reg = Register._from_local_dir(reg._local_dir)
             existing_apris, num_existing_blks = test_case(
                 10000 * max_apri_dfl, 4 + max_apri_dfl_len, [], [], existing_apris, num_existing_blks, False
             )
