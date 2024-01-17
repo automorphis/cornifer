@@ -385,19 +385,6 @@ class _Info(ABC):
     def __getattr__(self, item):
         raise AttributeError(f'{item} is not an attribute of {self}') from None
 
-    def __setattr__(self, key, value):
-
-        if key in type(self)._reserved_kws:
-            self.__dict__[key] = value
-
-        else:
-            raise AttributeError(f'Attributes of ApriInfo are readonly (cannot be changed).')
-
-    def __delattr__(self, item):
-
-        if item not in type(self)._reserved_kws:
-            raise AttributeError(f'Attributes of ApriInfo are readonly (cannot be deleted).')
-
 class ApriInfo(_Info, reserved_kws = ["_hash"]):
 
     def __init__(self, **kwargs):
@@ -425,6 +412,22 @@ class ApriInfo(_Info, reserved_kws = ["_hash"]):
 
     def __hash__(self):
         return self._hash
+
+    def __setattr__(self, key, value):
+
+        if key in type(self)._reserved_kws:
+            self.__dict__[key] = value
+
+        else:
+            raise AttributeError(f'Attributes of ApriInfo are readonly (cannot be changed).')
+
+    def __delattr__(self, item):
+
+        if item not in type(self)._reserved_kws:
+            raise AttributeError(f'Attributes of ApriInfo are readonly (cannot be deleted).')
+
+        else:
+            del self.__dict__[item]
 
 class AposInfo(_Info):
 
