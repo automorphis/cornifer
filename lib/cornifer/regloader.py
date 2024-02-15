@@ -104,9 +104,9 @@ def load(shorthand, saves_dir = None, wait_for_latency = False, timeout = 60):
 
         if len(regs) > 1:
             raise DataExistsError(
-                '\n'.join(map(str, regs)) +
-                f'More than one `Register` found with shorthand `{shorthand}`, listed above. (You can also use the '
-                f'function `load_ident` to load a `Register`.)'
+                f'More than one `Register` found with shorthand `{shorthand}`, listed below. (You can also use the '
+                f'function `load_ident` to load a `Register`.)\n'
+                '\n'.join(map(str, regs))
             )
 
         elif len(regs) == 1:
@@ -120,7 +120,7 @@ def load(shorthand, saves_dir = None, wait_for_latency = False, timeout = 60):
             return reg
 
         elif not wait_for_latency or time.time() - start >= timeout:
-            raise DataNotFoundError(f"No `Register` found with shorthand `{shorthand}`.")
+            raise DataNotFoundError(f"No `Register` found with shorthand `{shorthand}` in directory `{saves_dir}`.")
 
 def load_ident(ident, saves_dir = None, wait_for_latency = False, timeout = 60):
 

@@ -732,7 +732,7 @@ class Register(ABC):
         return str(self)
 
     def summary(self, include_ram = True):
-
+        # print last edit time
         self._check_open_raise("summary")
 
         num_disk_apri = 0
@@ -894,7 +894,7 @@ class Register(ABC):
         return self._db_map_size
 
     def ident(self):
-        return str(self._local_dir)
+        return self._local_dir.name
 
     def shorthand(self):
         return self._shorthand
@@ -1213,9 +1213,10 @@ class Register(ABC):
         ):
 
             warnings.warn(
-                f'Could not locate `Register` write database `{ret._write_db_filepath}`. This likely happened because '
-                'a process that opened this `Register` was killed before it could revert changes made to the database. '
-                f'Opening the register from the permanent database located at `{ret._perm_db_filepath}`.\n{ret}'
+                f'Could not locate `Register` write database `{ret._write_db_filepath}`. This likely happened for one '
+                f'of two reasons: either because a process that opened this database was killed before it could exit '
+                f'safely or because that process is still running. Opening the register from the permanent database '
+                f'located at `{ret._perm_db_filepath}`.\n{ret}'
             )
 
             if not self._readonly:
@@ -4121,13 +4122,13 @@ class Register(ABC):
 
                 to_raise = False
 
-                if self._contains_index_disk(prefix, int_, ro_txn):
+                if self._contains_interval_disk(prefix, int_, ro_txn):
                     return True
 
             if recursively:
 
                 try:
-                    ret = self._contains_index_recursive(apri, int_, diskonly, ro_txn)
+                    ret = self._contains_interval_recursive(apri, int_, diskonly, ro_txn)
 
                 except DataNotFoundError:
                     pass
