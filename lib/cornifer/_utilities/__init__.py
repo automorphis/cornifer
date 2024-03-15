@@ -14,10 +14,12 @@
 """
 import hashlib
 import inspect
+import json
 import random
 import re
 import string
 import time
+from abc import ABC, abstractmethod
 from collections import OrderedDict
 from contextlib import contextmanager, ExitStack
 from datetime import datetime, timedelta, timezone
@@ -40,6 +42,30 @@ class BreakableExitStack(ExitStack):
 
 class BreakExitStack(Exception): pass
 
+class JSONEncodable(ABC):
+
+    @abstractmethod
+    def json_encode_default(self):
+        pass
+
+class JSONEncoder(json.JSONEncoder):
+
+    def default(self, obj):
+
+        if isinstance(obj, JSONEncodable):
+            return obj.json_encode_default()
+
+        elif is_int(obj):
+            return int(obj)
+
+        elif isinstance(obj, tuple):
+            return list(obj)
+
+        else:
+            return super().default(obj)
+
+default_encoder = JSONEncoder(ensure_ascii = True, allow_nan = True, indent = None, separators = (',', ':'))
+default_decoder = json.JSONDecoder()
 BYTES_PER_KB = 1024
 BYTES_PER_MB = 1024**2
 BYTES_PER_GB = 1024**3
@@ -57,6 +83,11 @@ try:
 except RuntimeError:
     LOCAL_TIMEZONE = timezone.utc
 
+def bsenc(str_):
+    return str_.encode('ASCII')
+
+def bsdec(bs):
+    return bs.decode('ASCII')
 
 def intervals_overlap(int1, int2):
     """Check if the half-open interval [int1[0], int1[0] + int1[1]) has a non-empty intersection with
@@ -137,7 +168,10 @@ def hash_file(file, algo = None):
 #         )
 
 def sort_intervals(intervals):
-    return sorted(list(intervals), key = lambda t: (t[0], -t[1]))
+    return sorted(list(intervals), key = interval_comparator)
+
+def interval_comparator(startn, length):
+    return startn, -length
 
 def combine_intervals(intervals_sorted):
 
@@ -223,18 +257,18 @@ def _justify_slice_start_stop(num, min_index, max_index):
     else:
         return num - min_index
 
-def order_json_obj(json_obj):
+def order_json(json_obj):
 
     if isinstance(json_obj, dict):
 
         ordered_items = sorted(list(json_obj.items()), key=lambda t: t[0])
         return OrderedDict([
-            (key, order_json_obj(val))
+            (key, order_json(val))
             for key, val in ordered_items
         ])
 
     elif isinstance(json_obj, list):
-        return list(map(order_json_obj, json_obj))
+        return list(map(order_json, json_obj))
 
     else:
         return json_obj

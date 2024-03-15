@@ -263,7 +263,7 @@ class Block:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._num_entered -= 1
 
-class ReleaseBlock(Block, ABC):
+class _ReleaseBlock(Block, ABC):
 
     @abstractmethod
     def _release(self):
@@ -274,8 +274,7 @@ class ReleaseBlock(Block, ABC):
         self._release()
         super().__exit__(exc_type, exc_val, exc_tb)
 
-
-class MemmapBlock(ReleaseBlock):
+class _MemmapBlock(_ReleaseBlock):
 
     def __init__(self, segment, apri, startn = 0):
 
@@ -335,5 +334,3 @@ class MemmapBlock(ReleaseBlock):
         self._seg.flush()
         self._release()
         self._seg = np.memmap(filename, mode = mode)
-
-

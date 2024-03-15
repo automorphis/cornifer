@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest import TestCase
 
 from cornifer._utilities import intervals_overlap, random_unique_filename, check_has_method, \
-    replace_lists_with_tuples, replace_tuples_with_lists, _justify_slice_start_stop, order_json_obj
+    replace_lists_with_tuples, replace_tuples_with_lists, _justify_slice_start_stop, order_json
 
 """
 - LEVEL 0:
@@ -455,22 +455,22 @@ class Test___init__(TestCase):
 
     def test_order_json_obj(self):
         self.assertEqual(
-            list(order_json_obj({"xyz": 3, "abc": 4}).keys()),
+            list(order_json({"xyz": 3, "abc": 4}).keys()),
             ["abc", "xyz"]
         )
         self.assertEqual(
-            list(order_json_obj({"abc": 3, "xyz": 4}).keys()),
+            list(order_json({"abc": 3, "xyz": 4}).keys()),
             ["abc", "xyz"]
         )
         self.assertEqual(
-            list(order_json_obj({"xyz": {"abc":1, "xyz":2}, "abc": 4}).items()),
+            list(order_json({"xyz": {"abc":1, "xyz":2}, "abc": 4}).items()),
             [("abc",4), ("xyz", {"abc": 1, "xyz":2})]
         )
         self.assertEqual(
-            list(order_json_obj({"xyz": {"xyz":2, "abc":1}, "abc": 4}).items()),
+            list(order_json({"xyz": {"xyz":2, "abc":1}, "abc": 4}).items()),
             [("abc",4), ("xyz", {"abc": 1, "xyz":2})]
         )
         self.assertEqual(
-            order_json_obj([{"xyz":1, "abc":2}]),
+            order_json([{"xyz":1, "abc":2}]),
             [{"abc":2, "xyz":1}]
         )

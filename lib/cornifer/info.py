@@ -1,40 +1,19 @@
-import json
 from abc import ABC, abstractmethod
 from copy import copy, deepcopy
 
-from ._utilities import is_int, order_json_obj, check_type, check_type_None_default
+from ._utilities import order_json, check_type, JSONEncodable, default_encoder
 
-class _InfoJsonEncoder(json.JSONEncoder):
+_INFO_TYPE_KW = '_Info_type'
 
-    def default(self, obj):
+class _Info(ABC, JSONEncodable):
 
-        if isinstance(obj, _Info):
-            return type(obj).__name__ + obj.to_json()
-
-        elif is_int(obj):
-            return int(obj)
-
-        elif isinstance(obj, tuple):
-            return list(obj)
-
-        else:
-            return super().default(obj)
-
-class _Info(ABC):
-
-    _reserved_kws = ["_memoize_json", "_str", "_json", "_default_encoder"]
-    _subclasses = []
-    _default_encoder = _InfoJsonEncoder(
-        ensure_ascii = True,
-        allow_nan = True,
-        indent = None,
-        separators = (',', ':')
-    )
+    _reserved_kws = ["_str", _INFO_TYPE_KW, '_json']
+    _subclasses = {}
 
     def __init_subclass__(cls, reserved_kws = None, **kwargs):
 
         super().__init_subclass__(**kwargs)
-        _Info._subclasses.append(cls)
+        _Info._subclasses[cls.__name__] = cls
 
         if reserved_kws is None:
             cls._reserved_kws = _Info._reserved_kws
@@ -44,149 +23,93 @@ class _Info(ABC):
 
     def __init__(self, **kwargs):
 
-        if len(kwargs) == 0:
-            raise ValueError("must pass at least one keyword argument.")
-
         type(self)._check_reserved_kws(kwargs)
         self.__dict__.update(kwargs)
-        self._json = None
         self._str = None
-        self._memoize_json = False
+        self._json = None
 
     def __getstate__(self):
-        return {'json' : self.to_json()}
+        return {key: val for key, val in self.__dict__.items() if key not in type(self)._reserved_kws}
 
     def __setstate__(self, state):
 
-        apri = type(self).from_json(state['json'])
-        self.__dict__ = apri.__dict__
-
-    @classmethod
-    def _default_str_hook(cls, str_):
-
-        if str_[ : len(cls.__name__)] != cls.__name__:
-            return str_
-
-        try:
-            decoded = json.JSONDecoder().decode(str_[len(cls.__name__) : ])
-
-        except json.JSONDecodeError:
-            return str_
-
-        else:
-
-            if isinstance(decoded, dict):
-                return decoded
-
-            else:
-                return str_
+        for key, val in state.items():
+            self.__dict__[key] = val
 
     @classmethod
     def _check_reserved_kws(cls, kwargs):
 
         if any(kw in kwargs for kw in cls._reserved_kws):
             raise ValueError(
-                "The following keyword-argument keys are reserved. Choose a different key.\n" +
+                "The following keyword-argument keys are reserved. Choose a different key. "
                 f"{', '.join(cls._reserved_kws)}"
             )
 
     @classmethod
-    def from_json(cls, json_, str_hook = None):
+    def from_primitive_json(cls, json_):
 
-        check_type(json_, "json_", str)
+        if json_[_INFO_TYPE_KW] != cls.__name__:
+            raise ValueError
 
-        if str_hook is None:
-            str_hook = lambda cls_, str_ : cls_._default_str_hook(str_)
+        json_ = copy(json_)
+        del json_[_INFO_TYPE_KW]
+        return cls(**json_)
 
-        info_decoded_json = json.JSONDecoder().decode(json_)
+    @staticmethod
+    def from_json(json_):
 
-        if not isinstance(info_decoded_json, dict):
-            raise ValueError(
-                "The outermost layer of the passed JSON string must be a JavaScript `object`, that is, "
-                f"a Python `dict`. The outermost layer of the passed `json_` is: "
-                f"`{info_decoded_json.__class__.__name__}`."
-            )
+        check_type(json_, "json", dict)
+        # I can't use object_hook because it's bugged (that or py-lmdb is bugged, or both)
+        if not isinstance(json_, dict):
+            raise TypeError
 
-        stack = [(None, None, cls, info_decoded_json)]
+        if _INFO_TYPE_KW not in json_.keys():
+            raise KeyError
+
+        stack = [(None, None, json_)]
 
         while len(stack) > 0:
 
             index = len(stack) - 1
             current = stack[-1]
-            old_index, old_key, current_cls, current_info_decoded_json = current
+            old_index, old_key, curr_json_obj = current
 
-            if isinstance(current_info_decoded_json, str):
-                raise Exception
+            for key, val in curr_json_obj.items():
 
-            for key, val in current_info_decoded_json.items():
-
-                if isinstance(val, str):
-
-                    str_ = val.strip(" \t")
-
-                    for cls_ in _Info._subclasses:
-
-                        decoded_str = str_hook(cls_, str_)
-
-                        if isinstance(decoded_str, dict):
-
-                            stack.append((index, key, cls_, decoded_str))
-                            current_info_decoded_json[key] = decoded_str
-                            break # cls_ loop
+                if isinstance(val, dict):
+                    stack.append((index, key, val))
 
                 elif isinstance(val, list):
-                    current_info_decoded_json[key] = tuple(val)
+                    curr_json_obj[key] = tuple(val)
 
             if index + 1 == len(stack):
                 # nothing pushed
-                if index == 0:
-                    # top level
-                    return current_cls(**current_info_decoded_json)
+                info = _Info._subclasses[curr_json_obj[_INFO_TYPE_KW]].from_primitive_json(curr_json_obj)
+                if index == 0: # top level
+                    return info
                 else:
                     # pop
-                    old_info_decoded_json = stack[old_index][3]
-                    old_info_decoded_json[old_key] = current_cls(**current_info_decoded_json)
+                    old_json_obj = stack[old_index][2]
+                    old_json_obj[old_key] = info
                     del stack[-1]
 
-    def to_json(self, encoder = None):
+    def to_json(self, *args):
 
-        encoder = check_type_None_default(encoder, "encoder", _InfoJsonEncoder, type(self)._default_encoder)
+        if self._json is None:
+            self._json = default_encoder.encode(self)
 
-        if self._memoize_json and self._json is not None:
-            return self._json
+        return self._json
 
-        else:
+    def json_encode_default(self):
 
-            kwargs = copy(self.__dict__)
+        kwargs = copy(self.__dict__)
 
-            for kw in type(self)._reserved_kws:
-                kwargs.pop(kw, None)
+        for kw in type(self)._reserved_kws:
+            kwargs.pop(kw, None)
 
-            kwargs = order_json_obj(kwargs)
-
-            try:
-                json_rep = encoder.encode(kwargs)
-
-            except (TypeError, ValueError) as e:
-
-                raise ValueError(
-                    "One of the keyword arguments used to construct this instance cannot be encoded into " +
-                    "JSON. Use different keyword arguments, or override the " +
-                    f"classmethod `{self.__class__.__name__}.from_json` and the instancemethod " +
-                    f"`{self.__class__.__name__}.toJson`."
-                ) from e
-
-            if "\0" in json_rep:
-
-                raise ValueError(
-                    "One of the keyword arguments used to construct this instance contains the null character " +
-                    "'\\0'."
-                )
-
-            if self._memoize_json:
-                self._json = json_rep
-
-            return json_rep
+        json_ = {key : val for key, val in self.__dict__.items() if key not in type(self)._reserved_kws}
+        json_['_Info_type'] = str(type(self))
+        return order_json(json_)
 
     def _iter_inner_info_bfs(self, root_call):
 
@@ -327,10 +250,7 @@ class _Info(ABC):
         if type(self) != type(other):
             return False
 
-        if (
-            self._memoize_json and other._memoize_json and
-            self._json is not None and other._json is not None
-        ):
+        if self._json is not None and other._json is not None:
             return self._json == other._json
 
         if len(self.__dict__) != len(other.__dict__):
@@ -380,8 +300,9 @@ class _Info(ABC):
         return str(self)
 
     def __copy__(self):
+
         info = type(self)(placeholder = "placeholder")
-        del info.placeholder
+        del info.__dict__['placeholder']
         info.__dict__.update(self.__dict__)
         return info
 
@@ -392,9 +313,11 @@ class ApriInfo(_Info, reserved_kws = ["_hash"]):
 
     def __init__(self, **kwargs):
 
+        if len(kwargs) == 0:
+            raise ValueError("must pass at least one keyword argument.")
+
         super().__init__(**kwargs)
         hash_ = hash(type(self))
-        self._memoize_json = True
 
         for key,val in kwargs.items():
 
@@ -404,19 +327,32 @@ class ApriInfo(_Info, reserved_kws = ["_hash"]):
             except (TypeError, AttributeError) as e:
 
                 raise ValueError(
-                    f"All keyword arguments must be hashable types. The keyword argument given by \"{key}\" "+
-                    f"not a hashable type. The type of that argument is `{val.__class__.__name__}`."
+                    f"All keyword arguments must be hashable types. The keyword argument given by {key} is"
+                    f"not a hashable type. The type of that argument is {val.__class__.__name__}."
                 ) from e
-
-            if self._memoize_json and isinstance(val, _Info):
-                self._memoize_json = False
 
         self._hash = hash_
 
     def __hash__(self):
         return self._hash
 
+    def __setattr__(self, key, value):
+
+        if key in type(self)._reserved_kws:
+            self.__dict__[key] = value
+
+        else:
+            raise AttributeError(f'Attributes of ApriInfo are readonly (cannot be changed).')
+
+    def __delattr__(self, item):
+
+        if item not in type(self)._reserved_kws:
+            raise AttributeError(f'Attributes of ApriInfo are readonly (cannot be deleted).')
+
+        else:
+            del self.__dict__[item]
+
 class AposInfo(_Info):
 
     def __hash__(self):
-        raise TypeError(f"`{type(self).__name__}` is not a hashable type.")
+        raise TypeError(f"{type(self).__name__} is not a hashable type.")

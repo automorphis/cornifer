@@ -12,10 +12,33 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 """
+
+"""
+Register implementation in split across several modules:
+1. `registers`. The only public module among these. Defines the Register class and its concrete subclasses 
+   `NumpyRegister`, `RootRegister`, and `PickleRegister`. Only methods related to object and subclass creation are 
+   implemented in this module, plus the classmethods `dump_disk_data`, `clean_disk_data`, and `load_disk_data`. All 
+   other methods are implemented in `_regmethods`.
+2. `_regmethods`. Implements Register methods. Every method is implemented as a subclass of 
+   `_regmethods.RegisterMethod` and added to the `registers.Register` namespace via the staticmethod 
+   `registers.Register._add_reg_method`. Methods that interact with the Register database are subclasses of 
+   `_regmethods.RegisterDatabaseMethod`.
+   a. I split off `_regmethods` from `registers` for two reasons. 
+      i. The instancemethods `_regmethods.RegisterTransaction.push` and `_regmethods.RegisterTransaction.__exit__` are 
+         what ultimately call every `RegisterDatabaseMethod`. Parts of the `RegisterDatabaseMethod` are called by `push` 
+         and other parts by `__exit__`. For this reason, a Register method cannot be implemented as a monolith and must 
+         be split off into several method parts, named `ram`, `disk1`, `disk2`, `recursive_gen`, `recursive_non_gen`, 
+         and `error`.
+     ii. The `registers` module is very large if you put `RegisterMethod`, its subtypes, and `RegisterTransaction` 
+         in it. So I moved that stuff to a different module.
+   b.  
+3. `_regstatics`. 
+      
+"""
+
 import asyncio
 import functools
 import itertools
-import json
 import os
 import pickle
 import shutil
@@ -30,18 +53,19 @@ import lmdb
 import numpy as np
 import aioshutil
 
-from cornifer._regstatics import get_apri_id_key, get_id_apri_key, get_new_id, get_apri_json, _KEY_SEP, \
-    _START_N_HEAD_KEY, _START_N_TAIL_LENGTH_KEY, _SUB_KEY_PREFIX, _BLK_KEY_PREFIX, _ID_APRI_KEY_PREFIX, _CURR_ID_KEY, \
-    _APOS_KEY_PREFIX, _COMPRESSED_KEY_PREFIX, _LENGTH_LENGTH_KEY, _KEY_SEP_LEN, _SUB_KEY_PREFIX_LEN, \
-    _BLK_KEY_PREFIX_LEN, _COMPRESSED_KEY_PREFIX_LEN, _APOS_KEY_PREFIX_LEN, _IS_NOT_COMPRESSED_VAL, _SUB_VAL, \
-    _START_N_TAIL_LENGTH_DEFAULT, _LENGTH_LENGTH_DEFAULT, _MAX_LENGTH_DEFAULT, _START_N_HEAD_DEFAULT, \
-    _INITIAL_REGISTER_SIZE_DEFAULT, _MAX_NUM_APRI_LEN
-from ._regtransactions import RegisterTransaction
+from cornifer._regstatics import get_apri_id_key, get_id_apri_key, get_new_id, KEY_SEP, \
+    START_N_HEAD_KEY, START_N_TAIL_LEN_KEY, SUB_KEY_PREFIX, BLK_KEY_PREFIX, ID_APRI_KEY_PREFIX, CURR_ID_KEY, \
+    APOS_KEY_PREFIX, COMPRESSED_KEY_PREFIX, LEN_LEN_KEY, KEY_SEP_LEN, SUB_KEY_PREFIX_LEN, \
+    BLK_KEY_PREFIX_LEN, COMPRESSED_KEY_PREFIX_LEN, IS_NOT_COMPRESSED_VAL, SUB_VAL, \
+    START_N_TAIL_LEN_DFL, LEN_LEN_DFL, MAX_LEN_DFL, STARTN_HEAD_DFL, \
+    INIT_REG_SIZE_DFL, MAX_NUM_APRI_LEN
+from ._regmethods import RegisterTransaction, RegisterDatabaseMethod, ProtectedRegisterMethod
 from .errors import DataNotFoundError, RegisterAlreadyOpenError, RegisterError, CompressionError, \
     DecompressionError, NOT_ABSOLUTE_ERROR_MESSAGE, RegisterRecoveryError, BlockNotOpenError, DataExistsError, \
     RegisterNotOpenError, RegisterOpenError
-from .info import ApriInfo, AposInfo, _InfoJsonEncoder
-from .blocks import Block, MemmapBlock
+from .info import ApriInfo, AposInfo
+from ._relationalinfo import RelationalApriInfoStrHook, RelationalInfoJsonEncoder
+from .blocks import Block, _MemmapBlock
 from .filemetadata import FileMetadata
 from ._utilities import random_unique_filename, resolve_path, is_deletable, check_type, \
     check_return_int_None_default, check_return_Path, check_return_int, bytify_int, intify_bytes, intervals_overlap, \
@@ -54,6 +78,7 @@ from ._regfilestructure import VERSION_FILEPATH, LOCAL_DIR_CHARS, \
     REG_FILENAME, MAP_SIZE_FILEPATH, SHORTHAND_FILEPATH, WRITE_DB_FILEPATH, DATA_FILEPATH, DIGEST_FILEPATH, \
     LOCK_FILEPATH
 from .version import CURRENT_VERSION, COMPATIBLE_VERSIONS
+
 
 _NO_DEBUG = 0
 _debug = _NO_DEBUG
@@ -229,6 +254,23 @@ class Register(ABC):
     #    subreg B, etc.
     #
 
+    def _init_push_pop(self, method, *args, **kwargs):
+
+        with self.txn() as txn:
+            return txn.init_and_push(method, args, kwargs)
+
+    @classmethod
+    def _add_reg_method(cls, method):
+
+        if not isinstance(method, RegisterDatabaseMethod) or isinstance(method, ProtectedRegisterMethod):
+            raise TypeError
+
+        setattr(
+            cls,
+            method.method_name,
+            functools.partialmethod(cls._init_push_pop, method)
+        )
+
     #################################
     #     PUBLIC INITIALIZATION     #
 
@@ -266,10 +308,10 @@ class Register(ABC):
 
                 with self._txn(Writer) as rw_txn:
 
-                    rw_txn.put(_START_N_HEAD_KEY, str(self._startn_head).encode("ASCII"))
-                    rw_txn.put(_START_N_TAIL_LENGTH_KEY, str(self._startn_tail_length).encode("ASCII"))
-                    rw_txn.put(_LENGTH_LENGTH_KEY, str(_LENGTH_LENGTH_DEFAULT).encode("ASCII"))
-                    rw_txn.put(_CURR_ID_KEY, b"0")
+                    rw_txn.put(START_N_HEAD_KEY, str(self._startn_head).encode("ASCII"))
+                    rw_txn.put(START_N_TAIL_LEN_KEY, str(self._startn_tail_length).encode("ASCII"))
+                    rw_txn.put(LEN_LEN_KEY, str(LEN_LEN_DFL).encode("ASCII"))
+                    rw_txn.put(CURR_ID_KEY, b"0")
 
             finally:
                 self._db.close()
@@ -323,7 +365,7 @@ class Register(ABC):
         check_type(shorthand, "shorthand", str)
         check_type(msg, "msg", str)
         initial_reg_size = check_return_int_None_default(
-            initial_reg_size, "initial_reg_size", _INITIAL_REGISTER_SIZE_DEFAULT
+            initial_reg_size, "initial_reg_size", INIT_REG_SIZE_DFL
         )
 
         if initial_reg_size <= 0:
@@ -356,11 +398,11 @@ class Register(ABC):
         self._version = CURRENT_VERSION
         self._version_filepath = None
         # INDICES #
-        self._startn_head = _START_N_HEAD_DEFAULT
-        self._startn_tail_length = _START_N_TAIL_LENGTH_DEFAULT
+        self._startn_head = STARTN_HEAD_DFL
+        self._startn_tail_length = START_N_TAIL_LEN_DFL
         self._startn_tail_mod = 10 ** self._startn_tail_length
-        self._length_length = _LENGTH_LENGTH_DEFAULT
-        self._max_length = _MAX_LENGTH_DEFAULT
+        self._length_length = LEN_LEN_DFL
+        self._max_length = MAX_LEN_DFL
         # RAM BLOCKS #
         self._ram_blks = {}
         # TIMEIT #
@@ -773,8 +815,8 @@ class Register(ABC):
 
         self._check_open_raise("set_startn_info")
         self._check_readwrite_raise("set_startn_info")
-        head = check_return_int_None_default(head, "head", _START_N_HEAD_DEFAULT)
-        tail_len = check_return_int_None_default(tail_len, "tail_len", _START_N_TAIL_LENGTH_DEFAULT)
+        head = check_return_int_None_default(head, "head", STARTN_HEAD_DFL)
+        tail_len = check_return_int_None_default(tail_len, "tail_len", START_N_TAIL_LEN_DFL)
 
         if head < 0:
             raise ValueError("`head` must be non-negative.")
@@ -900,7 +942,7 @@ class Register(ABC):
         )
 
     def _call_reg_method(self, method, *args, **kwargs):
-        return method(self, args, kwargs)(None, None, None)
+        return method(self, *args, *kwargs)(None, None, None)
 
     async def _update_perm_db(self, timeout):
 
@@ -988,7 +1030,7 @@ class Register(ABC):
         changes = []
 
         for prefix, prefix_len in (
-                (_BLK_KEY_PREFIX, _BLK_KEY_PREFIX_LEN), (_COMPRESSED_KEY_PREFIX, _COMPRESSED_KEY_PREFIX_LEN)
+                (BLK_KEY_PREFIX, BLK_KEY_PREFIX_LEN), (COMPRESSED_KEY_PREFIX, COMPRESSED_KEY_PREFIX_LEN)
         ):
 
             for key, val in r_txn.prefix_iter(prefix):
@@ -997,7 +1039,7 @@ class Register(ABC):
                 apri_id, _, length_bytes = self._get_raw_startn_length(prefix_len, key)
                 new_startn_bytes = bytify_int(startn % new_mod, tail_len)
                 new_key = Register._join_disk_blk_data(
-                    _BLK_KEY_PREFIX, apri_id, new_startn_bytes, length_bytes
+                    BLK_KEY_PREFIX, apri_id, new_startn_bytes, length_bytes
                 )
 
                 if key != new_key:
@@ -1010,8 +1052,8 @@ class Register(ABC):
     @staticmethod
     def _set_startn_info_disk(head, tail_len, changes, rw_txn):
 
-        rw_txn.put(_START_N_HEAD_KEY, bytify_int(head))
-        rw_txn.put(_START_N_TAIL_LENGTH_KEY, bytify_int(tail_len))
+        rw_txn.put(START_N_HEAD_KEY, bytify_int(head))
+        rw_txn.put(START_N_TAIL_LEN_KEY, bytify_int(tail_len))
 
         for key, val in changes:
 
@@ -1036,7 +1078,7 @@ class Register(ABC):
         ret._db = open_lmdb(ret._write_db_filepath, readonly)
 
         with ret._txn("reader") as ro_txn:
-            ret._length_length = int(ro_txn.get(_LENGTH_LENGTH_KEY))
+            ret._length_length = int(ro_txn.get(LEN_LEN_KEY))
 
         ret._max_length = 10 ** ret._length_length - 1
         ret._opened = True
@@ -1119,7 +1161,7 @@ class Register(ABC):
         self._local_dir_bytes = str(self._local_dir).encode("ASCII")
         self._perm_db_filepath = self._local_dir / DATABASE_FILEPATH
         self._write_db_filepath = self._local_dir / read_txt_file(self._local_dir / WRITE_DB_FILEPATH)
-        self._subreg_bytes = _SUB_KEY_PREFIX + self._local_dir_bytes
+        self._subreg_bytes = SUB_KEY_PREFIX + self._local_dir_bytes
         self._version_filepath = self._local_dir / VERSION_FILEPATH
         self._msg_filepath = self._local_dir / MSG_FILEPATH
         self._cls_filepath = self._local_dir / CLS_FILEPATH
@@ -1142,26 +1184,11 @@ class Register(ABC):
             self.__dict__[elapsed_name] += time.time() - start_time
 
     #################################
-    #        ERROR MESSAGES         #
-
-    def _no_apri_err_msg(self, apri):
-        return f"The following `ApriInfo` is not known to this `Register` :\n{apri}\n{self}"
-
-    def _no_apos_err_msg(self, apri):
-        return f"No `AposInfo` associated with the following `ApriInfo` : \n{apri}\n{self}"
-
-    def _ram_blk_not_open_err_msg(self, blk):
-        return (
-            f"Closed RAM `Block` with the following data (it is good practice to always keep all RAM `Block`s open) :"
-            f"\n{blk.apri()}\nstartn = {blk.startn()}\n{self}"
-        )
-
-    #################################
     #      PROTEC INFO METHODS      #
 
     def _relational_encode_info(self, info, r_txn):
 
-        encoder = _RelationalInfoJsonEncoder(
+        encoder = RelationalInfoJsonEncoder(
             self,
             r_txn,
             ensure_ascii = True,
@@ -1169,11 +1196,11 @@ class Register(ABC):
             indent = None,
             separators = (',', ':')
         )
-        return info.to_json(encoder).encode("ASCII")
+        return info.to_json(encoder).json_encode_default("ASCII")
 
     def _relational_decode_info(self, cls, json, r_txn):
 
-        str_hook = _RelationalApriInfoStrHook(self, r_txn)
+        str_hook = RelationalApriInfoStrHook(self, r_txn)
         return cls.from_json(json.decode("ASCII"), str_hook)
 
     #################################
@@ -1290,7 +1317,7 @@ class Register(ABC):
                 missing = False
 
         if not missing_ok and missing:
-            raise DataNotFoundError(self._no_apri_err_msg(apri))
+            raise DataNotFoundError(no_apri_err_msg(apri))
 
         rrw_txn = None
 
@@ -1423,7 +1450,7 @@ class Register(ABC):
 
     def _apris_disk(self, r_txn):
 
-        for _, apri_json in r_txn.prefix_iter(_ID_APRI_KEY_PREFIX):
+        for _, apri_json in r_txn.prefix_iter(ID_APRI_KEY_PREFIX):
             yield self._relational_decode_info(ApriInfo, apri_json, r_txn), apri_json
 
     def _apris_recursive(self, r_txn):
@@ -1448,8 +1475,7 @@ class Register(ABC):
         return r_txn.has_key(apri_id_key)
 
     def _get_apri_id(self, apri, apri_json, reencode, r_txn):
-        """Get an `ApriInfo` ID for this database. If `missing_ok is True`, then create an ID if the passed `apri` or
-        `apri_json` is unknown to this `Register`.
+        """Get an `ApriInfo` ID for this database.
 
         One of `apri` and `apri_json` can be `None`, but not both. If both are not `None`, then `apri` is used.
 
@@ -1876,7 +1902,7 @@ class Register(ABC):
             return None
 
         else:
-            return _APOS_KEY_PREFIX + apri_id
+            return APOS_KEY_PREFIX + apri_id
 
     #################################
     #  PUBLIC SUB-REGISTER METHODS  #
@@ -1953,7 +1979,7 @@ class Register(ABC):
 
     @staticmethod
     def _add_subreg_disk(subreg_key, rw_txn):
-        rw_txn.put(subreg_key, _SUB_VAL)
+        rw_txn.put(subreg_key, SUB_VAL)
 
     def _rmv_subreg_pre(self, subreg, missing_ok, r_txn):
 
@@ -2012,14 +2038,14 @@ class Register(ABC):
     @staticmethod
     def _subregs_disk(r_txn):
 
-        for key, _ in r_txn.prefix_iter(_SUB_KEY_PREFIX):
+        for key, _ in r_txn.prefix_iter(SUB_KEY_PREFIX):
 
-            local_dir = Path(key[_SUB_KEY_PREFIX_LEN:].decode("ASCII"))
+            local_dir = Path(key[SUB_KEY_PREFIX_LEN:].decode("ASCII"))
             subreg = Register._from_local_dir(local_dir)
             yield subreg
 
     def _get_subreg_key(self):
-        return _SUB_KEY_PREFIX + self._local_dir_bytes
+        return SUB_KEY_PREFIX + self._local_dir_bytes
 
     def _subregs_bfs(self, exclude_root, r_txn):
 
@@ -2460,8 +2486,8 @@ class Register(ABC):
         if blk_key is None:
             return None, None
 
-        len1 = _BLK_KEY_PREFIX_LEN + _MAX_NUM_APRI_LEN + _KEY_SEP_LEN
-        len2 = _COMPRESSED_KEY_PREFIX_LEN + _MAX_NUM_APRI_LEN + _KEY_SEP_LEN
+        len1 = BLK_KEY_PREFIX_LEN + MAX_NUM_APRI_LEN + KEY_SEP_LEN
+        len2 = COMPRESSED_KEY_PREFIX_LEN + MAX_NUM_APRI_LEN + KEY_SEP_LEN
         return blk_key[ : len1], compressed_key[ : len2]
 
     def _get_disk_blk_prefixes_startn(self, apri, apri_json, reencode, startn, r_txn):
@@ -2471,8 +2497,8 @@ class Register(ABC):
         if blk_key is None:
             return None
 
-        len1 = _BLK_KEY_PREFIX_LEN + _MAX_NUM_APRI_LEN + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
-        len2 = _COMPRESSED_KEY_PREFIX_LEN + _MAX_NUM_APRI_LEN + _KEY_SEP_LEN + self._startn_tail_length + _KEY_SEP_LEN
+        len1 = BLK_KEY_PREFIX_LEN + MAX_NUM_APRI_LEN + KEY_SEP_LEN + self._startn_tail_length + KEY_SEP_LEN
+        len2 = COMPRESSED_KEY_PREFIX_LEN + MAX_NUM_APRI_LEN + KEY_SEP_LEN + self._startn_tail_length + KEY_SEP_LEN
         return blk_key[: len1], compressed_key[: len2]
 
     def _add_disk_blk_pre(self, apri, apri_json, reencode, startn, length, exists_ok, dups_ok, r_txn):
@@ -2527,9 +2553,9 @@ class Register(ABC):
             self._add_apri_disk(apri, [], False, rw_txn)
             blk_key, compressed_key = self._get_disk_blk_keys(apri, None, True, startn, length, rw_txn)
 
-        filename_bytes = filename.name.encode("ASCII")
+        filename_bytes = filename.name.json_encode_default("ASCII")
         rw_txn.put(blk_key, filename_bytes)
-        rw_txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
+        rw_txn.put(compressed_key, IS_NOT_COMPRESSED_VAL)
 
     @classmethod
     def _add_disk_blk_disk2(cls, seg, filename, ret_metadata, kwargs):
@@ -2787,7 +2813,7 @@ class Register(ABC):
 
     @staticmethod
     def _is_compressed_disk(compressed_key, r_txn):
-        return r_txn.get(compressed_key) != _IS_NOT_COMPRESSED_VAL
+        return r_txn.get(compressed_key) != IS_NOT_COMPRESSED_VAL
 
     def _decompress_pre(self, apri, apri_json, reencode, startn, length, r_txn):
 
@@ -2808,7 +2834,7 @@ class Register(ABC):
 
         compressed_val = r_txn.get(compressed_key)
 
-        if compressed_val == _IS_NOT_COMPRESSED_VAL:
+        if compressed_val == IS_NOT_COMPRESSED_VAL:
             raise DecompressionError(
                 "The disk1 `Block` with the following data is not compressed: " +
                 f"{str(apri)}, startn = {startn_}, length = {length_}"
@@ -2828,7 +2854,7 @@ class Register(ABC):
 
     @staticmethod
     def _decompress_disk(compressed_key, rrw_txn):
-        rrw_txn.put(compressed_key, _IS_NOT_COMPRESSED_VAL)
+        rrw_txn.put(compressed_key, IS_NOT_COMPRESSED_VAL)
 
     @staticmethod
     def _decompress_disk2(blk_filename, compressed_filename, temp_blk_filename, ret_metadata):
@@ -2925,7 +2951,7 @@ class Register(ABC):
 
         compressed_val = r_txn.get(compressed_key)
 
-        if compressed_val != _IS_NOT_COMPRESSED_VAL:
+        if compressed_val != IS_NOT_COMPRESSED_VAL:
             raise CompressionError(
                 "The disk1 `Block` with the following data has already been compressed: " +
                 f"{str(apri)}, startn = {startn_}, length = {length_}"
@@ -2939,7 +2965,7 @@ class Register(ABC):
     @staticmethod
     def _compress_disk(compressed_key, compressed_filename, rrw_txn):
 
-        compressed_val = compressed_filename.name.encode("ASCII")
+        compressed_val = compressed_filename.name.json_encode_default("ASCII")
         rrw_txn.put(compressed_key, compressed_val)
 
     @classmethod
@@ -3024,21 +3050,6 @@ class Register(ABC):
         else:
             return e
 
-    @staticmethod
-    def _disk_blk_keys_exist(blk_key, compressed_key, r_txn):
-
-        if blk_key is None:
-            return False
-
-        has_blk_key = r_txn.has_key(blk_key)
-        has_compressed_key = r_txn.has_key(compressed_key)
-
-        if has_blk_key == has_compressed_key:
-            return has_blk_key
-
-        else:
-            raise RegisterError("Uncompressed/compressed `Block` key mismatch.")
-
     def _get_disk_blk_keys(self, apri, apri_json, reencode, startn, length, r_txn):
         """Get the database key for a disk1 `Block`.
 
@@ -3064,8 +3075,8 @@ class Register(ABC):
 
             tail = bytify_int(startn % self._startn_tail_mod, self._startn_tail_length)
             op_length = bytify_int(self._max_length - length, self._length_length)
-            suffix = apri_id + _KEY_SEP + tail + _KEY_SEP + op_length
-            return _BLK_KEY_PREFIX + suffix, _COMPRESSED_KEY_PREFIX + suffix
+            suffix = apri_id + KEY_SEP + tail + KEY_SEP + op_length
+            return BLK_KEY_PREFIX + suffix, COMPRESSED_KEY_PREFIX + suffix
 
     def _num_disk_blks(self, apri, apri_json, reencode, r_txn):
 
@@ -3095,7 +3106,7 @@ class Register(ABC):
         """
 
         try:
-            prefix += self._get_apri_id(apri, apri_json, reencode, r_txn) + _KEY_SEP
+            prefix += self._get_apri_id(apri, apri_json, reencode, r_txn) + KEY_SEP
 
         except DataNotFoundError: # see pattern VI.1
             pass # see pattern VI.3
@@ -3105,22 +3116,13 @@ class Register(ABC):
 
     def _get_raw_startn_length(self, prefix_len, key):
 
-        stop1 = prefix_len + _MAX_NUM_APRI_LEN
-        stop2 = stop1 + _KEY_SEP_LEN + self._startn_tail_length
+        stop1 = prefix_len + MAX_NUM_APRI_LEN
+        stop2 = stop1 + KEY_SEP_LEN + self._startn_tail_length
 
         return (
             key[prefix_len           : stop1],  # apri id
-            key[stop1 + _KEY_SEP_LEN: stop2],  # startn
-            key[stop2 + _KEY_SEP_LEN:] # op_length
-        )
-
-    @staticmethod
-    def _join_disk_blk_data(prefix, apri_id, startn_bytes, len_bytes):
-        return (
-                prefix +
-                apri_id + _KEY_SEP +
-                startn_bytes + _KEY_SEP +
-                len_bytes
+            key[stop1 + KEY_SEP_LEN: stop2],  # startn
+            key[stop2 + KEY_SEP_LEN:] # op_length
         )
 
     def _get_startn_length(self, prefix_len, key):
@@ -3145,7 +3147,7 @@ class Register(ABC):
         compressed_val = r_txn.get(compressed_key)
         blk_filename = self._local_dir / blk_val.decode("ASCII")
 
-        if compressed_val != _IS_NOT_COMPRESSED_VAL:
+        if compressed_val != IS_NOT_COMPRESSED_VAL:
 
             compressed_filename = self._local_dir / compressed_val.decode("ASCII")
 
@@ -4222,7 +4224,7 @@ class Register(ABC):
 
         if compressed_filename is not None:
             raise CompressionError(
-                "Could not load disk1 `Block` with the following data because the `Block` is compressed. "
+                "Could not load disk `Block` with the following data because the `Block` is compressed. "
                 "Please call `self.decompress()` first before loading the data.\n" +
                 f"{apri}, startn = {startn}, length = {length}"
             )
@@ -4315,7 +4317,7 @@ class Register(ABC):
 
         if compressed_filename is not None:
             raise CompressionError(
-                "Could not load disk1 `Block` with the following data because the `Block` is compressed. "
+                "Could not load disk `Block` with the following data because the `Block` is compressed. "
                 "Please call `self.decompress()` first before loading the data.\n" +
                 f"{apri}, startn = {startn_}, length = {length_}"
             )
@@ -4435,7 +4437,7 @@ class Register(ABC):
                 prefix = self._get_disk_blk_prefixes(apri, apri_json, False, r_txn)[0]
 
             for key, _ in r_txn.prefix_iter(prefix):
-                return self._get_startn_length(_BLK_KEY_PREFIX_LEN, key)
+                return self._get_startn_length(BLK_KEY_PREFIX_LEN, key)
 
             return None, None # could not resolve
 
@@ -4466,7 +4468,7 @@ class Register(ABC):
         if prefix is not None:
 
             for key, _ in r_txn.prefix_iter(prefix):
-                yield self._get_startn_length(_BLK_KEY_PREFIX_LEN, key)
+                yield self._get_startn_length(BLK_KEY_PREFIX_LEN, key)
 
     def _intervals_recursive(self, apri, diskonly, r_txn):
 
@@ -4714,7 +4716,7 @@ class NumpyRegister(Register, file_suffix = ".npy"):
 
             if issubclass(blk.segment_type, np.memmap):
 
-                with MemmapBlock.cast(blk) as blk:
+                with _MemmapBlock.cast(blk) as blk:
 
                     if ret_metadata:
                         yield blk, ret[1]
@@ -5065,51 +5067,3 @@ class _LMDBOnlyRegister(Register):
     @classmethod
     def load_disk_data(cls, filename, **kwargs):
         raise NotImplementedError
-
-class _RelationalApriInfoStrHook:
-
-    def __init__(self, reg, r_txn):
-
-        self._reg = reg
-        self._r_txn = r_txn
-
-    def __call__(self, cls, str_):
-
-        if cls == ApriInfo:
-
-            id_ = str_[len(ApriInfo.__name__) : ]
-
-            if len(id_) == _MAX_NUM_APRI_LEN:
-
-                try:
-                    int(id_)
-
-                except ValueError:
-                    return str_
-
-                else:
-                    return json.JSONDecoder().decode(
-                        get_apri_json(id_.encode("ASCII"), self._r_txn).decode("ASCII")
-                    )
-
-            else:
-                return str_
-
-        else:
-            return cls._default_str_hook(str_)
-
-class _RelationalInfoJsonEncoder(_InfoJsonEncoder):
-
-    def __init__(self, reg, r_txn, *args, **kwargs):
-
-        self._reg = reg
-        self._r_txn = r_txn
-        super().__init__(*args, **kwargs)
-
-    def default(self, obj):
-
-        if isinstance(obj, ApriInfo):
-            return ApriInfo.__name__ + self._reg._get_apri_id(obj, None, True, self._r_txn).decode("ASCII")
-
-        else:
-            return super().default(obj)

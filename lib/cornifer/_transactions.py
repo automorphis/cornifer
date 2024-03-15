@@ -81,9 +81,15 @@ class _BaseTransaction:
         if self._rw_txn is None:
             raise ValueError
 
+        if issubclass(cls, type(self)):
+            return self
+
         self.__class__ = cls
         self.__init__(self._db)
         return self
+
+    def __eq__(self, other):
+        return self is other
 
 class Reader(_BaseTransaction, write = False):
 
