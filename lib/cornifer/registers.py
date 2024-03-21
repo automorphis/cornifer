@@ -764,22 +764,26 @@ class Register(ABC):
                 prefix = self._intervals_pre(apri, apri_json, False, ro_txn)
                 total_disk_blk_len += self._total_len_disk(prefix, ro_txn)
 
+        subregs_str = '\n'.join(f'\t{subreg}' for subreg in self.subregs())
+
         if include_ram:
             return (
                 repr(self) + '\n' +
-                f"Total disk apri       : {num_disk_apri}\n"
-                f"Total ram apri        : {num_ram_apri}\n"
-                f"Total apos            : {num_apos}\n"
-                f"Total disk blk length : {total_disk_blk_len}\n"
-                f"Total ram blk length  : {total_ram_blk_len}"
+                f'Total disk apri       : {num_disk_apri}\n'
+                f'Total ram apri        : {num_ram_apri}\n'
+                f'Total apos            : {num_apos}\n'
+                f'Total disk blk length : {total_disk_blk_len}\n'
+                f'Total ram blk length  : {total_ram_blk_len}\n'
+                f'{subregs_str}'
             )
 
         else:
             return (
                 repr(self) + '\n' +
-                f"Total disk apri       : {num_disk_apri}\n"
-                f"Total apos            : {num_apos}\n"
-                f"Total disk blk length : {total_disk_blk_len}"
+                f'Total disk apri       : {num_disk_apri}\n'
+                f'Total apos            : {num_apos}\n'
+                f'Total disk blk length : {total_disk_blk_len}'
+                f'{subregs_str}'
             )
 
     def set_shorthand(self, shorthand):
