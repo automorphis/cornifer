@@ -764,7 +764,13 @@ class Register(ABC):
                 prefix = self._intervals_pre(apri, apri_json, False, ro_txn)
                 total_disk_blk_len += self._total_len_disk(prefix, ro_txn)
 
-        subregs_str = '\n'.join(f'\t{subreg}' for subreg in self.subregs())
+        try:
+            subregs_str = '\n'.join(f'\t{subreg}' for subreg in self.subregs())
+
+        except:
+
+            print("oh no!", self)
+            raise
 
         if include_ram:
             return (
