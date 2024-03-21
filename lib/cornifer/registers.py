@@ -764,13 +764,13 @@ class Register(ABC):
                 prefix = self._intervals_pre(apri, apri_json, False, ro_txn)
                 total_disk_blk_len += self._total_len_disk(prefix, ro_txn)
 
-        try:
-            subregs_str = '\n'.join(f'\t{subreg}' for subreg in self.subregs())
+        subregs = list(self.subregs())
 
-        except:
+        if len(subregs) > 0:
+            subregs_str = '\n' + '\n'.join(f'\t{subreg}' for subreg in subregs)
 
-            print("oh no!", self)
-            raise
+        else:
+            subregs_str = ''
 
         if include_ram:
             return (
@@ -780,6 +780,7 @@ class Register(ABC):
                 f'Total apos            : {num_apos}\n'
                 f'Total disk blk length : {total_disk_blk_len}\n'
                 f'Total ram blk length  : {total_ram_blk_len}\n'
+                f'Total subregs         : {len(subregs)}'
                 f'{subregs_str}'
             )
 
@@ -788,7 +789,8 @@ class Register(ABC):
                 repr(self) + '\n' +
                 f'Total disk apri       : {num_disk_apri}\n'
                 f'Total apos            : {num_apos}\n'
-                f'Total disk blk length : {total_disk_blk_len}'
+                f'Total disk blk length : {total_disk_blk_len}\n'
+                f'Total subregs         : {len(subregs)}'
                 f'{subregs_str}'
             )
 
