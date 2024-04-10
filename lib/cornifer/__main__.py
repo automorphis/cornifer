@@ -164,19 +164,19 @@ parser_debug = subparsers.add_parser('debug', help = 'Display debug file info.')
 mutex_group = parser_debug.add_mutually_exclusive_group()
 mutex_group.add_argument(
     '-n', '--nlines', help = f'Number of lines to display (default: {NLINES_DEFAULT}) (positive: forward from first '
-    'line, negative: backward from last line, zero: all lines)', default = None, type = int
+    'line, negative: backward from last line, zero: all lines)', default = NLINES_DEFAULT, type = int
 )
 absolute_lines_group = mutex_group.add_argument_group(
     'Absolute lines. Positive numbers count forward from the first line, negative backwards from the last.'
 )
 absolute_lines_group.add_argument(
-    '-f', '--first', help = f'First line to display (default: {FIRST_DEFAULT})', default = None, type = int
+    '-f', '--first', help = f'First line to display (default: {FIRST_DEFAULT})', default = FIRST_DEFAULT, type = int
 )
 absolute_lines_group.add_argument(
-    '-l', '--last', help = f'Last line to display (default: {LAST_DEFAULT})', default = None, type = int
+    '-l', '--last', help = f'Last line to display (default: {LAST_DEFAULT})', default = LAST_DEFAULT, type = int
 )
 absolute_lines_group.add_argument(
-    '-s', '--step', help = f'Step (default: {STEP_DEFAULT})', default = None, type = int
+    '-s', '--step', help = f'Step (default: {STEP_DEFAULT})', default = STEP_DEFAULT, type = int
 )
 parser_debug.add_argument(
     '-d', '--dir', help = 'Directory of debug file (default: cwd)', default = Path.cwd(), type = resolved_Path
