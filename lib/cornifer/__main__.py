@@ -311,7 +311,7 @@ elif args.command == 'debug':
         if len(args.pids) == 0:
             raise FileNotFoundError('No debug files found')
 
-    print(f'Displaying debug info from {args.time[1]}')
+    print(f'Displaying debug info from {args.time}')
 
     if display_nlines:
 
@@ -330,65 +330,65 @@ elif args.command == 'debug':
 
 
 
-    if d1 is None:
-
-        for pid in pids:
-
-            print(pid)
-            pid_file = dir_ / f'{pid}.txt'
-            to_print = []
-
-            with pid_file.open('r') as fh:
-
-                for i, line in enumerate(fh.readlines()):
-
-                    i += 1
-
-                    if memory > 0 and len(to_print) < memory:
-                        to_print.append(f'\t{i:08d}, {line.strip()}')
-
-                    elif memory > 0:
-                        break
-
-                    elif memory < 0:
-
-                        if len(to_print) == -memory:
-                            del to_print[0]
-
-                        to_print.append(f'\t{i:08d}, {line.strip()}')
-
-            for line in to_print:
-                print(line)
-
-    else:
-
-        for pid in pids:
-
-            print(pid)
-            pid_file = dir_ / f'{pid}.txt'
-            to_print = []
-            stats = []
-            start_time = None
-
-            with pid_file.open('r') as fh:
-
-                for i, line in enumerate(fh.readlines()):
-
-                    dt, msg = _separate(line)
-
-                    if msg == d1 and start_time is None:
-                        start_time = dt
-
-                    elif msg == d2 and start_time is not None:
-
-                        stats.append((dir_time - start_time).total_seconds())
-                        start_time = None
-
-            if len(stats) > 0:
-                print(
-                    pid, statistics.mean(stats), len(stats), sum(stats), statistics.stdev(stats), min(stats),
-                    [str(t) for t in statistics.quantiles(stats, n = 8)], max(stats)
-                )
+    # if d1 is None:
+    #
+    #     for pid in pids:
+    #
+    #         print(pid)
+    #         pid_file = dir_ / f'{pid}.txt'
+    #         to_print = []
+    #
+    #         with pid_file.open('r') as fh:
+    #
+    #             for i, line in enumerate(fh.readlines()):
+    #
+    #                 i += 1
+    #
+    #                 if memory > 0 and len(to_print) < memory:
+    #                     to_print.append(f'\t{i:08d}, {line.strip()}')
+    #
+    #                 elif memory > 0:
+    #                     break
+    #
+    #                 elif memory < 0:
+    #
+    #                     if len(to_print) == -memory:
+    #                         del to_print[0]
+    #
+    #                     to_print.append(f'\t{i:08d}, {line.strip()}')
+    #
+    #         for line in to_print:
+    #             print(line)
+    #
+    # else:
+    #
+    #     for pid in pids:
+    #
+    #         print(pid)
+    #         pid_file = dir_ / f'{pid}.txt'
+    #         to_print = []
+    #         stats = []
+    #         start_time = None
+    #
+    #         with pid_file.open('r') as fh:
+    #
+    #             for i, line in enumerate(fh.readlines()):
+    #
+    #                 dt, msg = _separate(line)
+    #
+    #                 if msg == d1 and start_time is None:
+    #                     start_time = dt
+    #
+    #                 elif msg == d2 and start_time is not None:
+    #
+    #                     stats.append((dir_time - start_time).total_seconds())
+    #                     start_time = None
+    #
+    #         if len(stats) > 0:
+    #             print(
+    #                 pid, statistics.mean(stats), len(stats), sum(stats), statistics.stdev(stats), min(stats),
+    #                 [str(t) for t in statistics.quantiles(stats, n = 8)], max(stats)
+    #             )
 
 elif args.command == 'delete':
 
