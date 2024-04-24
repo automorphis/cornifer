@@ -433,19 +433,23 @@ class Register(ABC):
 
     @staticmethod
     def _from_local_dir(local_dir, monkeypatch = False):
-        """Return a `Register` instance from a `local_dir` with the correct concrete subclass.
+        """Return a Register instance from local_dir with the correct concrete subclass.
 
-        This static method does not open the LMDB database at any point.
+        This staticmethod does not open the LMDB database at any point.
 
-        :param local_dir: (type `pathlib.Path`) Absolute.
-        :return: (type `Register`)
+        :type local_dir: pathlib.Path
+        :param local_dir: Absolute.
+        :type monkeypatch: bool
+        :param monkeypatch: Whether to dynamically create a concrete subclass of the correct type if that type could
+        not be found.
+        :rtype: Register
         """
 
         if not local_dir.is_absolute():
             raise ValueError(NOT_ABSOLUTE_ERROR_MESSAGE.format(str(local_dir)))
 
         if not local_dir.exists():
-            raise FileNotFoundError(f"The `Register` database `{str(local_dir)}` could not be found.")
+            raise FileNotFoundError(f"The Register database `{str(local_dir)}` could not be found.")
 
         check_reg_structure(local_dir)
 
@@ -457,11 +461,8 @@ class Register(ABC):
 
             cls_name = read_txt_file(local_dir / CLS_FILEPATH)
 
-            if cls_name == "Register":
-                raise TypeError(
-                    "`Register` is an abstract class, meaning that `Register` itself cannot be instantiated, " +
-                    "only its concrete subclasses."
-                )
+            if cls_name == Register.__name__:
+                raise TypeError
 
             con = Register._constructors.get(cls_name, None)
 
@@ -764,7 +765,7 @@ class Register(ABC):
                 prefix = self._intervals_pre(apri, apri_json, False, ro_txn)
                 total_disk_blk_len += self._total_len_disk(prefix, ro_txn)
 
-        subregs = list(self.subregs())
+            subregs = list(self._subregs_disk(ro_txn, True))
 
         if len(subregs) > 0:
             subregs_str = '\n' + '\n'.join(f'\t{subreg}' for subreg in subregs)
@@ -1128,15 +1129,6 @@ class Register(ABC):
                 return
 
             await asyncio.sleep(0.1)
-
-    @staticmethod
-    def _summary(local_dir):
-
-        check_reg_structure(local_dir)
-        reg = Register._from_local_dir(local_dir, True)
-
-        with reg.open(readonly = True) as reg:
-            return reg.summary(False)
 
     def _digest(self):
 
@@ -2169,7 +2161,7 @@ class Register(ABC):
         self._check_open_raise("subregs")
 
         with self._txn("reader") as ro_txn:
-            yield from Register._subregs_disk(ro_txn)
+            yield from Register._subregs_disk(ro_txn, False)
 
     #################################
     #  PROTEC SUB-REGISTER METHODS  #
@@ -2235,10 +2227,10 @@ class Register(ABC):
         if touched is None:
             touched = set()
 
-        if any(original is subreg for subreg in Register._subregs_disk(r_txn)):
+        if any(original is subreg for subreg in Register._subregs_disk(r_txn, True)):
             return False
 
-        for subreg in Register._subregs_disk(r_txn):
+        for subreg in Register._subregs_disk(r_txn, True):
 
             if subreg not in touched:
 
@@ -2255,14 +2247,14 @@ class Register(ABC):
             return True
 
     @staticmethod
-    def _subregs_disk(r_txn):
+    def _subregs_disk(r_txn, monkeypatch):
 
         with r_txn_prefix_iter(_SUB_KEY_PREFIX, r_txn) as it:
 
             for key, _ in it:
 
                 local_dir = Path(key[_SUB_KEY_PREFIX_LEN : ].decode("ASCII"))
-                subreg = Register._from_local_dir(local_dir)
+                subreg = Register._from_local_dir(local_dir, monkeypatch)
                 yield subreg
 
     def _get_subreg_key(self):
@@ -2287,7 +2279,7 @@ class Register(ABC):
                 elif exclude_root:
                     front_index += 1
 
-                for subreg in Register._subregs_disk(r_txn):
+                for subreg in Register._subregs_disk(r_txn, True):
 
                     if subreg not in touched:
 

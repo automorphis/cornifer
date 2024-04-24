@@ -253,7 +253,7 @@ if args.command == 'summary':
     for reg in regs:
 
         with reg.open(True):
-            to_print += reg.summary() + '\n\n'
+            to_print += reg.summary(False) + '\n\n'
 
     print(to_print)
 
