@@ -780,7 +780,7 @@ class Register(ABC):
         else:
             subregs_str = ''
 
-        compressed_prop_str = f'({total_disk_blk_len / compressed_disk_blk_len * 100 : .2f}% compressed)'
+        compressed_prop_str = f'({compressed_disk_blk_len / total_disk_blk_len * 100 :.2f}% compressed)'
 
         if include_ram:
             return (
