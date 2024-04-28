@@ -733,14 +733,14 @@ class Register(ABC):
         return str(self)
 
     def summary(self, include_ram = True):
-        # print last edit time
-        self._check_open_raise("summary")
 
+        self._check_open_raise("summary")
         num_disk_apri = 0
         num_ram_apri = 0
         num_apos = 0
         total_disk_blk_len = 0
         total_ram_blk_len = 0
+        compressed_disk_blk_len = 0
 
         for apri in self._apris_ram():
 
@@ -763,7 +763,14 @@ class Register(ABC):
                     num_apos += 1
 
                 prefix = self._intervals_pre(apri, apri_json, False, ro_txn)
-                total_disk_blk_len += self._total_len_disk(prefix, ro_txn)
+
+                for startn, length in self._intervals_disk(prefix, ro_txn):
+
+                    compressed_key = self._is_compressed_pre(apri, apri_json, False, startn, length, ro_txn)
+                    total_disk_blk_len += length
+
+                    if Register._is_compressed_disk(compressed_key, ro_txn):
+                        compressed_disk_blk_len += length
 
             subregs = list(self._subregs_disk(ro_txn, True))
 
@@ -773,15 +780,17 @@ class Register(ABC):
         else:
             subregs_str = ''
 
+        compressed_prop_str = f'({total_disk_blk_len / compressed_disk_blk_len * 100 : .2f}% compressed)'
+
         if include_ram:
             return (
                 repr(self) + '\n' +
-                f'Total disk apri       : {num_disk_apri}\n'
-                f'Total ram apri        : {num_ram_apri}\n'
-                f'Total apos            : {num_apos}\n'
-                f'Total disk blk length : {total_disk_blk_len}\n'
-                f'Total ram blk length  : {total_ram_blk_len}\n'
-                f'Total subregs         : {len(subregs)}'
+                f'Total disk apri       {num_disk_apri}\n'
+                f'Total ram apri        {num_ram_apri}\n'
+                f'Total apos            {num_apos}\n'
+                f'Total disk blk length {total_disk_blk_len} {compressed_prop_str}\n'
+                f'Total ram blk length  {total_ram_blk_len}\n'
+                f'Total subregs         {len(subregs)}'
                 f'{subregs_str}'
             )
 
@@ -790,7 +799,7 @@ class Register(ABC):
                 repr(self) + '\n' +
                 f'Total disk apri       : {num_disk_apri}\n'
                 f'Total apos            : {num_apos}\n'
-                f'Total disk blk length : {total_disk_blk_len}\n'
+                f'Total disk blk length : {total_disk_blk_len} {compressed_prop_str}\n'
                 f'Total subregs         : {len(subregs)}'
                 f'{subregs_str}'
             )
