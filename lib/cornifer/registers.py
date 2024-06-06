@@ -4220,7 +4220,7 @@ class Register(ABC):
                 # need to refresh reader
                 try:
                     blk_filename, compressed_filename, startn, is_compressed = self._blk_by_n_pre(
-                        apri, None, True, n, False, ro_txn
+                        apri, None, True, n, True, ro_txn
                     )
 
                 except DataNotFoundError:
